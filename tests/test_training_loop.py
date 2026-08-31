@@ -233,3 +233,69 @@ class TestIntegration:
         config = TrainingConfig.from_yaml("configs/training_mango.yaml")
         assert config.model_type == "master"
         assert config.epochs_phase1 == 80
+
+    def test_kd_config_training_budget_matches_student_baseline(self):
+        """configs/kd_training.yaml must agree with configs/training_student.yaml
+        on epochs/patience/warmup_epochs/num_workers. The distilled run is only
+        interpretable against the RGB-only baseline when both budgets match."""
+        from src.training.kd_config import KDConfig
+
+        kd_config = KDConfig.from_yaml("configs/kd_training.yaml")
+        student_config = TrainingConfig.from_yaml("configs/training_student.yaml")
+
+        assert kd_config.epochs == student_config.epochs == 50
+        assert kd_config.patience == student_config.patience == 15
+        assert kd_config.warmup_epochs == student_config.warmup_epochs == 5
+        assert kd_config.num_workers == student_config.num_workers == 2
+
+
+class TestPatiencePhaseReset:
+    """`_train_phase` resets `patience_counter` to 0 on entry.
+
+    On the master two-phase path, `_train_phase` runs once per phase on the
+    same Trainer instance. Without a reset, phase 2 inherits phase 1's
+    exhausted counter and can stop after a single epoch regardless of its
+    own configured epochs/patience.
+    """
+
+    def test_patience_counter_resets_at_phase_start(self):
+        from src.training.loop import Trainer
+
+        config = TrainingConfig(
+            model_type="master",
+            precision="fp32",
+            num_classes=2,
+            batch_size=1,
+        )
+
+        mock_model = MagicMock()
+        # A fresh iterator per call — `_train_phase` calls `.parameters()`
+        # more than once (trainable count, then the optimizer's filter).
+        mock_model.parameters.side_effect = lambda: iter([torch.zeros(1, requires_grad=True)])
+        mock_model.to.return_value = mock_model
+        mock_model.freeze_backbone.return_value = None
+        mock_model.unfreeze_backbone_stages.return_value = None
+
+        trainer = Trainer.__new__(Trainer)
+        trainer.model = mock_model
+        trainer.config = config
+        trainer.train_loader = []
+        trainer.val_loader = []
+        trainer.device = torch.device("cpu")
+        trainer.output_dir = Path("/tmp/test_trainer_patience_reset")
+        trainer.output_dir.mkdir(parents=True, exist_ok=True)
+        trainer.loss_history = LossHistory()
+        trainer.best_map50 = 0.0
+        trainer.patience_counter = 99
+        trainer.global_step = 0
+        trainer.history_epoch = 0
+        trainer.writer = None
+        trainer.scaler = MagicMock()
+
+        # epochs=0 -> the training loop body (range(1, 1)) never runs; only
+        # the reset-then-setup prologue of `_train_phase` executes.
+        trainer._train_phase(
+            phase=2, epochs=0, lr=1e-4, freeze_stages=2, unfreeze_stages=[2, 3]
+        )
+
+        assert trainer.patience_counter == 0
