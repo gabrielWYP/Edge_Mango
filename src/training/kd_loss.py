@@ -68,7 +68,11 @@ class KDLoss(nn.Module):
 
             level_mse = torch.tensor(0.0, device=total_loss.device)
             for t_feat, s_feat in zip(t_list, s_list):
-                level_mse = level_mse + F.mse_loss(s_feat, t_feat.detach())
+                # No detach() on t_feat: `teacher_feats` are the outputs of the
+                # student-owned kd_proj_* modules, whose only gradient source is
+                # this loss. The raw teacher forward is already detached inside
+                # KDTrainer._train_epoch, so nothing propagates into the teacher.
+                level_mse = level_mse + F.mse_loss(s_feat, t_feat)
 
             # Average across sub-levels
             if len(t_list) > 0:

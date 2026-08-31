@@ -176,17 +176,13 @@ class KDTrainer(Trainer):
             try:
                 with autocast_ctx(self.device.type, self.config.precision):
                     # --- Teacher forward (no grad) ---
+                    # The no_grad scope covers the teacher forward and the
+                    # stride selection ONLY. The kd_proj_* modules below are
+                    # student-owned trainable parameters, so running them here
+                    # would detach them from the graph and leave them frozen at
+                    # their random init for the whole run.
                     with torch.no_grad():
                         t_out = self.teacher(rgb, nir)
-                        # `distill_backbone` (renamed from `distill_backbone_rgb`,
-                        # fusion-redesign W7/W4): the teacher's backbone is now
-                        # a single early-fused stream, so this is no longer an
-                        # "RGB-only" feature set — it carries NIR information
-                        # too (design.md D-5). [2:] still selects S3, S4;
-                        # channels [384, 768] are unchanged.
-                        proj_backbone = self.model.kd_proj_backbone(
-                            t_out["distill_backbone"][2:]
-                        )
                         # fusion-redesign D-3/§5: the teacher may emit more
                         # pyramid/head levels than the student's fixed 3
                         # (default head_strides=[4,8,16,32] vs the student's
@@ -203,9 +199,24 @@ class KDTrainer(Trainer):
                         head_reg_for_student = select_by_strides(
                             t_out["distill_head_reg"], teacher_strides, STUDENT_STRIDES
                         )
-                        proj_fpn = self.model.kd_proj_fpn(fpn_for_student)
-                        proj_head_cls = self.model.kd_proj_head_cls(head_cls_for_student)
-                        proj_head_reg = self.model.kd_proj_head_reg(head_reg_for_student)
+
+                    # --- Teacher-to-student projections (MUST carry grad) ---
+                    # Inputs are already detached by the no_grad block above, so
+                    # no teacher gradient is produced; the graph built here ends
+                    # at the kd_proj_* parameters, which is exactly what the KD
+                    # loss needs in order to train them.
+                    # `distill_backbone` (renamed from `distill_backbone_rgb`,
+                    # fusion-redesign W7/W4): the teacher's backbone is now
+                    # a single early-fused stream, so this is no longer an
+                    # "RGB-only" feature set — it carries NIR information
+                    # too (design.md D-5). [2:] still selects S3, S4;
+                    # channels [384, 768] are unchanged.
+                    proj_backbone = self.model.kd_proj_backbone(
+                        t_out["distill_backbone"][2:]
+                    )
+                    proj_fpn = self.model.kd_proj_fpn(fpn_for_student)
+                    proj_head_cls = self.model.kd_proj_head_cls(head_cls_for_student)
+                    proj_head_reg = self.model.kd_proj_head_reg(head_reg_for_student)
 
                     # --- Student forward (RGB only) ---
                     s_out = self.model(rgb)
