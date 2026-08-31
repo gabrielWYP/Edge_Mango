@@ -101,14 +101,29 @@ class KDTrainer(Trainer):
                 f"Teacher checkpoint not found: {ckpt_path}"
             )
 
+        checkpoint = torch.load(str(ckpt_path), map_location="cpu", weights_only=False)
+
+        # The teacher's geometry is a property of ITS checkpoint, not of the KD
+        # run's config. `Trainer._save_checkpoint` stores the full training
+        # config, so read the architecture back from there and fall back to the
+        # KD config only for a checkpoint written before that key existed.
+        #
+        # Without this, a master trained under configs/training_mango.yaml
+        # (`head_strides: [8, 16, 32]`) cannot be loaded by a KD run carrying
+        # the post-fusion-redesign 4-level default: `load_state_dict` fails on
+        # the missing `head.heads.3.*` weights. `select_by_strides` in
+        # `_train_epoch` already reads `self.teacher.head_strides`, so a teacher
+        # with fewer levels than the default stays correctly aligned.
+        teacher_config = checkpoint.get("config") or {}
         teacher = MasterModel(
             num_classes=config.num_classes,
             pretrained_backbone=False,
-            backbone_variant=config.backbone_variant,
-            head_strides=config.head_strides,
+            backbone_variant=teacher_config.get(
+                "backbone_variant", config.backbone_variant
+            ),
+            head_strides=teacher_config.get("head_strides", config.head_strides),
+            in_channels=teacher_config.get("in_channels", config.in_channels),
         )
-
-        checkpoint = torch.load(str(ckpt_path), map_location="cpu", weights_only=False)
         teacher.load_state_dict(checkpoint["model_state_dict"])
 
         # Freeze all teacher parameters
@@ -117,7 +132,8 @@ class KDTrainer(Trainer):
             param.requires_grad = False
 
         print(f"[KDTrainer] Teacher loaded from {ckpt_path} "
-              f"({sum(p.numel() for p in teacher.parameters()):,} params, frozen)")
+              f"({sum(p.numel() for p in teacher.parameters()):,} params, frozen, "
+              f"head_strides={teacher.head_strides})")
 
         return teacher
 

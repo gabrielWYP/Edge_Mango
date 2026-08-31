@@ -69,6 +69,21 @@ exactly what D-H exists to prevent.
       plus the now-trainable `kd_proj_*`): 3.29 GB @ batch 8. So the run uses
       `--machine configs/machines/rtx3080.yaml` (batch_size 4 → `grad_accum_steps` 2 against
       the unchanged `effective_batch: 8`).
+
+      First attempt (`20260831T223558592803Z`) reached the KD stage and died there — see 4.2a.
+      Second finding, still OPEN and NOT a blocker of this change: the master stage scored
+      best mAP@0.5 = 0.1673 (epoch 7, early-stopped at 27) against 0.4438 in the pre-merge
+      run `20260826T224117154204Z`. Two variables moved between those runs (the early-fusion
+      merge and batch_size 2 → 4), so the cause is not yet established.
+
+- [x] 4.2a Fix `KDTrainer._load_teacher`: rebuild the teacher from the architecture recorded
+      in its own checkpoint (`head_strides` / `backbone_variant` / `in_channels`), falling
+      back to the KD config only for a checkpoint written before `config` was stored. The
+      master trains under `configs/training_mango.yaml` (`head_strides: [8, 16, 32]`) while
+      `configs/kd_training.yaml` never sets the key, so `KDConfig`'s post-fusion-redesign
+      4-level default made `load_state_dict` fail on the missing `head.heads.3.*` weights.
+      Regression test: `tests/training/test_kd_teacher_arch.py` (RED reproduces the exact
+      production traceback).
 - [ ] 4.3 Open the PR against `main`.
 
 ## Dropped from the original change
