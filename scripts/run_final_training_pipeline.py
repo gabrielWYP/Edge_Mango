@@ -69,6 +69,18 @@ def parse_args() -> argparse.Namespace:
         help="YAML config for knowledge distillation training.",
     )
     parser.add_argument(
+        "--machine",
+        default=None,
+        help=(
+            "Path to a machine-profile YAML (configs/machines/*.yaml), forwarded "
+            "to all three stages. A profile sets only device/batch_size/"
+            "num_workers/pin_memory/precision, so it changes HOW the run "
+            "executes on this hardware, never the experiment being measured: "
+            "effective_batch is held by the stage config and grad_accum_steps "
+            "is derived from it (fusion-redesign D-H)."
+        ),
+    )
+    parser.add_argument(
         "--output-root",
         default="checkpoints/final_runs",
         help="Root directory for timestamped final runs.",
@@ -133,11 +145,19 @@ def run_training_stage(
     dry_run: bool,
     overrides: list[str] | None = None,
     model: str | None = None,
+    machine: str | None = None,
 ) -> list[str]:
-    """Execute a training module with output-dir override."""
+    """Execute a training module with output-dir override.
+
+    `--machine` is placed before `--override` because both entry points apply
+    the profile first and the overrides second; keeping the recorded command
+    in that order means the stored command reproduces the run exactly.
+    """
     command = [python, "-m", module, "--config", config_path]
     if model is not None:
         command.extend(["--model", model])
+    if machine is not None:
+        command.extend(["--machine", machine])
     effective_overrides = [f"output_dir={output_dir}", *(overrides or [])]
     command.extend(["--override", *effective_overrides])
     run_command(command, dry_run)
@@ -173,6 +193,7 @@ def main() -> int:
                 output_dir=tmp_dir,
                 dry_run=args.dry_run,
                 model="master",
+                machine=args.machine,
             )
             master = finalize_stage(
                 tmp_dir=tmp_dir,
@@ -197,6 +218,7 @@ def main() -> int:
                 output_dir=tmp_dir,
                 dry_run=args.dry_run,
                 model="student",
+                machine=args.machine,
             )
             results.append(
                 finalize_stage(
@@ -219,6 +241,7 @@ def main() -> int:
                 output_dir=tmp_dir,
                 dry_run=args.dry_run,
                 overrides=[f"teacher_checkpoint={teacher_checkpoint}"],
+                machine=args.machine,
             )
             results.append(
                 finalize_stage(

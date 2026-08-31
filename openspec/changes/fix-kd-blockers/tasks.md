@@ -40,13 +40,35 @@
 - [x] 3.2 Add `TestPatiencePhaseReset` to `tests/test_training_loop.py`; confirm it is RED
       without the reset.
 
+## Phase 3b — Machine-profile plumbing (added 2026-08-31)
+
+Found while sizing the 4.2 re-run for the local RTX 3080: a machine profile could not
+reach a pipeline run at all. `--machine` existed only on `src/training/train.py`, the
+pipeline runner never forwarded it, and `src/training/kd_train.py` had no such flag — so
+the only way to change the physical batch size was to edit the experiment YAML, which is
+exactly what D-H exists to prevent.
+
+- [x] 3b.1 Add `--machine` to `src/training/kd_train.py`, applied after `--config` and
+      before `--override` (mirrors `src/training/train.py`).
+- [x] 3b.2 Add `--machine` to `scripts/run_final_training_pipeline.py` and forward it to
+      all three stages through `run_training_stage`.
+- [x] 3b.3 Add `tests/training/test_machine_profile_plumbing.py`; confirmed RED without
+      3b.1/3b.2 (4 failures), green with them.
+
 ## Phase 4 — Verification
 
-- [x] 4.1 Full suite green: `./myLinuxVenv/bin/python -m pytest tests/ -q` → 274 passed.
+- [x] 4.1 Full suite green: `./myLinuxVenv/bin/python -m pytest tests/ -q` → 282 passed.
 - [ ] 4.2 Re-run the three-stage final pipeline so the distilled stage is measured against a
       baseline with a matching budget and with the projections actually training. Until this
       lands, no distillation claim (including "the RGB-only student beat the distilled one")
       is supportable.
+
+      Sized against measured peak VRAM on the local RTX 3080 (10 GB total, ~2.0 GB held by
+      the desktop). MasterModel, fp32, 640, `head_strides: [8, 16, 32]`: 2.05 GB @ batch 2,
+      3.95 GB @ batch 4, 7.75 GB @ batch 8 (does not fit). KD stage (teacher in `no_grad`
+      plus the now-trainable `kd_proj_*`): 3.29 GB @ batch 8. So the run uses
+      `--machine configs/machines/rtx3080.yaml` (batch_size 4 → `grad_accum_steps` 2 against
+      the unchanged `effective_batch: 8`).
 - [ ] 4.3 Open the PR against `main`.
 
 ## Dropped from the original change

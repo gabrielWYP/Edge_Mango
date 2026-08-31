@@ -4,6 +4,7 @@ CLI entry point for Knowledge Distillation training.
 Usage:
     python -m src.training.kd_train --config configs/kd_training.yaml
     python -m src.training.kd_train --config configs/kd_training.yaml --override kd_weight=0.5
+    python -m src.training.kd_train --config configs/kd_training.yaml --machine configs/machines/rtx3080.yaml
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from src.training.kd_config import KDConfig
 from src.training.dataset import YOLODataset, build_dataloader, collate_fn, build_weighted_sampler
 from src.training.kd_trainer import KDTrainer
+from src.training.machine import apply_machine_profile, load_machine_profile
 from src.training.run_artifacts import (
     build_versioned_stage_plan,
     collect_stage_results,
@@ -36,6 +38,17 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default="configs/kd_training.yaml",
         help="Path to KD YAML config file.",
+    )
+    parser.add_argument(
+        "--machine",
+        type=str,
+        default=None,
+        help=(
+            "Path to a machine-profile YAML (configs/machines/*.yaml) setting "
+            "device/batch_size/num_workers/pin_memory/precision. Applied after "
+            "--config, before --override. A profile may set only those five "
+            "keys — anything else raises (fusion-redesign D-H)."
+        ),
     )
     parser.add_argument(
         "--override",
@@ -66,6 +79,13 @@ def main():
 
     # Load config
     config = KDConfig.from_yaml(args.config)
+
+    # Machine profile (D-H): device/batch_size/num_workers/pin_memory/
+    # precision only — whitelist-enforced so a profile cannot alter the
+    # experiment being measured. `effective_batch` stays where the config
+    # put it, so lowering batch_size here only raises grad_accum_steps.
+    if args.machine:
+        apply_machine_profile(config, load_machine_profile(args.machine))
 
     # Apply overrides
     for override in args.override:
