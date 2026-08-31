@@ -260,6 +260,14 @@ class Trainer:
         print(f"Phase {phase}: {epochs} epochs | LR={lr}")
         print(f"{'─'*50}")
 
+        # Early stopping is scoped to a single phase. Without this reset the
+        # counter carries over from the previous phase, so a phase entered with
+        # a counter already at or near `config.patience` early-stops after one
+        # epoch regardless of how it performs. `best_map50` is deliberately NOT
+        # reset: the best checkpoint is a run-level artifact, and resetting it
+        # would let a worse later phase overwrite a better earlier one.
+        self.patience_counter = 0
+
         # Freeze/unfreeze backbone. `unfreeze_stem=True` (renamed from
         # `unfreeze_rgb_stem`, fusion-redesign D-4 — there is only one stem
         # now) is the E6/Q10 production fix: `freeze_backbone()`
