@@ -142,20 +142,56 @@ def release_atomic_run(plan: AtomicRunPlan) -> None:
         pass
 
 
-def load_best_map50(checkpoint_path: Path) -> float:
-    """Read the best mAP@0.5 from a saved checkpoint."""
+def _read_checkpoint(checkpoint_path: Path) -> dict:
+    """Load a stage checkpoint once.
+
+    Stage checkpoints are hundreds of megabytes, so callers that need both
+    the metric and the provenance read them through this and pull both out
+    of the same payload rather than loading the file twice.
+    """
     import torch
 
     if not checkpoint_path.exists():
         raise FileNotFoundError(f"Missing stage checkpoint: {checkpoint_path}")
 
-    checkpoint = torch.load(str(checkpoint_path), map_location="cpu", weights_only=False)
+    return torch.load(str(checkpoint_path), map_location="cpu", weights_only=False)
+
+
+def _best_map50_of(checkpoint: dict, checkpoint_path: Path) -> float:
     metric = checkpoint.get("best_map50")
     if metric is None:
         metric = checkpoint.get("metrics", {}).get("map50")
     if metric is None:
         raise ValueError(f"Checkpoint does not contain best mAP@0.5: {checkpoint_path}")
     return float(metric)
+
+
+def load_best_map50(checkpoint_path: Path) -> float:
+    """Read the best mAP@0.5 from a saved checkpoint."""
+    return _best_map50_of(_read_checkpoint(checkpoint_path), checkpoint_path)
+
+
+def checkpoint_provenance(checkpoint: dict) -> dict:
+    """Extract the four D-H comparability fields from a checkpoint payload.
+
+    `Trainer._save_checkpoint` records `experiment_sha256` at the top level
+    and the rest inside `config`, so the run that actually happened is the
+    source of truth here. Deriving them a second time from the config files
+    would let the record drift from the run — which is precisely the failure
+    this data exists to make detectable.
+
+    Returns `None` for any field a pre-D-H checkpoint does not carry.
+    """
+    config = checkpoint.get("config") or {}
+    device = config.get("device")
+    return {
+        "experiment_sha256": checkpoint.get("experiment_sha256"),
+        "effective_batch": config.get("effective_batch"),
+        "precision": config.get("precision"),
+        # `device` may be a torch.device; `stage_summary.json` must stay
+        # JSON-serialisable.
+        "device": None if device is None else str(device),
+    }
 
 
 def build_versioned_stage_plan(
@@ -221,7 +257,24 @@ def finalize_stage(
         )
 
     checkpoint_path = tmp_dir / "best_model.pt"
-    best_map50 = load_best_map50(checkpoint_path)
+    checkpoint = _read_checkpoint(checkpoint_path)
+    best_map50 = _best_map50_of(checkpoint, checkpoint_path)
+
+    # Provenance falls back to what the run recorded, so a caller that
+    # launches training as a subprocess — `run_final_training_pipeline.py`
+    # does — still publishes the comparability fields instead of nulls. An
+    # explicit argument stays authoritative for callers that hold the
+    # resolved config themselves (`train.py --versioned-run`).
+    recorded = checkpoint_provenance(checkpoint)
+    if experiment_sha256 is None:
+        experiment_sha256 = recorded["experiment_sha256"]
+    if effective_batch is None:
+        effective_batch = recorded["effective_batch"]
+    if precision is None:
+        precision = recorded["precision"]
+    if device is None:
+        device = recorded["device"]
+
     final_dir = final_parent / final_stage_name(run_id, best_map50)
 
     if final_parent.exists() and any(final_parent.iterdir()):

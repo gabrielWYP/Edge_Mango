@@ -165,7 +165,11 @@ def main():
         collate_fn=collate_fn,
         num_workers=config.num_workers,
         pin_memory=config.pin_memory,
-        drop_last=True,
+        # See src/training/train.py: drop_last stays False so `batch_size`
+        # cannot change the images seen or the optimizer-step budget (D-H).
+        # The distilled stage is measured against the student baseline, so a
+        # budget that silently tracks the machine would invalidate exactly
+        # the comparison this stage exists to make.
     )
 
     val_loader = build_dataloader(

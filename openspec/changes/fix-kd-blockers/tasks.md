@@ -71,10 +71,17 @@ exactly what D-H exists to prevent.
       the unchanged `effective_batch: 8`).
 
       First attempt (`20260831T223558592803Z`) reached the KD stage and died there — see 4.2a.
-      Second finding, still OPEN and NOT a blocker of this change: the master stage scored
-      best mAP@0.5 = 0.1673 (epoch 7, early-stopped at 27) against 0.4438 in the pre-merge
-      run `20260826T224117154204Z`. Two variables moved between those runs (the early-fusion
-      merge and batch_size 2 → 4), so the cause is not yet established.
+      Its master stage scored best mAP@0.5 = 0.1673 against 0.4438 in the pre-merge run
+      `20260826T224117154204Z`, which looked like a quality regression. It was not: the run
+      hit an isolated 0.1673 at epoch 7, failed to beat it for `patience: 20` epochs, and was
+      early-stopped at 27. The batch-2 run `20260831T224505981163Z` reached its best of 0.4806
+      at **epoch 62** — 35 epochs past where the other was killed. Re-running batch 4 with
+      `num_workers: 2` completed all 80 phase-1 epochs and scored **0.5078**, the best master
+      result to date. Batch 4 is sound; the run had simply been truncated. Both earlier
+      hypotheses were wrong and are recorded so they are not retried: the frozen single stem
+      (both runs share it) and the gradient-accumulation path (batch 4 trains fine).
+
+      Blocked on 4.2b: the budget those runs received was not in fact equal.
 
 - [x] 4.2a Fix `KDTrainer._load_teacher`: rebuild the teacher from the architecture recorded
       in its own checkpoint (`head_strides` / `backbone_variant` / `in_channels`), falling
@@ -84,7 +91,48 @@ exactly what D-H exists to prevent.
       4-level default made `load_state_dict` fail on the missing `head.heads.3.*` weights.
       Regression test: `tests/training/test_kd_teacher_arch.py` (RED reproduces the exact
       production traceback).
+- [x] 4.2b Make a run's budget independent of the machine, so 4.2 measures what it claims to.
+      D-H declares two runs comparable when `experiment_sha256` and `effective_batch` match,
+      but three defects let `batch_size` — a machine knob — change the experiment anyway:
+
+      1. Both entry points built the train loader with `drop_last=True`. On the 50-image
+         training set that means batch 2 sees all 50 images in `ceil(25/4)` = 7 optimizer
+         steps while batch 4 sees only 48 in `ceil(12/2)` = 6. Because early stopping counts
+         epochs, phase 1 delivered 560 updates at batch 2 against 162 at batch 4 — a 3.5x
+         budget gap under an identical `effective_batch`. Restored `build_dataloader`'s
+         `drop_last=False` default; the accumulation loop already flushes the leftover
+         micro-batch as a final smaller step, so no gradient is discarded. Verified in real
+         runs: `steps_taken` is now 7 per epoch at both batch 2 and batch 4.
+      2. `scripts/run_final_training_pipeline.py` called `finalize_stage` without the four
+         D-H fields, so every pipeline `run_summary.json` recorded `null` for
+         `experiment_sha256`, `effective_batch`, `precision`, and `device` — the comparability
+         rule had no data to run on. `finalize_stage` now reads them from the checkpoint it
+         already opens (ground truth from the run, not a second derivation that can drift),
+         with an explicit argument still winning for `train.py --versioned-run`.
+      3. `LossHistory.update` seeded its key order by iterating `set(a) | set(b)`. String
+         hashing is randomised per process, so `metrics_history.csv` came out with a different
+         column order on every run — `steps_taken` is column 16 in one published run and
+         column 6 in another. Any positional cross-run comparison silently read the wrong
+         column. Now ordered first-seen via `dict.fromkeys`.
+
+      Tests: `tests/training/test_budget_comparability.py`,
+      `tests/training/test_metrics_csv_determinism.py`,
+      `tests/training/test_stage_provenance.py`. All confirmed RED first.
+
+      Note: this changes training behaviour, so runs published before it are not reproducible
+      under the new code. That is the point — their budgets were the defect.
+
 - [ ] 4.3 Open the PR against `main`.
+
+## Follow-ups (not blockers of this change)
+
+- Early stopping measures noise, not convergence. The validation split is 9 images, so
+  mAP@0.5 swings hard between consecutive epochs (0.0100 → 0.2944 → 0.0617 → 0.1409 → 0.2622
+  in `20260831T224505981163Z`). That run's longest gap between improvements was 12 epochs,
+  clearing `patience: 20` by only 8 — the batch-4 attempt did not clear it and died at epoch
+  27 with 53 epochs of useful training left. `patience` on this split is a coin flip.
+- Class 1 (damage) remains unlearned: the 0.5078 run ends at `AP50[c0]=0.9889` against
+  `AP50[c1]=0.0267`. Whole-model mAP is carried by one class.
 
 ## Dropped from the original change
 

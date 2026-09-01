@@ -217,7 +217,12 @@ def main():
         collate_fn=collate_fn,
         num_workers=config.num_workers,
         pin_memory=config.pin_memory,
-        drop_last=True,
+        # drop_last stays at build_dataloader's False default (D-H): dropping
+        # the trailing micro-batch would let `batch_size` — a machine knob —
+        # decide how many images an epoch sees and how many optimizer steps
+        # it performs, which is exactly what `effective_batch` exists to hold
+        # constant. The accumulation loop flushes the leftover micro-batch as
+        # a final, smaller step, so no gradient is discarded.
     )
 
     val_loader = build_dataloader(

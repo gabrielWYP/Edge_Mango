@@ -77,7 +77,15 @@ class LossHistory:
         self.per_class_counts.append(per_class_counts or {})
 
         extra_losses = extra_losses or {}
-        for key in set(self.extra_losses) | set(extra_losses):
+        # First-seen order, not set order. Iterating `set(a) | set(b)` made
+        # the insertion order of `self.extra_losses` depend on string hashes,
+        # which Python randomises per process — so `_write_metrics_csv` built
+        # its `fieldnames` in a different column order on every run of
+        # identical code, and any positional comparison across two runs read
+        # the wrong column. `dict.fromkeys` dedupes while preserving order,
+        # keeping the counters and per-module gradient norms grouped the way
+        # the trainer reports them.
+        for key in dict.fromkeys((*self.extra_losses, *extra_losses)):
             values = self.extra_losses.setdefault(key, [float("nan")] * (len(self.total_loss) - 1))
             values.append(float(extra_losses.get(key, float("nan"))))
 
