@@ -122,17 +122,47 @@ exactly what D-H exists to prevent.
       Note: this changes training behaviour, so runs published before it are not reproducible
       under the new code. That is the point — their budgets were the defect.
 
+- [x] 4.2c Disable early stopping, so a stage cannot be truncated by validation noise before
+      4.2 measures it. `patience <= 0` now disables the mechanism
+      (`Trainer._should_stop_early`), and all three pipeline configs set `patience: 0`.
+
+      Evidence. The validation split is 9 images, so one detection moving in or out shifts
+      mAP@0.5 by roughly ten points and the per-epoch metric early stopping watches is mostly
+      sampling noise. Across the two runs that trained to completion, the longest gap between
+      *genuine* improvements was 12 and 13 epochs, against a shipped `patience` of 20 (master)
+      and 15 (student, KD) — a margin of 7 and 2 epochs. It has already misfired once:
+      `20260831T223558592803Z` spiked to 0.1673 at epoch 7, could not beat that bar, and was
+      killed at epoch 27 with 53 epochs left, producing a number that read as a quality
+      regression and was not one. The best run was still improving at epoch 76 of 80.
+
+      The mechanism buys nothing here: a full 90-epoch run is 3.8 minutes at 2.5s/epoch, and
+      `_save_checkpoint` keeps the best-mAP checkpoint however long training continues, so
+      stopping early prevents no overfitting the best-checkpoint rule does not already handle.
+      The student and KD configs matter most — 4.2 compares those two stages directly, so one
+      stopping on noise while the other runs on would invalidate exactly that comparison.
+
+      Verified in a real run: 30/30 phase-1 epochs at batch 4, zero early-stopping events,
+      in the epoch range where the earlier attempt died.
+
+      This changes `experiment_sha256` for all three configs. That is correct — it is a
+      different experiment, and the comparability machinery now says so.
+
+      Tests: `tests/training/test_early_stopping_budget.py` (confirmed RED first).
+      `tests/test_training_loop.py::test_kd_config_training_budget_matches_student_baseline`
+      hardcoded `patience == 15`; it now asserts the two budgets match each other, which is
+      the contract its own docstring states.
+
 - [ ] 4.3 Open the PR against `main`.
 
 ## Follow-ups (not blockers of this change)
 
-- Early stopping measures noise, not convergence. The validation split is 9 images, so
-  mAP@0.5 swings hard between consecutive epochs (0.0100 → 0.2944 → 0.0617 → 0.1409 → 0.2622
-  in `20260831T224505981163Z`). That run's longest gap between improvements was 12 epochs,
-  clearing `patience: 20` by only 8 — the batch-4 attempt did not clear it and died at epoch
-  27 with 53 epochs of useful training left. `patience` on this split is a coin flip.
 - Class 1 (damage) remains unlearned: the 0.5078 run ends at `AP50[c0]=0.9889` against
   `AP50[c1]=0.0267`. Whole-model mAP is carried by one class.
+- `epochs_phase1: 80` may be short. The best master run was still setting new bests at epochs
+  72, 75 and 76, so the epoch budget — not convergence — is what ended it.
+- The 9-image validation split is the root cause behind both the early-stopping misfire and
+  the metric's volatility. Re-splitting would invalidate every prior comparison, so it is out
+  of scope here, but it caps how much any of these numbers can be trusted.
 
 ## Dropped from the original change
 

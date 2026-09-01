@@ -18,7 +18,9 @@ distill_levels:
 # if both get the same training budget. epochs/patience/warmup_epochs/
 # num_workers below MUST stay in sync with training_student.yaml.
 epochs: 50
-patience: 15
+# Early stopping disabled (0) — must match training_student.yaml, since the
+# whole point of this stage is a like-for-like comparison against it.
+patience: 0
 precision: fp32
 batch_size: 8
 model_type: student

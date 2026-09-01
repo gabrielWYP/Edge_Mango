@@ -45,6 +45,11 @@ class TrainingConfig:
         class_weights: Per-class BCE weights [mango, danado].
         warmup_epochs: Linear warmup epochs per phase.
         patience: Early stopping patience (epochs without mAP improvement).
+            `0` or less disables early stopping and runs the full epoch
+            budget. On a small validation split the per-epoch mAP is mostly
+            sampling noise, so patience stops on noise rather than on
+            convergence; the best-mAP checkpoint is kept either way. See
+            `Trainer._should_stop_early`.
         log_interval: Steps between TensorBoard logs.
         save_interval: Epochs between periodic checkpoints.
         precision: One of "fp32" | "fp16" | "bf16". Replaces the old

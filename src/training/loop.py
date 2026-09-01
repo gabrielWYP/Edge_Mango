@@ -440,9 +440,33 @@ class Trainer:
                 )
 
             # Early stopping
-            if self.patience_counter >= self.config.patience:
+            if self._should_stop_early():
                 print(f"  Early stopping at epoch {epoch} (patience={self.config.patience})")
                 break
+
+    def _should_stop_early(self) -> bool:
+        """Whether patience has run out, with `patience <= 0` disabling it.
+
+        Early stopping watches the per-epoch mAP@0.5, and this project's
+        validation split is 9 images — one detection moving in or out shifts
+        the metric by roughly ten points. The signal is therefore dominated
+        by sampling noise, and the two runs that trained to completion showed
+        gaps of 12 and 13 epochs between *genuine* improvements, against a
+        shipped `patience` of 20 (master) and 15 (student, KD).
+
+        It has already misfired: run `20260831T223558592803Z` spiked to
+        0.1673 at epoch 7, could not beat that bar within patience, and was
+        killed at epoch 27 — reading as a quality regression that was really
+        a truncated run.
+
+        Disabling it costs almost nothing here (a 90-epoch run is 3.8 minutes
+        at 2.5s/epoch) and protects against no overfitting that
+        `_save_checkpoint`'s best-mAP rule does not already handle, since the
+        best checkpoint is kept however long training continues.
+        """
+        if self.config.patience <= 0:
+            return False
+        return self.patience_counter >= self.config.patience
 
     def _discriminative_param_groups(self, lr: float) -> list[dict]:
         """Two-group AdamW parameter groups for end-to-end MasterModel

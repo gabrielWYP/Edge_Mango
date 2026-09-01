@@ -32,7 +32,11 @@ class_weights: [0.5, 1.5]
 
 # Scheduler
 warmup_epochs: 5
-patience: 15
+# Early stopping disabled (0) — see configs/training_mango.yaml. This baseline
+# is what the distilled stage is measured against, so it must receive the full
+# epoch budget: a baseline that stops early while the distilled run continues
+# would make the comparison meaningless.
+patience: 0
 
 # Logging
 log_interval: 5

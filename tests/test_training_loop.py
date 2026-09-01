@@ -244,7 +244,12 @@ class TestIntegration:
         student_config = TrainingConfig.from_yaml("configs/training_student.yaml")
 
         assert kd_config.epochs == student_config.epochs == 50
-        assert kd_config.patience == student_config.patience == 15
+        # Both disable early stopping (patience <= 0). The contract is that the
+        # two budgets match; on a 9-image validation split a stage that stops
+        # on noise while its counterpart runs on is exactly the asymmetry this
+        # test exists to prevent. See tests/training/test_early_stopping_budget.py.
+        assert kd_config.patience == student_config.patience
+        assert student_config.patience <= 0
         assert kd_config.warmup_epochs == student_config.warmup_epochs == 5
         assert kd_config.num_workers == student_config.num_workers == 2
 

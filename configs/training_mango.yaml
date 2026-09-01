@@ -52,7 +52,13 @@ class_weights: [0.5, 1.5]
 
 # Scheduler
 warmup_epochs: 5
-patience: 20               # Reduced patience for faster convergence on small dataset
+# Early stopping disabled (0). The validation split is 9 images, so per-epoch
+# mAP@0.5 is dominated by sampling noise: the two runs that trained to
+# completion showed 12- and 13-epoch gaps between genuine improvements, and
+# the best run was still improving at epoch 76 of 80. Run 20260831T223558592803Z
+# was killed at epoch 27 by an isolated epoch-7 spike it could not beat.
+# A full run costs 3.8 minutes, and the best-mAP checkpoint is kept regardless.
+patience: 0
 
 # Logging
 log_interval: 5
