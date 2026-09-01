@@ -91,21 +91,32 @@ class TestKDTrainerGradientFlow:
             for name, param in trainer.model.kd_proj_backbone.named_parameters()
         }
 
+        # Inspect grads at the moment the optimizer consumes them. The base
+        # loop zeroes them (set_to_none=True) right after each step, so they
+        # do not survive to the end of the epoch — and whether they do is an
+        # implementation detail of the loop, not the property under test.
+        captured: dict[str, torch.Tensor | None] = {}
+        real_step = optimizer.step
+
+        def _capturing_step(*args, **kwargs):
+            for group_name in KD_PROJ_GROUPS:
+                for name, param in getattr(trainer.model, group_name).named_parameters():
+                    captured[f"{group_name}.{name}"] = (
+                        None if param.grad is None else param.grad.detach().clone()
+                    )
+            return real_step(*args, **kwargs)
+
+        optimizer.step = _capturing_step
         trainer._train_epoch(optimizer, epoch=1, phase=1)
 
-        # zero_grad runs at the top of the batch loop, so with a one-batch
-        # loader the grads from that single backward() survive to
-        # inspection; gradient clipping rescales but never zeroes them.
+        assert captured, "optimizer.step() never ran — no gradient reached the optimizer"
         any_nonzero = False
-        for group_name in KD_PROJ_GROUPS:
-            group = getattr(trainer.model, group_name)
-            for name, param in group.named_parameters():
-                assert param.grad is not None, (
-                    f"{group_name}.{name}.grad is None — projection gradient "
-                    "path is severed"
-                )
-                if param.grad.abs().sum().item() > 0:
-                    any_nonzero = True
+        for key, grad in captured.items():
+            assert grad is not None, (
+                f"{key}.grad is None at step time — projection gradient path is severed"
+            )
+            if grad.abs().sum().item() > 0:
+                any_nonzero = True
         assert any_nonzero, "No kd_proj_* parameter received a non-zero gradient"
 
         changed = any(

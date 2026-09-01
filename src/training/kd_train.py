@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from src.training.kd_config import KDConfig
 from src.training.dataset import YOLODataset, build_dataloader, collate_fn, build_weighted_sampler
 from src.training.kd_trainer import KDTrainer
-from src.training.machine import apply_machine_profile, load_machine_profile
+from src.training.machine import apply_machine_profile, experiment_sha256, load_machine_profile
 from src.training.run_artifacts import (
     build_versioned_stage_plan,
     collect_stage_results,
@@ -79,6 +79,15 @@ def main():
 
     # Load config
     config = KDConfig.from_yaml(args.config)
+
+    # experiment_sha256 (D-H): hash of the experiment file's raw bytes, so
+    # two runs are comparable only if this matches (alongside
+    # effective_batch). Computed before --machine/--override touch the
+    # in-memory config — it hashes the file, not the resolved config. Mirrors
+    # src/training/train.py; this entry point used to skip it, so the
+    # distilled stage — the one the comparison is about — published
+    # `experiment_sha256: null`.
+    run_experiment_sha256 = experiment_sha256(args.config)
 
     # Machine profile (D-H): device/batch_size/num_workers/pin_memory/
     # precision only — whitelist-enforced so a profile cannot alter the
@@ -193,6 +202,7 @@ def main():
         train_loader=train_loader,
         val_loader=val_loader,
     )
+    trainer.experiment_sha256 = run_experiment_sha256
 
     results = trainer.fit()
 
@@ -205,6 +215,10 @@ def main():
             command=[sys.executable, *sys.argv],
             stage_key=versioned_plan.stage_key,
             stage_label=versioned_plan.stage_label,
+            experiment_sha256=run_experiment_sha256,
+            effective_batch=config.effective_batch,
+            precision=config.precision,
+            device=config.device,
         )
         run_results = collect_stage_results(versioned_plan.run_dir)
         write_run_summary(versioned_plan.run_dir, versioned_plan.run_id, run_results)

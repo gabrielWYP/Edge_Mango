@@ -561,15 +561,24 @@ class Trainer:
         `grad_accum_steps == 1` (no accumulation), this degrades exactly to
         the pre-accumulation per-micro-batch step behaviour.
 
+        The forward pass and the loss live in `_forward_loss`, which a
+        subclass overrides (`KDTrainer` adds the teacher forward and the KD
+        term). Everything else — accumulation, the guards, the counters, the
+        averaging — has exactly one owner here. `KDTrainer` used to carry its
+        own copy of this loop, and that copy never gained accumulation: it
+        ran one optimizer step per micro-batch, so under a machine profile
+        with `batch_size: 4` the distilled stage took 13 steps per epoch
+        against the baseline's 7 while both checkpoints recorded the same
+        `effective_batch` (run `20260901T200124175077Z`).
+
         Returns:
-            Dict with avg cls_loss, box_loss, total_loss (averaged over
-            successful *micro-batches*), and the
+            Dict with each loss component from `_forward_loss` plus
+            total_loss (averaged over successful *micro-batches*), and the
             oom_skipped/nan_skipped/steps_taken (optimizer steps) counters.
         """
         self.model.train()
         accum = self.grad_accum_steps
-        total_cls = 0.0
-        total_box = 0.0
+        component_totals: dict[str, float] = {}
         total_loss = 0.0
         micro_batches = 0   # successful forward+backward passes
         steps_taken = 0     # optimizer.step() calls (effective steps)
@@ -600,14 +609,7 @@ class Trainer:
 
             try:
                 with autocast_ctx(self.device.type, self.config.precision):
-                    if self.config.model_type == "student":
-                        output = self.model(rgb)
-                    else:
-                        output = self.model(rgb, nir)
-                    predictions = output["preds"]
-
-                    targets = {"bboxes": bboxes, "labels": labels}
-                    loss, loss_dict = self.criterion(predictions, targets)
+                    loss, components = self._forward_loss(rgb, nir, bboxes, labels)
 
                 # NaN / Inf guard: skip batch if loss explodes. Always
                 # counted — see D-G docstring above for why this must not
@@ -663,8 +665,8 @@ class Trainer:
                     continue
                 raise
 
-            total_cls += loss_dict["cls_loss"]
-            total_box += loss_dict["box_loss"]
+            for name, value in components.items():
+                component_totals[name] = component_totals.get(name, 0.0) + value
             total_loss += loss.item()
             micro_batches += 1
             self.global_step += 1
@@ -685,8 +687,7 @@ class Trainer:
             )
 
         result = {
-            "cls_loss": total_cls / micro_batches,
-            "box_loss": total_box / micro_batches,
+            **{name: total / micro_batches for name, total in component_totals.items()},
             "total_loss": total_loss / micro_batches,
             "oom_skipped": float(oom_skipped),
             "nan_skipped": float(nan_skipped),
@@ -695,6 +696,31 @@ class Trainer:
         for name, values in module_grad_norms.items():
             result[f"grad_norm_{name}"] = sum(values) / len(values)
         return result
+
+    def _forward_loss(
+        self,
+        rgb: torch.Tensor,
+        nir: torch.Tensor,
+        bboxes: list[torch.Tensor],
+        labels: list[torch.Tensor],
+    ) -> tuple[torch.Tensor, dict[str, float]]:
+        """Forward pass and loss for one micro-batch.
+
+        Called inside the autocast context by `_train_epoch`, which owns
+        everything around it: scaling by `grad_accum_steps`, `backward()`,
+        the NaN/OOM guards, and the flush cadence. Returns the loss to
+        backpropagate and its scalar components; each component is averaged
+        over successful micro-batches and reported under its own key, so a
+        subclass can add terms (`kd_loss`) without touching the loop.
+        """
+        if self.config.model_type == "student":
+            output = self.model(rgb)
+        else:
+            output = self.model(rgb, nir)
+
+        targets = {"bboxes": bboxes, "labels": labels}
+        loss, loss_dict = self.criterion(output["preds"], targets)
+        return loss, {"cls_loss": loss_dict["cls_loss"], "box_loss": loss_dict["box_loss"]}
 
     @torch.no_grad()
     def _validate(self, epoch: int, phase: int) -> dict:

@@ -78,6 +78,10 @@ def _make_kd_trainer(teacher_checkpoint_path, n_batches: int, tmp_path) -> KDTra
         backbone_variant="tiny",
         image_size=_IMAGE_SIZE,
         batch_size=1,
+        # No accumulation: these tests are about the OOM/NaN guards, and
+        # they count one optimizer step per successful batch. Budget parity
+        # under accumulation is covered by test_kd_budget_parity.py.
+        effective_batch=1,
         precision="fp32",
         num_workers=0,
         output_dir=str(tmp_path),

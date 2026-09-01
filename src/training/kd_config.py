@@ -43,9 +43,10 @@ class KDConfig(TrainingConfig):
 
     # Overridden defaults for KD training. epochs/patience mirror
     # configs/training_student.yaml so a KDConfig built without a YAML file
-    # still yields a run comparable to the RGB-only baseline.
+    # still yields a run comparable to the RGB-only baseline. patience is 0
+    # (early stopping disabled) for the reason given in that file.
     epochs: int = 50
-    patience: int = 15
+    patience: int = 0
     precision: str = "fp32"
     batch_size: int = 4
     model_type: str = "student"
