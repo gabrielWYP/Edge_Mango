@@ -200,8 +200,36 @@ exactly what D-H exists to prevent.
       published `run_summary.json` to files that exist. Confirmed RED first, reproducing the
       production message verbatim.
 
-- [ ] 4.2 (re-run) Re-run the three-stage pipeline with 4.2b–4.2e in place. Only this run
-      supports a distillation claim; `20260901T200124175077Z` does not.
+- [x] 4.2 (re-run) `20260901T234436331584Z`, with 4.2b–4.2e in place and
+      `--machine configs/machines/rtx3080.yaml`. The first run in which the three stages are
+      actually comparable — verified from the published artifact, not from the log:
+
+      | stage | best mAP@0.5 | @ epoch | epochs | steps/epoch | AP50 c0 | AP50 c1 |
+      |---|---|---|---|---|---|---|
+      | maestro | 0.5087 | 86 | 90/90 | 7 | 0.9889 | 0.0285 |
+      | estudiante | 0.5209 | 46 | 50/50 | 7 | 1.0000 | 0.0419 |
+      | destilado | **0.5490** | 29 | 50/50 | **7** | 1.0000 | **0.0980** |
+
+      All three: `effective_batch: 8`, fp32, cuda, `experiment_sha256` populated (the
+      distilled stage's for the first time), zero early-stopping events, every `checkpoint`
+      in `run_summary.json` resolving to a file that exists, and the student/distilled
+      `metrics_history.csv` headers identical apart from `kd_loss`.
+
+      What it supports: the distilled student no longer loses to the RGB-only baseline
+      (0.5490 vs 0.5209, +2.8 points), and it reaches its best 17 epochs earlier. Its damage
+      AP50 (0.0980) is 2.3x the baseline's (0.0419) — the only stage where class 1 registers
+      above noise, and still tiny in absolute terms. The RGB-only student still beats the
+      RGB+NIR master (0.5209 vs 0.5087), so the "distilling from a worse teacher" observation
+      stands.
+
+      What it does not support: a claim that distillation helps. One seed, and a 9-image
+      validation split where one detection moves mAP@0.5 by roughly ten points — a 2.8-point
+      gap is inside that noise. It is the first *valid* measurement, not a conclusive one.
+      A multi-seed run, or a larger split, is what would turn it into a claim; both are out of
+      scope for this change and are listed under follow-ups.
+
+      The earlier `20260901T200124175077Z` remains on disk and must not be cited: its distilled
+      stage ran 13 steps/epoch at effective batch 4 (4.2d).
 - [ ] 4.3 Open the PR against `main`.
 
 ## Follow-ups (not blockers of this change)
