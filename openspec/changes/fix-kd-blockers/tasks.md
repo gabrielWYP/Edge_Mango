@@ -152,6 +152,56 @@ exactly what D-H exists to prevent.
       hardcoded `patience == 15`; it now asserts the two budgets match each other, which is
       the contract its own docstring states.
 
+- [x] 4.2d Give the distilled stage the same optimizer budget as the baseline. The first
+      complete run (`20260901T200124175077Z`: maestro 0.5073, estudiante 0.5303, destilado
+      0.5352) looked like the distilled stage had finally beaten the baseline. It had not been
+      measured against one. `KDTrainer` overrode `_train_epoch` with its own copy of the loop,
+      and that copy — as its docstring said — had no gradient accumulation: one optimizer step
+      per batch. Under `batch_size: 4` the student took `ceil(13/2)` = 7 steps/epoch at
+      effective batch 8; the distilled stage took 13 at effective batch 4, while `KDConfig`
+      (inheriting `effective_batch` from `TrainingConfig`) recorded 8 in its checkpoint. Nearly
+      twice the updates at half the batch, under an identical claimed budget — and the machine
+      profile changed the KD experiment outright, since with no accumulation `batch_size` *is*
+      the effective batch.
+
+      Not fixed by copying accumulation into `KDTrainer`: the two loop bodies were identical
+      except for the forward pass and the loss, and that duplication is how they drifted.
+      `Trainer._train_epoch` now owns the loop and calls a `_forward_loss` hook returning the
+      loss and its scalar components; `KDTrainer` overrides only the hook, and its
+      `_train_epoch` is gone. `kd_train.py` now computes `experiment_sha256` and passes the
+      four D-H fields to `finalize_stage` like `train.py` does — the distilled stage used to
+      publish `experiment_sha256: null`. `KDConfig.patience` defaults to 0 to keep mirroring
+      the student config.
+
+      Tests: `tests/training/test_kd_budget_parity.py` (same batches → same optimizer steps
+      for `Trainer` and `KDTrainer`; `KDTrainer` defines no `_train_epoch`; the rtx3080
+      profile yields `grad_accum_steps == 2` on a real `KDTrainer` — the honest version of the
+      assurance `test_machine_profile_plumbing` gave by checking only the field). Confirmed
+      RED first. `test_kd_trainer_guards` pins `effective_batch=1` (those tests count one
+      step per batch and are about OOM/NaN, not accumulation).
+      `test_kd_proj_parameters_receive_gradients_and_update` read `param.grad` after the
+      epoch, relying on the old loop never zeroing after a step; it now captures grads at
+      `optimizer.step()` time, which is the property it actually tests.
+
+- [x] 4.2e Record stage paths relative to the run root, so publishing cannot kill them. The
+      pipeline stages a run under `.partial/<run_id>-<uuid>/` and publishes by renaming that
+      directory; `finalize_stage` had already written `stage_summary.json` — and the pipeline
+      its `run_summary.json` — with `output_dir`/`checkpoint` naming the staging root. After
+      the rename every one was dead: `Path(result.checkpoint).exists()` was False for all
+      three stages of `20260901T200124175077Z` and of `20260831T224505981163Z`.
+      `train.py --versioned-run` was unaffected (it stages *inside* `run_dir`, which never
+      moves). `StageResult.output_dir`/`checkpoint` are now run-relative
+      (`maestro/best_model_<run_id>_mAP0p5073/best_model.pt`); `run_summary.json` keeps
+      `run_dir` as the anchor; the three in-repo consumers join against the root they hold.
+      By construction — not a rewrite step a future mover could forget.
+
+      Tests: `tests/training/test_stage_paths_survive_publish.py`, including a full
+      `pipeline.main()` with fake subprocesses that plant checkpoints, then following the
+      published `run_summary.json` to files that exist. Confirmed RED first, reproducing the
+      production message verbatim.
+
+- [ ] 4.2 (re-run) Re-run the three-stage pipeline with 4.2b–4.2e in place. Only this run
+      supports a distillation claim; `20260901T200124175077Z` does not.
 - [ ] 4.3 Open the PR against `main`.
 
 ## Follow-ups (not blockers of this change)

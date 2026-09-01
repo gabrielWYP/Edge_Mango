@@ -205,7 +205,9 @@ def main() -> int:
                 dry_run=args.dry_run,
             )
             results.append(master)
-            teacher_checkpoint = master.checkpoint
+            # Stage paths are run-relative; the KD subprocess needs a real
+            # path, and during the run the root is still the staging dir.
+            teacher_checkpoint = str(working_dir / master.checkpoint)
         elif not teacher_checkpoint:
             raise ValueError("--teacher-checkpoint is required when --skip-master is set")
 

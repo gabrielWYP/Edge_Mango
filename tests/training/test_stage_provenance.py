@@ -78,7 +78,8 @@ def test_stage_summary_on_disk_carries_the_provenance(tmp_path):
     import json
 
     result = _finalize(tmp_path)
-    summary = json.loads((Path(result.output_dir) / "stage_summary.json").read_text())
+    # `output_dir` is run-relative; `tmp_path` is the run root here.
+    summary = json.loads((tmp_path / result.output_dir / "stage_summary.json").read_text())
 
     assert summary["experiment_sha256"] == SHA
     assert summary["effective_batch"] == 8

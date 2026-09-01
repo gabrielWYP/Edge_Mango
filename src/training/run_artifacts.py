@@ -33,6 +33,16 @@ class StageResult:
     without them still load via `StageResult(**data)`. `experiment_sha256`
     and `effective_batch` together are the comparability rule: two runs are
     comparable only if both match.
+
+    `output_dir` and `checkpoint` are recorded **relative to the run root**
+    (`maestro/best_model_<run_id>_mAP0p5073/best_model.pt`), never as paths
+    that include the root itself. The final pipeline stages a whole run
+    under `.partial/<run_id>-<uuid>/` and publishes it by renaming that
+    directory, so any recorded path that named the staging root was dead the
+    moment the run succeeded — every checkpoint path in
+    `20260901T200124175077Z`'s `run_summary.json` resolved to nothing.
+    Readers join these against the run directory they found the summary in
+    (`run_summary.json` carries it as `run_dir`).
     """
 
     stage_key: str
@@ -241,13 +251,19 @@ def finalize_stage(
     device: str | None = None,
 ) -> StageResult:
     """Move a successful temporary stage directory into its final location."""
+    # `final_parent` is `<run root>/<stage_key>` for both callers, so the
+    # run root is its parent. Paths are recorded relative to it — see the
+    # `StageResult` docstring for why absolute-to-staging paths were dead.
+    run_root = final_parent.parent
+
     if dry_run:
         planned_dir = final_parent / final_stage_name(run_id, 0.0)
+        planned_rel = planned_dir.relative_to(run_root)
         return StageResult(
             stage_key=stage_key,
             stage_label=stage_label,
-            output_dir=str(planned_dir),
-            checkpoint=str(planned_dir / "best_model.pt"),
+            output_dir=planned_rel.as_posix(),
+            checkpoint=(planned_rel / "best_model.pt").as_posix(),
             best_map50=0.0,
             command=command,
             experiment_sha256=experiment_sha256,
@@ -285,11 +301,12 @@ def finalize_stage(
     final_parent.mkdir(parents=True, exist_ok=True)
     shutil.move(str(tmp_dir), str(final_dir))
 
+    final_rel = final_dir.relative_to(run_root)
     result = StageResult(
         stage_key=stage_key,
         stage_label=stage_label,
-        output_dir=str(final_dir),
-        checkpoint=str(final_dir / "best_model.pt"),
+        output_dir=final_rel.as_posix(),
+        checkpoint=(final_rel / "best_model.pt").as_posix(),
         best_map50=best_map50,
         command=command,
         experiment_sha256=experiment_sha256,

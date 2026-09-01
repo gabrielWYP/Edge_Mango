@@ -222,7 +222,7 @@ def main():
         )
         run_results = collect_stage_results(versioned_plan.run_dir)
         write_run_summary(versioned_plan.run_dir, versioned_plan.run_id, run_results)
-        final_checkpoint = stage_result.checkpoint
+        final_checkpoint = str(versioned_plan.run_dir / stage_result.checkpoint)
 
     print(f"\n{'='*60}")
     print(f"KD Training complete!")
