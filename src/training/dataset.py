@@ -27,6 +27,7 @@ from .augmentations import (
     get_train_transforms,
     get_val_transforms,
 )
+from .nir_registration import load_homography, register_nir_to_rgb
 
 # ImageNet RGB normalization stats
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
@@ -160,6 +161,15 @@ class YOLODataset(Dataset):
         nir_mean: NIR normalization mean.
         nir_std: NIR normalization std.
         letterbox_value: Padding pixel value.
+        manifest_path: Optional split manifest checked against the label dirs.
+        nir_homography_path: Path to the RGB -> NIR homography (.npy). When
+            set, every NIR image is warped into the RGB frame (with
+            `inv(H)`) right after loading, before letterbox/augmentation, and
+            the file MUST exist. None disables registration (NIR is used as
+            captured, i.e. misaligned with the RGB-frame labels) and is only
+            meant for synthetic fixtures and explicit ablations. Required
+            keyword-only (no default): every caller must choose explicitly,
+            so forgetting it cannot silently train on unregistered NIR.
     """
 
     def __init__(
@@ -174,6 +184,8 @@ class YOLODataset(Dataset):
         nir_std: float = 0.0546,
         letterbox_value: int = 114,
         manifest_path: str | Path | None = None,
+        *,
+        nir_homography_path: str | Path | None,
     ):
         self.rgb_dir = Path(rgb_dir)
         self.nir_dir = Path(nir_dir)
@@ -184,6 +196,15 @@ class YOLODataset(Dataset):
         self.nir_std = nir_std
         self.letterbox_value = letterbox_value
         self.manifest_path = Path(manifest_path) if manifest_path is not None else None
+        self.nir_homography_path = (
+            Path(nir_homography_path) if nir_homography_path is not None else None
+        )
+        # Loaded once (fails loudly if missing); never per item.
+        self.H_rgb_to_nir = (
+            load_homography(self.nir_homography_path)
+            if self.nir_homography_path is not None
+            else None
+        )
 
         self._uses_default_multimodal_transforms = transform is None
         if self._uses_default_multimodal_transforms:
@@ -360,6 +381,14 @@ class YOLODataset(Dataset):
 
         # Load labels
         bboxes, labels = self._load_labels(pair["label_path"])
+
+        # Register NIR to the RGB frame (labels live in the RGB frame) before
+        # any letterbox/augmentation. Border fill = the NIR letterbox pad value.
+        if self.H_rgb_to_nir is not None:
+            orig_h, orig_w = rgb_img.shape[:2]
+            nir_img = register_nir_to_rgb(
+                nir_img, self.H_rgb_to_nir, (orig_w, orig_h), int(self.nir_mean * 255)
+            )
 
         # Letterbox both images (RGB uses gray=114, NIR uses its own mean ~14)
         rgb_lb, scale, pad_x, pad_y = letterbox(rgb_img, self.image_size, self.letterbox_value)

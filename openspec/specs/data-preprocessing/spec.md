@@ -31,22 +31,24 @@ The system SHALL load cached RGB and NIR images from local disk and validate bas
 
 The system SHALL align NIR images to RGB spatial coordinates using a homography matrix.
 
-- If a valid homography matrix (.npy) is provided, NIR MUST be warped via `cv2.warpPerspective(H, (w, h))` to match RGB dimensions.
-- If no homography matrix is available or the matrix is invalid, the system SHALL fall back to simple `cv2.resize(nir, (w, h))` and log a warning.
+- The homography `H` (`notebooks/matriz_homografia_aruco.npy`) maps RGB → NIR (`cv2.findHomography(pts_rgb, pts_nir)`), so NIR MUST be warped into the RGB frame via `cv2.warpPerspective(nir, np.linalg.inv(H), (w_rgb, h_rgb))`.
+- Registration MUST happen at load time, before letterbox and augmentation, with border fill equal to the NIR letterbox pad value. Labels are expressed in the RGB frame, so unregistered NIR is misaligned with them.
+- The homography is configured by `nir_homography_path` (default `notebooks/matriz_homografia_aruco.npy`). If the path is set but the file is missing or is not a finite, invertible 3x3 matrix, loading MUST fail loudly; there is NO silent fallback to resizing.
+- `nir_homography_path: null` explicitly disables registration (ablations and synthetic fixtures only). Checkpoints record `nir_registration` (path and SHA-256) so registered and unregistered runs are distinguishable.
 - Warped NIR output MUST have the same (H, W) spatial dimensions as the paired RGB image.
 
 #### Scenario: Homography warp produces aligned NIR
 
-- GIVEN a valid homography matrix and NIR image (640×480)
-- WHEN alignment is applied to an RGB target of (640, 640)
-- THEN warped NIR shape is (640, 640) matching RGB spatial dimensions
+- GIVEN a valid RGB → NIR homography `H` and a NIR image
+- WHEN alignment is applied for an RGB image of size (w, h)
+- THEN warped NIR shape is (h, w) and the NIR pixel `H(p)` appears at RGB pixel `p`
 
-#### Scenario: Missing homography triggers fallback resize
+#### Scenario: Missing homography fails loudly
 
-- GIVEN homography_path=None or file does not exist
-- WHEN alignment is attempted
-- THEN NIR is resized to match RGB dimensions via cv2.resize
-- AND a warning is logged indicating fallback was used
+- GIVEN `nir_homography_path` points to a file that does not exist
+- WHEN the dataset is constructed
+- THEN a FileNotFoundError is raised
+- AND NIR is NOT silently resized or used unregistered
 
 ### Requirement: Resize and Normalization
 

@@ -250,6 +250,7 @@ class TestPreprocessing:
         dataset = YOLODataset(
             rgb_dir=tmp_path / "rgb", nir_dir=tmp_path / "nir", labels_dir=tmp_path / "labels",
             split="val", image_size=IMAGE_SIZE, letterbox_value=114,
+            nir_homography_path=None,
         )
         expected = dataset[0]["rgb"]
         got, info = preprocess_bgr(cv2.imread(str(tmp_path / "rgb" / "mango_rgb_00001.jpg")), IMAGE_SIZE, 114)

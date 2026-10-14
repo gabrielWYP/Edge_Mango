@@ -179,6 +179,7 @@ class TestYOLODatasetManifestGuard:
             nir_dir=tmp_path / "nir",
             labels_dir=tmp_path / "labels",
             split="train",
+            nir_homography_path=None,
         )
         assert len(dataset) == 1
 
@@ -193,6 +194,7 @@ class TestYOLODatasetManifestGuard:
             labels_dir=tmp_path / "labels",
             split="train",
             manifest_path=manifest_path,
+            nir_homography_path=None,
         )
         assert len(dataset) == 1
 
@@ -209,6 +211,7 @@ class TestYOLODatasetManifestGuard:
                 labels_dir=tmp_path / "labels",
                 split="train",
                 manifest_path=manifest_path,
+                nir_homography_path=None,
             )
 
     def test_gt_count_report_matches_direct_recount(self, tmp_path: Path) -> None:
@@ -218,6 +221,7 @@ class TestYOLODatasetManifestGuard:
             nir_dir=tmp_path / "nir",
             labels_dir=tmp_path / "labels",
             split="train",
+            nir_homography_path=None,
         )
         report = dataset.gt_count_report()
         assert report["loaded"] == report["on_disk"]

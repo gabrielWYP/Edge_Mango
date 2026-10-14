@@ -128,6 +128,7 @@ def main():
         nir_std=config.nir_std,
         letterbox_value=config.letterbox_value,
         manifest_path=config.split_manifest,
+        nir_homography_path=config.nir_homography_path,
     )
 
     val_dataset = YOLODataset(
@@ -140,6 +141,7 @@ def main():
         nir_std=config.nir_std,
         letterbox_value=config.letterbox_value,
         manifest_path=config.split_manifest,
+        nir_homography_path=config.nir_homography_path,
     )
 
     print(f"Dataset: {len(train_dataset)} train, {len(val_dataset)} val images")

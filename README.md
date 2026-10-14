@@ -187,6 +187,9 @@ El pipeline de entrenamiento atravesó 7 bugs críticos que fueron diagnosticado
 | 5 | **Bias Init** — Pérdida inicial muy alta | `cls_pred` bias init = −4.6 |
 | 6 | **Focal Loss γ** — γ=1.5 insuficiente para desbalance extremo | γ=2.0 |
 | 7 | **TAL Fallback** — Assertion cuando cero matches válidos | Fallback a asignación por IoU máximo |
+| 8 | **NIR sin registrar** — El cargador on-the-fly leía el NIR sin alinearlo a RGB (offset ~(-120, +110) px) mientras las etiquetas están en el marco RGB | `nir_homography_path`: `cv2.warpPerspective(nir, inv(H), (w, h))` al cargar, antes de letterbox/augmentation |
+
+> **Aviso — corridas jul–oct 2026.** Desde el commit `1be3fd9` (2026-07-02, retiro del pipeline legacy) hasta este fix, todas las corridas de maestro (`fusion`, `twostream*`, `fusion-redesign`) y de KD entrenaron y evaluaron con NIR **sin registrar** a RGB; sus métricas no son comparables con las de corridas con `nir_homography_path` activo. Los checkpoints nuevos registran `nir_registration` (ruta y SHA-256 de la homografía); los antiguos no tienen esa clave. Las corridas pendientes (RTX A5000) deben usar este fix.
 
 ---
 

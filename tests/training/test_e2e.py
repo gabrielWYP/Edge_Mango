@@ -92,6 +92,7 @@ class TestE2ETraining:
             labels_dir=config.labels_dir,
             split="train",
             image_size=config.image_size,
+            nir_homography_path=None,
         )
         val_dataset = YOLODataset(
             rgb_dir=config.rgb_dir,
@@ -99,6 +100,7 @@ class TestE2ETraining:
             labels_dir=config.labels_dir,
             split="val",
             image_size=config.image_size,
+            nir_homography_path=None,
         )
 
         assert len(train_dataset) == 2

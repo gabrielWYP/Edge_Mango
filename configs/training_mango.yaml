@@ -12,6 +12,9 @@
 # Data paths
 rgb_dir: "data/cache/mango/rgb"
 nir_dir: "data/cache/mango/nir"
+# Register NIR to the RGB frame at load time (labels are in the RGB frame).
+# Runs before 2026-10 trained on unregistered NIR; null = explicit ablation only.
+nir_homography_path: "notebooks/matriz_homografia_aruco.npy"
 labels_dir: "data/annotations/yolo/labels"
 output_dir: "checkpoints/mastermodel_mango"
 

@@ -78,6 +78,7 @@ def _load_batches(
     """
     try:
         from src.training.dataset import YOLODataset
+        from src.training.nir_registration import DEFAULT_NIR_HOMOGRAPHY_PATH
 
         dataset = YOLODataset(
             rgb_dir="data/cache/mango/rgb",
@@ -86,6 +87,7 @@ def _load_batches(
             split="train",
             image_size=image_size,
             manifest_path="data/annotations/yolo/splits.json",
+            nir_homography_path=DEFAULT_NIR_HOMOGRAPHY_PATH,
         )
         if len(dataset) >= num_images:
             rgb_batches, nir_batches = [], []

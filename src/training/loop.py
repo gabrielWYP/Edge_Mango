@@ -39,6 +39,7 @@ from .loss import YOLOv8Loss
 from .fusion_modes import DEFAULT_FUSION_MODE, arch_version_for_mode
 from .machine import derive_grad_accum_steps
 from .metrics import compute_map, generate_training_curves, LossHistory
+from .nir_registration import homography_sha256
 from .precision import autocast_ctx, make_scaler
 from .strides import resolve_active_strides
 
@@ -893,6 +894,12 @@ class Trainer:
             "best_score": self.best_score,
             "config": self.config.__dict__,
             "experiment_sha256": self.experiment_sha256,
+            # NIR registration provenance: checkpoints trained before the
+            # 2026-10 fix lack this key and used unregistered NIR.
+            "nir_registration": {
+                "homography_path": self.config.nir_homography_path,
+                "homography_sha256": homography_sha256(self.config.nir_homography_path),
+            },
         }
         checkpoint.update(self._auxiliary_checkpoint_state())
         if train_metrics is not None:

@@ -20,6 +20,7 @@ from .fusion_modes import (
     validate_fusion_pos_encoding,
 )
 from .machine import derive_grad_accum_steps
+from .nir_registration import DEFAULT_NIR_HOMOGRAPHY_PATH
 from .precision import validate_bf16_support, validate_precision
 from .strides import (
     CROSS_ATTENTION_SUPPORTED_HEAD_STRIDES,
@@ -43,6 +44,13 @@ class TrainingConfig:
         nir_dir: Path to NIR images directory.
         labels_dir: Path to YOLO label files root (contains train/, val/).
         output_dir: Where to save checkpoints and logs.
+        nir_homography_path: RGB -> NIR homography (.npy) used to register NIR
+            to the RGB frame at load time (`cv2.warpPerspective(nir,
+            inv(H), ...)`), before letterbox/augmentation. Labels are in the
+            RGB frame, so unregistered NIR is misaligned with them (~120 px).
+            The file must exist (loud failure). Set to null ONLY for an
+            explicit unregistered-NIR ablation. Runs trained before this
+            field existed (2026-07-02 .. 2026-10) used unregistered NIR.
         split_manifest: Path to the split manifest (splits.json) used to
             fail-fast if a split's directory contents diverge from it. Set to
             None to skip this guard (e.g., synthetic/unsplit test fixtures).
@@ -130,6 +138,7 @@ class TrainingConfig:
     labels_dir: str = "data/annotations/yolo/labels"
     output_dir: str = "checkpoints/mastermodel"
     split_manifest: str | None = "data/annotations/yolo/splits.json"
+    nir_homography_path: str | None = DEFAULT_NIR_HOMOGRAPHY_PATH
 
     # Model
     backbone_variant: str = "tiny"

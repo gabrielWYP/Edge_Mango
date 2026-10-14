@@ -60,6 +60,7 @@ from src.models.student.student_model import StudentModel, strip_legacy_kd_adapt
 from src.training.config import TrainingConfig
 from src.training.dataset import letterbox
 from src.training.decode import decode_detections
+from src.training.nir_registration import load_homography, register_nir_to_rgb
 from src.training.strides import STUDENT_STRIDES
 
 # ---------------------------------------------------------------------------
@@ -650,6 +651,11 @@ def main() -> int:
 
     logger.info("Visualizing %d images.", len(selected))
 
+    # Same NIR registration the training dataset applies (None = disabled).
+    H_rgb_to_nir = (
+        load_homography(config.nir_homography_path) if config.nir_homography_path else None
+    )
+
     # Process each image
     success_count = 0
     error_count = 0
@@ -681,6 +687,10 @@ def main() -> int:
                     logger.warning("[%d/%d] Cannot read NIR: %s — skipping.", i + 1, len(selected), pair["nir_path"])
                     error_count += 1
                     continue
+                if H_rgb_to_nir is not None:
+                    nir_img = register_nir_to_rgb(
+                        nir_img, H_rgb_to_nir, (orig_w, orig_h), int(config.nir_mean * 255)
+                    )
                 nir_tensor = preprocess_nir(nir_img, config.image_size, config.nir_mean, config.nir_std)
                 nir_tensor = nir_tensor.to(device)
 

@@ -347,6 +347,7 @@ def main() -> int:
         nir_std=config.nir_std,
         letterbox_value=config.letterbox_value,
         manifest_path=config.split_manifest,
+        nir_homography_path=config.nir_homography_path,
     )
     logger.info("Split '%s': %d images", args.split, len(dataset))
 

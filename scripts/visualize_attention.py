@@ -40,6 +40,7 @@ from scripts.visualize_damage_predictions import (
 )
 from src.training.config import TrainingConfig
 from src.training.dataset import letterbox
+from src.training.nir_registration import load_homography, register_nir_to_rgb
 from src.training.fusion_modes import FUSION_MODE_CROSS_ATTENTION
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -124,11 +125,21 @@ def main() -> None:
         return
     logger.info("Visualizing %d samples -> %s", len(selected), output_dir)
 
+    # Same NIR registration the training dataset applies (None = disabled).
+    H_rgb_to_nir = (
+        load_homography(config.nir_homography_path) if config.nir_homography_path else None
+    )
+
     for pair in selected:
         rgb_bgr = cv2.imread(str(pair["rgb_path"]))
         rgb_rgb = cv2.cvtColor(rgb_bgr, cv2.COLOR_BGR2RGB)
         nir_gray = cv2.imread(str(pair["nir_path"]), cv2.IMREAD_GRAYSCALE)
         orig_h, orig_w = rgb_rgb.shape[:2]
+
+        if H_rgb_to_nir is not None:
+            nir_gray = register_nir_to_rgb(
+                nir_gray, H_rgb_to_nir, (orig_w, orig_h), int(config.nir_mean * 255)
+            )
 
         rgb_lb_display, scale, pad_x, pad_y = letterbox(rgb_bgr, config.image_size, config.letterbox_value)
 
