@@ -19,26 +19,33 @@ El proyecto construye un sistema de detección de daño en frutos de mango usand
 
 ### Resultados actuales
 
-Última corrida: `fusion-redesign` V1, semilla 42, 2026-08-31 (`checkpoints/fusion_redesign/v1_seed42/`).
+Mejor brazo: **two-stream** (`configs/experiment/twostream.yaml`, fusión por cross-attention), dataset v3,
+3 semillas, checkpoint seleccionado por AP de daño. Detalle completo y procedimiento para reproducirlo en
+[`reports/twostream-v3-3seeds/README.md`](reports/twostream-v3-3seeds/README.md).
 
-| Métrica | Valor |
-|---------|-------|
-| mAP@0.5 (maestro) | 0.5018 (época 42) |
-| AP@0.5 mango (clase 0) | **1.0000** |
-| AP@0.5 daño (clase 1) | **0.0036** |
-| Daño: TP / FP / FN | 15 / 2116 / 16 |
-| Split | 148 train / 18 val / 20 test |
-| Parámetros | 35,276,920 (27,820,128 backbone) |
-| Épocas | 62 de 100 (early stop, `patience=20`) |
+| Semilla | Mejor época / ejecutadas | Val AP50 daño | Test AP50 daño |
+|---------|--------------------------|---------------|----------------|
+| 42      | 78 / 98                  | 0.251         | 0.126          |
+| 1337    | 73 / 93                  | 0.317         | 0.294          |
+| 2024    | 35 / 55                  | 0.142         | 0.110          |
+| **Media ± σ** |                    | **0.237 ± 0.089** | **0.177 ± 0.102** |
 
-> **El mAP de 0.50 no mide lo que parece.** Es `(1.0 + 0.0)/2`: la clase mango satura y la de daño está en cero.
-> Frente al baseline previo al rediseño (`reports/damage-map-audit/master-baseline/metrics.json`, daño AP50 = **0.0643**),
-> la clase daño **retrocedió**. Usar el mAP agregado como métrica de progreso en este proyecto es engañoso;
-> la métrica que importa es `ap50_class_1`.
+- **Datos:** v3, 236 pares RGB+NIR, 188 train / 23 val / 25 test (43 y 37 cajas de daño en val y test).
+- **Código:** `main` en `c745bc9`, sin cambios. Único override relevante: `selection_metric=damage_ap50`.
+- **Frente a la corrida v2 del 2026-09-06** (`reports/twostream-3seeds/`, test 0.101 ± 0.084) el test sube
+  a 0.177, pero cambiaron a la vez los datos, la métrica de selección y los splits de evaluación: no es una
+  comparación controlada.
+- **Estabilidad:** las semillas 42 y 1337 convergen tarde (épocas 73–78) y se mantienen en ~0.21 en sus
+  últimas 10 épocas. La 2024 se detuvo por early stopping (`patience=20`) en un pico aislado de la época 35,
+  y explica casi toda la dispersión.
+- **Precisión** en el punto de operación (conf 0.25): 0.02–0.08. Todavía hay demasiados falsos positivos
+  para usar el detector en ese umbral.
 
-**Estado de la validación:** las fases 12 y 13 de `openspec/changes/fusion-redesign/tasks.md` están sin ejecutar.
-La semilla 1337 se interrumpió en la época 57 y la 2024 nunca arrancó, así que no hay σ para las barras `2·σ`
-pre-registradas. Los controles H-D (`in_channels=3`) y H-E (`head_strides=[8,16,32]`) siguen pendientes.
+> **El mAP agregado no mide lo que parece.** La clase mango satura cerca de 1.0, así que el mAP de dos clases
+> casi no refleja la clase daño. La métrica que importa en este proyecto es `ap50_class_1` (`damage_ap50`).
+
+> **Dataset v3:** el `splits.json` que viene dentro de `data/mango_dataset_v3.zip` es el de v2 (186 ids) y el
+> loader aborta al no coincidir con las 236 etiquetas. El reporte incluye cómo reconstruirlo.
 
 ---
 
@@ -290,12 +297,14 @@ python -m pytest tests/ -v
 
 ## 8. Próximos Pasos
 
-1. **Knowledge Distillation training** — Entrenar al estudiante usando las proyecciones del maestro
-2. **Más datos** — 100-200+ pares RGB+NIR adicionales para mejorar AP de daño
-3. **Fase 2 de entrenamiento** — Descongelar backbone del maestro cuando haya ≥200 imágenes
-4. **Exportar modelos** — ONNX / TorchScript para inferencia en producción
-5. **Mergear feature-branch-chain** del estudiante a main
-6. **Redacción de tesis** — Documentar métricas, arquitectura y resultados
+1. **Estabilidad del maestro two-stream** — Repetir las 3 semillas con `patience=40` para confirmar si la
+   dispersión viene del corte prematuro. También corregir el `splits.json` dentro de `mango_dataset_v3.zip`
+2. **Knowledge Distillation training** — Entrenar al estudiante usando las proyecciones del maestro
+3. **Más datos** — 100-200+ pares RGB+NIR adicionales para mejorar AP de daño
+4. **Fase 2 de entrenamiento** — Descongelar backbone del maestro cuando haya ≥200 imágenes
+5. **Exportar modelos** — ONNX / TorchScript para inferencia en producción
+6. **Mergear feature-branch-chain** del estudiante a main
+7. **Redacción de tesis** — Documentar métricas, arquitectura y resultados
 
 ---
 
