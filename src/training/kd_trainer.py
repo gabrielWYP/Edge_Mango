@@ -99,6 +99,7 @@ class KDTrainer(Trainer):
         self.kd_criterion = KDLoss(
             level_weights=config.distill_levels,
             temperature=config.kd_temperature,
+            feature_norm=config.kd_feature_norm,
         ).to(self.device)
 
     def _auxiliary_param_groups(self, lr: float) -> list[dict]:
@@ -188,7 +189,9 @@ class KDTrainer(Trainer):
         preserve, unlike the base `Trainer`.
 
         Returns:
-            Dict with avg cls_loss, box_loss, kd_loss, total_loss, and the
+            Dict with avg cls_loss, box_loss, kd_loss, total_loss, the
+            per-level KD losses as `kd_<level>_loss` (one per
+            `distill_levels` key, unweighted), and the
             oom_skipped/nan_skipped/steps_taken counters.
         """
         self.model.train()
@@ -198,6 +201,7 @@ class KDTrainer(Trainer):
         total_cls = 0.0
         total_box = 0.0
         total_kd = 0.0
+        total_kd_per_level = {level: 0.0 for level in self.kd_criterion.level_weights}
         total_loss = 0.0
         steps_taken = 0
         oom_skipped = 0
@@ -320,6 +324,8 @@ class KDTrainer(Trainer):
             total_cls += det_dict["cls_loss"]
             total_box += det_dict["box_loss"]
             total_kd += kd_loss.item()
+            for level, value in kd_per_level.items():
+                total_kd_per_level[level] += value
             total_loss += loss.item()
             steps_taken += 1
             self.global_step += 1
@@ -337,6 +343,12 @@ class KDTrainer(Trainer):
             "cls_loss": total_cls / steps_taken,
             "box_loss": total_box / steps_taken,
             "kd_loss": total_kd / steps_taken,
+            # "_loss" suffix: the base loop logs every extra *_loss key in the
+            # epoch line and in metrics_history.csv.
+            **{
+                f"kd_{level}_loss": value / steps_taken
+                for level, value in total_kd_per_level.items()
+            },
             "total_loss": total_loss / steps_taken,
             "oom_skipped": float(oom_skipped),
             "nan_skipped": float(nan_skipped),

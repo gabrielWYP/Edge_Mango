@@ -201,3 +201,17 @@ class TestKDCountersInReturnedMetrics:
         for key in ("cls_loss", "box_loss", "kd_loss", "total_loss"):
             assert key in result
             assert torch.isfinite(torch.tensor(result[key]))
+
+    def test_per_level_kd_losses_are_epoch_averages(self, teacher_checkpoint_path, tmp_path):
+        # The `_loss` suffix routes them into the epoch log line and
+        # metrics_history.csv through the base loop's extra-loss filter.
+        trainer = _make_kd_trainer(teacher_checkpoint_path, n_batches=2, tmp_path=tmp_path)
+        optimizer = _optimizer_for(trainer)
+
+        result = trainer._train_epoch(optimizer, epoch=1, phase=1)
+
+        levels = trainer.config.distill_levels
+        per_level = {level: result[f"kd_{level}_loss"] for level in levels}
+        assert set(per_level) == {"backbone", "fpn", "head_cls", "head_reg"}
+        weighted = sum(levels[level] * value for level, value in per_level.items())
+        assert weighted == pytest.approx(result["kd_loss"], rel=1e-5)

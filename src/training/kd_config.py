@@ -12,6 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from .config import TrainingConfig
+from .kd_loss import KD_FEATURE_NORMS
 
 
 @dataclass
@@ -28,6 +29,11 @@ class KDConfig(TrainingConfig):
         kd_weight: Scalar weight for KD loss in total loss composition.
         kd_temperature: Temperature for KD feature scaling (unused for MSE, reserved).
         distill_levels: Per-level weights for KD loss (backbone, fpn, head_cls, head_reg).
+        kd_feature_norm: Feature normalization applied before the per-level
+            MSE. "none" (default) keeps the raw MSE. "pkd" z-scores student
+            and teacher features per channel over (N, H, W) and halves the
+            MSE (PKD, Cao et al. 2022), making the loss invariant to the
+            teacher's large constant per-channel offsets.
     """
 
     # KD-specific fields
@@ -40,6 +46,7 @@ class KDConfig(TrainingConfig):
         "head_cls": 0.3,
         "head_reg": 0.5,
     })
+    kd_feature_norm: str = "none"
 
     # Overridden defaults for KD training
     epochs: int = 80
@@ -50,3 +57,11 @@ class KDConfig(TrainingConfig):
 
     # KD output directory
     output_dir: str = "checkpoints/kd_student"
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if self.kd_feature_norm not in KD_FEATURE_NORMS:
+            raise ValueError(
+                f"Invalid kd_feature_norm '{self.kd_feature_norm}'. "
+                f"Must be one of: {sorted(KD_FEATURE_NORMS)}"
+            )
