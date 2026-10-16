@@ -32,8 +32,9 @@ seed 42, sin early stopping y con el checkpoint elegido por AP de daño. Procedi
 - **El maestro duplica la referencia anterior:** 0.398 frente a 0.177 ± 0.102 de
   [`reports/twostream-v3-3seeds/`](reports/twostream-v3-3seeds/README.md), que se entrenó con NIR sin registrar
   (desplazado ~168 px respecto de las etiquetas). Es una sola semilla, así que falta confirmarlo con 3.
-- **La destilación hoy no aporta:** el destilado queda por debajo del estudiante entrenado solo. La pérdida de KD
-  arranca ~240 veces por encima de la de clasificación, y el AP de daño se queda en 0 las primeras 10 épocas.
+- **La destilación todavía no mejora el daño:** destilado y estudiante solo quedan dentro del ruido de una semilla
+  (21 contra 23 detecciones correctas de 37). Sí mejora la calidad de las cajas de mango. La pérdida de KD arranca
+  ~240 veces por encima de la de clasificación, y el AP de daño se queda en 0 las primeras 10 épocas.
 - **Datos:** v3, 236 pares RGB+NIR, 188 train / 23 val / 25 test (43 y 37 cajas de daño en val y test).
 - **Fuga entre splits:** hay imágenes tomadas con segundos de diferencia en train y en val/test, así que los
   valores absolutos probablemente están inflados. Las comparaciones entre modelos sobre el mismo split siguen

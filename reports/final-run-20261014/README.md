@@ -2,8 +2,9 @@
 
 This is the first full chain (teacher → student → distilled student) trained after NIR was
 registered to the RGB frame (#24). The two-stream teacher reaches **test damage AP50 = 0.398**,
-about double the three-seed mean measured on unregistered NIR. Distillation does **not** help:
-the distilled student (0.084) scores below the student trained alone (0.111).
+about double the three-seed mean measured on unregistered NIR. Distillation shows **no measurable
+damage gain**: the distilled student (0.084) and the student trained alone (0.111) are within
+single-seed noise of each other (21 against 23 correct detections out of 37).
 
 Single seed, on a split with session leakage (see Caveats). Read the teacher number as a
 strong signal to confirm with three seeds, not a final figure.
@@ -91,8 +92,15 @@ The distilled student's per-epoch history (`metrics_history.csv`):
 - **KD is about 120–280× the classification loss for the first ten epochs,** and damage AP stays at
   zero while it does. The student spends its early budget imitating teacher features. Damage
   AP only rises once the KD term has collapsed.
-- **The distilled model ends below the plain student** on test (0.084 against 0.111). Both
-  students also produce over 1000 false positives on test against the teacher's 111.
+- **No damage gain, but not a measured loss either.** Test damage AP50 is 0.084 for the distilled
+  model and 0.111 for the student alone. That is 21 against 23 true positives out of 37 boxes,
+  within single-seed noise. On val they are 0.102 and 0.106. Both students produce over 1000
+  false positives on test, against the teacher's 111.
+- **The two student runs are not like-for-like.** The distilled run trains 80 epochs with 3 warmup
+  epochs (`kd_training.yaml`). The student alone trains 50 epochs with 5 warmup epochs
+  (`training_student.yaml`).
+- **KD did transfer something:** mango box quality improves (test mango AP50-95 0.746 against
+  0.626, val 0.784 against 0.591).
 - This points first to a **loss-scale problem** (unnormalized feature MSE with `kd_weight=1.0`).
   It may also point to a representation gap between a fused RGB+NIR ConvNeXt teacher and a nano
   student. Separating the two is the next experiment.
