@@ -86,3 +86,7 @@ checkpoints/**/.partial/
 # outputs; binaries and metadata sidecars embed local paths and timestamps.
 /.venv-export/
 /exports/
+
+# Isolated venvs created by the vendored statistics skills (.claude/skills/)
+/.venv-statistics/
+/.venv-power/
