@@ -348,6 +348,9 @@ def main() -> int:
         letterbox_value=config.letterbox_value,
         manifest_path=config.split_manifest,
         nir_homography_path=config.nir_homography_path,
+        roi_crop=config.roi_crop,
+        roi_crop_margin=config.roi_crop_margin,
+        roi_crop_jitter=config.roi_crop_jitter,
     )
     logger.info("Split '%s': %d images", args.split, len(dataset))
 

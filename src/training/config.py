@@ -22,6 +22,7 @@ from .fusion_modes import (
 from .machine import derive_grad_accum_steps
 from .nir_registration import DEFAULT_NIR_HOMOGRAPHY_PATH
 from .precision import validate_bf16_support, validate_precision
+from .roi_crop import validate_roi_crop
 from .strides import (
     CROSS_ATTENTION_SUPPORTED_HEAD_STRIDES,
     DEFAULT_HEAD_STRIDES,
@@ -51,6 +52,20 @@ class TrainingConfig:
             The file must exist (loud failure). Set to null ONLY for an
             explicit unregistered-NIR ablation. Runs trained before this
             field existed (2026-07-02 .. 2026-10) used unregistered NIR.
+        roi_crop: Crop RGB and registered NIR to the ground-truth mango box
+            (class 0) plus a margin before letterboxing, and re-express the
+            labels relative to the crop. Opt-in (default False keeps the
+            full-frame pipeline byte-identical). Val/test crops use the GT
+            mango box, so metrics are an ORACLE-ROI upper bound until a
+            stage-1 mango detector supplies the window, and mango (class 0)
+            AP is meaningless under this setting.
+        roi_crop_margin: Per-side margin as a fraction of the mango box
+            width/height. Must be >= 0.
+        roi_crop_jitter: Half-range of the per-side margin scale
+            (`uniform(1 - j, 1 + j)`), applied to the train split only so the
+            model sees varied framing; val/test crops stay deterministic.
+            Must be in [0, 1], which guarantees the crop contains the whole
+            mango box. 0 disables it.
         split_manifest: Path to the split manifest (splits.json) used to
             fail-fast if a split's directory contents diverge from it. Set to
             None to skip this guard (e.g., synthetic/unsplit test fixtures).
@@ -147,6 +162,11 @@ class TrainingConfig:
     # Augmentation
     image_size: int = 640
     letterbox_value: int = 114
+    # Mango ROI crop (src/training/roi_crop.py) — opt-in, so every existing
+    # config and checkpoint keeps the full-frame behaviour it has today.
+    roi_crop: bool = False
+    roi_crop_margin: float = 0.10
+    roi_crop_jitter: float = 0.0
 
     # Training
     batch_size: int = 2
@@ -297,6 +317,7 @@ class TrainingConfig:
         # Unlike head_strides this needs no student exemption — the default
         # is valid for both model types.
         validate_fusion_mode(self.fusion_mode)
+        validate_roi_crop(self.roi_crop_margin, self.roi_crop_jitter)
         if self.selection_metric not in SELECTION_METRICS:
             raise ValueError(
                 f"Invalid selection_metric '{self.selection_metric}'. "
