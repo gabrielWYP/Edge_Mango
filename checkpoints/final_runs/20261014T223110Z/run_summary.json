@@ -1,0 +1,88 @@
+{
+  "results": [
+    {
+      "best_map50": 0.8687240183353424,
+      "checkpoint": "checkpoints/final_runs/20261014T223110Z/maestro/best_model_20261014T223110Z_mAP0p8687/best_model.pt",
+      "command": [
+        "/home/gabo/MCP_Agent/myLinuxVenv/bin/python",
+        "/home/gabo/MCP_Agent/src/training/train.py",
+        "--config",
+        "configs/experiment/twostream.yaml",
+        "--machine",
+        "configs/machines/rtx3080.yaml",
+        "--model",
+        "master",
+        "--versioned-run",
+        "--run-timestamp",
+        "20261014T223110Z",
+        "--override",
+        "seed=42",
+        "patience=1000",
+        "selection_metric=damage_ap50"
+      ],
+      "device": "cuda",
+      "effective_batch": 8,
+      "experiment_sha256": "830c4c3a57509b031aa6529372d4d943d1a512ba50306a1bb9920f6fd865dcca",
+      "output_dir": "checkpoints/final_runs/20261014T223110Z/maestro/best_model_20261014T223110Z_mAP0p8687",
+      "precision": "fp32",
+      "stage_key": "maestro",
+      "stage_label": "Maestro"
+    },
+    {
+      "best_map50": 0.5532289370894432,
+      "checkpoint": "checkpoints/final_runs/20261014T223110Z/estudiante/best_model_20261014T223110Z_mAP0p5532/best_model.pt",
+      "command": [
+        "/home/gabo/MCP_Agent/myLinuxVenv/bin/python",
+        "/home/gabo/MCP_Agent/src/training/train.py",
+        "--config",
+        "configs/training_student.yaml",
+        "--machine",
+        "configs/machines/rtx3080.yaml",
+        "--model",
+        "student",
+        "--versioned-run",
+        "--run-timestamp",
+        "20261014T223110Z",
+        "--override",
+        "seed=42",
+        "patience=1000",
+        "selection_metric=damage_ap50"
+      ],
+      "device": "cuda",
+      "effective_batch": 8,
+      "experiment_sha256": "ed9df1683880c97f7341691ce2930bb3d53b15a0eda42c5919a29cfca903dc47",
+      "output_dir": "checkpoints/final_runs/20261014T223110Z/estudiante/best_model_20261014T223110Z_mAP0p5532",
+      "precision": "fp32",
+      "stage_key": "estudiante",
+      "stage_label": "Estudiante"
+    },
+    {
+      "best_map50": 0.5507594868540764,
+      "checkpoint": "checkpoints/final_runs/20261014T223110Z/destilado/best_model_20261014T223110Z_mAP0p5508/best_model.pt",
+      "command": [
+        "/home/gabo/MCP_Agent/myLinuxVenv/bin/python",
+        "/home/gabo/MCP_Agent/src/training/kd_train.py",
+        "--config",
+        "configs/kd_training_twostream.yaml",
+        "--versioned-run",
+        "--run-timestamp",
+        "20261014T223110Z",
+        "--override",
+        "teacher_checkpoint=/home/gabo/MCP_Agent/checkpoints/final_runs/20261014T223110Z/maestro/best_model_20261014T223110Z_mAP0p8687/best_model.pt",
+        "seed=42",
+        "patience=1000",
+        "selection_metric=damage_ap50"
+      ],
+      "device": null,
+      "effective_batch": null,
+      "experiment_sha256": null,
+      "output_dir": "checkpoints/final_runs/20261014T223110Z/destilado/best_model_20261014T223110Z_mAP0p5508",
+      "precision": null,
+      "stage_key": "destilado",
+      "stage_label": "Destilado"
+    }
+  ],
+  "run_dir": "checkpoints/final_runs/20261014T223110Z",
+  "run_id": "20261014T223110Z",
+  "updated_at_utc": "2026-10-14T23:54:40.871714+00:00"
+}

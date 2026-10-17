@@ -1,0 +1,28 @@
+{
+  "best_map50": 0.8687240183353424,
+  "checkpoint": "checkpoints/final_runs/20261014T223110Z/maestro/best_model_20261014T223110Z_mAP0p8687/best_model.pt",
+  "command": [
+    "/home/gabo/MCP_Agent/myLinuxVenv/bin/python",
+    "/home/gabo/MCP_Agent/src/training/train.py",
+    "--config",
+    "configs/experiment/twostream.yaml",
+    "--machine",
+    "configs/machines/rtx3080.yaml",
+    "--model",
+    "master",
+    "--versioned-run",
+    "--run-timestamp",
+    "20261014T223110Z",
+    "--override",
+    "seed=42",
+    "patience=1000",
+    "selection_metric=damage_ap50"
+  ],
+  "device": "cuda",
+  "effective_batch": 8,
+  "experiment_sha256": "830c4c3a57509b031aa6529372d4d943d1a512ba50306a1bb9920f6fd865dcca",
+  "output_dir": "checkpoints/final_runs/20261014T223110Z/maestro/best_model_20261014T223110Z_mAP0p8687",
+  "precision": "fp32",
+  "stage_key": "maestro",
+  "stage_label": "Maestro"
+}

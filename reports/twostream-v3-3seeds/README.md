@@ -6,6 +6,20 @@ checkpoint selected on damage AP50 reaches **test damage AP50 = 0.177 ± 0.102**
 converge late and stay stable. The third was cut short by early stopping, and it accounts for
 most of the spread.
 
+> **Correction (2026-10-16): two statements in the original version of this report were wrong.**
+>
+> 1. **The zip's manifest is fine.** `data/mango_dataset_v3.zip` ships a correct `splits.json`
+>    with all 236 ids (188 / 23 / 25). The stale 186-id manifest was a v2 file already on disk:
+>    the zip was extracted with `unzip -n` (never overwrite) over an existing
+>    `data/annotations/`. Step 3 below has been rewritten. The rebuilt manifest had the same
+>    membership as the zip's, so the split used here was the intended one. One test label on
+>    disk (`mango_rgb_1782758104`) was also older than the zip's; it affected test mango AP only.
+> 2. **These runs used unregistered NIR.** Code at `c745bc9` predates #24, which registers NIR
+>    to the RGB frame at load time. Labels live in the RGB frame, and without registration NIR
+>    lesions sit about 168 px away from their boxes. Treat 0.177 ± 0.102 as the
+>    *unregistered-NIR* baseline. On registered NIR the same arm reaches 0.398 test with seed 42
+>    (`reports/final-run-20261014/`).
+
 ## Result
 
 Damage = class 1. AP50 is computed at `eval_conf_threshold` (0.001), and P/R at the 0.25
@@ -26,24 +40,14 @@ the training logs exactly, so the saved `best_model.pt` is the epoch that was se
 1. **Code:** `origin/main` at `c745bc9`, unmodified. No branch-only code was used.
 2. **Data:** `data/mango_dataset_v3.zip` (from #22), extracted into `data/`. It holds 236
    labeled RGB+NIR pairs: 188 train / 23 val / 25 test.
-3. **Manifest fix (local, git-ignored).** The zip ships a stale **v2** `splits.json` with 186
-   ids (148/18/20). The label directories hold all 236 pairs. `YOLODataset._verify_manifest_alignment`
-   raises on that mismatch, so training cannot start. The manifest was rebuilt from the label
-   directories, keeping the 186 original assignments and appending the 50 new stems to the split
-   whose directory holds them. Every one of the 50 has a non-empty label file and an RGB/NIR
-   image pair. The old file is kept locally as `splits.v2_186.json.bak`.
+3. **Manifest (see Correction above).** The first extraction did not overwrite an older v2
+   `splits.json` (186 ids) already on disk, and `YOLODataset._verify_manifest_alignment` refused
+   to start. That manifest was rebuilt locally from the label directories. The result has the
+   same membership as the zip's own manifest. To get the intended data, extract with overwrite:
 
-   ```python
-   import json, pathlib
-   root = pathlib.Path("data/annotations/yolo")
-   old = json.load(open(root / "splits.json"))
-   new = {sp: sorted(old[sp]) + sorted({p.stem for p in (root / "labels" / sp).glob("*.txt")} - set(old[sp]))
-          for sp in ["train", "val", "test"]}
-   json.dump(new, open(root / "splits.json", "w"), indent=2)
+   ```bash
+   git show origin/main:data/mango_dataset_v3.zip > /tmp/v3.zip && unzip -o -q /tmp/v3.zip -d data/
    ```
-
-   `scripts/prepare_yolo_splits.py --reconcile` does **not** fix this. It reports unmanifested
-   stems but does not add them.
 4. **One override that matters:** `selection_metric=damage_ap50`. The config default is
    `map50`, the two-class mean. Class 0 (mango) sits near 1.0, so that metric barely sees damage
    and picks checkpoints far from the damage peak. That is why the v2 run's checkpoints missed

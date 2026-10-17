@@ -1,0 +1,85 @@
+# KD config for a two-stream (cross-attention) teacher.
+# KDTrainer._load_teacher builds the teacher from THIS config's fusion_mode and
+# head_strides, so they must match configs/experiment/twostream.yaml, or the
+# strict load_state_dict of a cross-attention checkpoint fails.
+fusion_mode: cross_attention
+head_strides: [8, 16, 32]
+
+# Knowledge Distillation Training Configuration
+# Student (YOLO Nano) trained with frozen MasterModel teacher via per-level MSE.
+
+# --- Teacher ---
+teacher_checkpoint: checkpoints/mastermodel_mango/best_model.pt
+
+# --- KD Hyperparameters ---
+kd_weight: 1.0
+kd_temperature: 1.0
+distill_levels:
+  backbone: 1.0
+  fpn: 0.1
+  head_cls: 0.3
+  head_reg: 0.5
+
+# --- Training (overridden defaults for KD) ---
+epochs: 80
+patience: 30
+precision: fp32
+batch_size: 8
+model_type: student
+
+# --- Model ---
+num_classes: 2
+backbone_variant: tiny
+image_size: 640
+letterbox_value: 114
+
+# --- Loss ---
+box_weight: 7.5
+cls_weight: 0.5
+# Class weights: [mango, damage]. Damage is harder to detect (small bboxes, lower contrast),
+# so it receives higher loss weight. Values are experimental and should be tuned by validation mAP.
+class_weights: [0.5, 1.5]
+
+# --- Optimizer ---
+lr: 0.001
+weight_decay: 0.0005
+grad_clip: 10.0
+warmup_epochs: 3
+
+# --- Paths ---
+rgb_dir: data/cache/mango/rgb
+nir_dir: data/cache/mango/nir
+# Register NIR to the RGB frame at load time (labels are in the RGB frame).
+# Runs before 2026-10 trained on unregistered NIR; null = explicit ablation only.
+nir_homography_path: "notebooks/matriz_homografia_aruco.npy"
+labels_dir: data/annotations/yolo/labels
+output_dir: checkpoints/kd_student
+
+# --- DataLoader ---
+num_workers: 4
+
+# --- NIR normalization ---
+nir_mean: 0.0569
+nir_std: 0.0546
+
+# --- Logging ---
+log_interval: 10
+save_interval: 5
+
+# --- Reproducibility ---
+seed: 42
+
+# --- Split manifest (damage-map-audit W0 fail-fast guard) ---
+split_manifest: "data/annotations/yolo/splits.json"
+
+# --- Decode (src/training/decode.py::decode_detections) ---
+conf_threshold: 0.25
+nms_iou_threshold: 0.5
+nms_enabled: true
+decode_per_class: true
+max_detections: 300
+
+# --- Task-Aligned Assigner (default off — see design.md D9) ---
+assigner_center_radius: 0.0
+assigner_level_ranges: [64, 128]
+assigner_collect_stats: false

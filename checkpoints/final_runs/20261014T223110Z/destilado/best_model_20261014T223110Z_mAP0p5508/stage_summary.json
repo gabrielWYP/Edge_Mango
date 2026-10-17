@@ -1,0 +1,25 @@
+{
+  "best_map50": 0.5507594868540764,
+  "checkpoint": "checkpoints/final_runs/20261014T223110Z/destilado/best_model_20261014T223110Z_mAP0p5508/best_model.pt",
+  "command": [
+    "/home/gabo/MCP_Agent/myLinuxVenv/bin/python",
+    "/home/gabo/MCP_Agent/src/training/kd_train.py",
+    "--config",
+    "configs/kd_training_twostream.yaml",
+    "--versioned-run",
+    "--run-timestamp",
+    "20261014T223110Z",
+    "--override",
+    "teacher_checkpoint=/home/gabo/MCP_Agent/checkpoints/final_runs/20261014T223110Z/maestro/best_model_20261014T223110Z_mAP0p8687/best_model.pt",
+    "seed=42",
+    "patience=1000",
+    "selection_metric=damage_ap50"
+  ],
+  "device": null,
+  "effective_batch": null,
+  "experiment_sha256": null,
+  "output_dir": "checkpoints/final_runs/20261014T223110Z/destilado/best_model_20261014T223110Z_mAP0p5508",
+  "precision": null,
+  "stage_key": "destilado",
+  "stage_label": "Destilado"
+}

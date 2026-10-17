@@ -19,33 +19,29 @@ El proyecto construye un sistema de detección de daño en frutos de mango usand
 
 ### Resultados actuales
 
-Mejor brazo: **two-stream** (`configs/experiment/twostream.yaml`, fusión por cross-attention), dataset v3,
-3 semillas, checkpoint seleccionado por AP de daño. Detalle completo y procedimiento para reproducirlo en
-[`reports/twostream-v3-3seeds/README.md`](reports/twostream-v3-3seeds/README.md).
+Primera cadena completa (maestro → estudiante → destilado) con el NIR registrado al plano RGB (#24),
+seed 42, sin early stopping y con el checkpoint elegido por AP de daño. Procedimiento completo en
+[`reports/final-run-20261014/README.md`](reports/final-run-20261014/README.md).
 
-| Semilla | Mejor época / ejecutadas | Val AP50 daño | Test AP50 daño |
-|---------|--------------------------|---------------|----------------|
-| 42      | 78 / 98                  | 0.251         | 0.126          |
-| 1337    | 73 / 93                  | 0.317         | 0.294          |
-| 2024    | 35 / 55                  | 0.142         | 0.110          |
-| **Media ± σ** |                    | **0.237 ± 0.089** | **0.177 ± 0.102** |
+| Modelo | Val AP50 daño | **Test AP50 daño** | Test P / R | FP en test |
+|--------|---------------|--------------------|------------|------------|
+| Maestro two-stream (`configs/experiment/twostream.yaml`) | 0.737 | **0.398** | 0.165 / 0.595 | 111 |
+| Estudiante YOLOv8-nano | 0.106 | **0.111** | 0.020 / 0.622 | 1147 |
+| Estudiante destilado | 0.102 | **0.084** | 0.020 / 0.568 | 1030 |
 
+- **El maestro duplica la referencia anterior:** 0.398 frente a 0.177 ± 0.102 de
+  [`reports/twostream-v3-3seeds/`](reports/twostream-v3-3seeds/README.md), que se entrenó con NIR sin registrar
+  (desplazado ~168 px respecto de las etiquetas). Es una sola semilla, así que falta confirmarlo con 3.
+- **La destilación todavía no mejora el daño:** destilado y estudiante solo quedan dentro del ruido de una semilla
+  (21 contra 23 detecciones correctas de 37). Sí mejora la calidad de las cajas de mango. La pérdida de KD arranca
+  ~240 veces por encima de la de clasificación, y el AP de daño se queda en 0 las primeras 10 épocas.
 - **Datos:** v3, 236 pares RGB+NIR, 188 train / 23 val / 25 test (43 y 37 cajas de daño en val y test).
-- **Código:** `main` en `c745bc9`, sin cambios. Único override relevante: `selection_metric=damage_ap50`.
-- **Frente a la corrida v2 del 2026-09-06** (`reports/twostream-3seeds/`, test 0.101 ± 0.084) el test sube
-  a 0.177, pero cambiaron a la vez los datos, la métrica de selección y los splits de evaluación: no es una
-  comparación controlada.
-- **Estabilidad:** las semillas 42 y 1337 convergen tarde (épocas 73–78) y se mantienen en ~0.21 en sus
-  últimas 10 épocas. La 2024 se detuvo por early stopping (`patience=20`) en un pico aislado de la época 35,
-  y explica casi toda la dispersión.
-- **Precisión** en el punto de operación (conf 0.25): 0.02–0.08. Todavía hay demasiados falsos positivos
-  para usar el detector en ese umbral.
+- **Fuga entre splits:** hay imágenes tomadas con segundos de diferencia en train y en val/test, así que los
+  valores absolutos probablemente están inflados. Las comparaciones entre modelos sobre el mismo split siguen
+  siendo válidas.
 
 > **El mAP agregado no mide lo que parece.** La clase mango satura cerca de 1.0, así que el mAP de dos clases
 > casi no refleja la clase daño. La métrica que importa en este proyecto es `ap50_class_1` (`damage_ap50`).
-
-> **Dataset v3:** el `splits.json` que viene dentro de `data/mango_dataset_v3.zip` es el de v2 (186 ids) y el
-> loader aborta al no coincidir con las 236 etiquetas. El reporte incluye cómo reconstruirlo.
 
 ---
 
@@ -300,8 +296,9 @@ python -m pytest tests/ -v
 
 ## 8. Próximos Pasos
 
-1. **Estabilidad del maestro two-stream** — Repetir las 3 semillas con `patience=40` para confirmar si la
-   dispersión viene del corte prematuro. También corregir el `splits.json` dentro de `mango_dataset_v3.zip`
+1. **Balance de pérdidas en la destilación** — Normalizar la pérdida de features o rebalancear `kd_weight`, y
+   repetir el destilado contra el mismo maestro. Después, confirmar el maestro con 3 semillas sobre un split
+   agrupado por sesión
 2. **Knowledge Distillation training** — Entrenar al estudiante usando las proyecciones del maestro
 3. **Más datos** — 100-200+ pares RGB+NIR adicionales para mejorar AP de daño
 4. **Fase 2 de entrenamiento** — Descongelar backbone del maestro cuando haya ≥200 imágenes
