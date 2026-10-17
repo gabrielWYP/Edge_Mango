@@ -28,6 +28,7 @@ from .augmentations import (
     get_val_transforms,
 )
 from .nir_registration import load_homography, register_nir_to_rgb
+from .roi_crop import MANGO_CLASS_ID, crop_to_roi, validate_roi_crop
 
 # ImageNet RGB normalization stats
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
@@ -170,6 +171,19 @@ class YOLODataset(Dataset):
             meant for synthetic fixtures and explicit ablations. Required
             keyword-only (no default): every caller must choose explicitly,
             so forgetting it cannot silently train on unregistered NIR.
+        roi_crop: Crop RGB and registered NIR to the ground-truth mango box
+            (class 0) plus a margin before letterboxing, and re-express the
+            labels relative to the crop (see `roi_crop.crop_to_roi`). Images
+            without a mango box stay full-frame. The window comes from GT
+            labels at every split, so val/test metrics are an ORACLE-ROI upper
+            bound. Assumes NIR is already in the RGB frame.
+        roi_crop_margin: Per-side crop margin as a fraction of the mango box
+            width/height (>= 0).
+        roi_crop_jitter: Half-range of the per-side margin scale in [0, 1].
+            Applied only when `split == "train"`; val/test crops are
+            deterministic. Its randomness comes from torch's global RNG (see
+            `_roi_crop_rng`), so `torch.manual_seed` and DataLoader worker
+            seeding govern it.
     """
 
     def __init__(
@@ -186,7 +200,11 @@ class YOLODataset(Dataset):
         manifest_path: str | Path | None = None,
         *,
         nir_homography_path: str | Path | None,
+        roi_crop: bool = False,
+        roi_crop_margin: float = 0.10,
+        roi_crop_jitter: float = 0.0,
     ):
+        validate_roi_crop(roi_crop_margin, roi_crop_jitter)
         self.rgb_dir = Path(rgb_dir)
         self.nir_dir = Path(nir_dir)
         self.labels_dir = Path(labels_dir) / split
@@ -199,6 +217,9 @@ class YOLODataset(Dataset):
         self.nir_homography_path = (
             Path(nir_homography_path) if nir_homography_path is not None else None
         )
+        self.roi_crop = roi_crop
+        self.roi_crop_margin = roi_crop_margin
+        self.roi_crop_jitter = roi_crop_jitter
         # Loaded once (fails loudly if missing); never per item.
         self.H_rgb_to_nir = (
             load_homography(self.nir_homography_path)
@@ -390,6 +411,21 @@ class YOLODataset(Dataset):
                 nir_img, self.H_rgb_to_nir, (orig_w, orig_h), int(self.nir_mean * 255)
             )
 
+        # Crop to the GT mango box (+ margin) so letterbox does not throw away
+        # most of the resolution on background. After registration, so one
+        # RGB-frame window is valid for both modalities.
+        if self.roi_crop:
+            rgb_img, nir_img, bboxes, labels = crop_to_roi(
+                rgb_img,
+                nir_img,
+                bboxes,
+                labels,
+                roi_class=MANGO_CLASS_ID,
+                margin=self.roi_crop_margin,
+                margin_jitter=self._roi_crop_jitter_range(),
+                rng=self._roi_crop_rng(),
+            )
+
         # Letterbox both images (RGB uses gray=114, NIR uses its own mean ~14)
         rgb_lb, scale, pad_x, pad_y = letterbox(rgb_img, self.image_size, self.letterbox_value)
         nir_lb, _, _, _ = letterbox(nir_img, self.image_size, int(self.nir_mean * 255))
@@ -456,6 +492,26 @@ class YOLODataset(Dataset):
             "labels": labels_tensor,
             "image_id": pair["image_id"],
         }
+
+    def _roi_crop_jitter_range(self) -> float:
+        """Margin jitter in effect: train augmentation only, deterministic otherwise."""
+        return self.roi_crop_jitter if self.split == "train" else 0.0
+
+    def _roi_crop_rng(self) -> np.random.Generator | None:
+        """Per-call generator for the crop margin jitter, or None when it is off.
+
+        Seeded from one draw of torch's global RNG, the only seeding the
+        pipeline has: `torch.manual_seed(config.seed)` seeds it in the main
+        process and DataLoader reseeds it per worker (`base_seed + worker_id`,
+        a fresh `base_seed` every epoch), so jitter is reproducible under the
+        run seed in both single-process and multi-worker loading. numpy's
+        global RNG is not seeded by the run, so it would not be reproducible
+        in single-process mode. The draw happens only when jitter is active,
+        leaving the full-frame and val/test paths' RNG streams untouched.
+        """
+        if self._roi_crop_jitter_range() == 0.0:
+            return None
+        return np.random.default_rng(int(torch.randint(0, 2**31 - 1, (1,)).item()))
 
     def _rescale_bboxes(
         self,
