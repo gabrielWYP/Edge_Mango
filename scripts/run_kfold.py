@@ -25,11 +25,16 @@ Resumable: re-run the exact same command after a crash, a reboot or a Ctrl-C.
     after the training subprocess exits 0 and left `best_model.pt`) and the
     checkpoint is still there. `best_model.pt` alone proves nothing: the
     trainer writes it after the first epoch;
+  * the marker records an identity: sha256 of the train command, the config and
+    machine files and the fold's content. A marker with another identity (other
+    `--epochs`, `--extra-override`, machine, config or fold) stops the runner;
+    it is never skipped nor overwritten;
   * a run directory without that marker is an interrupted run. If it holds
     weights it is moved aside to `<run>.interrupted-<n>` (a directory with only
     TensorBoard logs is simply removed) and the run is trained from scratch;
     its stale evaluations are dropped;
-  * an evaluation is skipped when its `metrics.json` exists.
+  * an evaluation is skipped when its `metrics.json` exists and its
+    `eval_complete.json` has the current identity (else the runner stops).
 
 A failed subprocess stops the runner at once (non-zero exit, clear message);
 Ctrl-C / SIGTERM / SIGHUP stop it cleanly (exit 130, the child is killed).
@@ -48,6 +53,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import re
@@ -79,6 +85,7 @@ DEFAULT_REPORTS_ROOT = "reports/kfold_lot"
 EVAL_SPLITS = ("val", "test")
 CHECKPOINT = "best_model.pt"
 COMPLETE_MARKER = "run_complete.json"
+EVAL_MARKER = "eval_complete.json"
 # The protocol shared by every arm: no early stopping, select on damage AP50.
 PROTOCOL_OVERRIDES = ("patience=1000", "selection_metric=damage_ap50")
 
@@ -233,10 +240,63 @@ def is_train_complete(run_path: Path) -> bool:
         return False
 
 
-def mark_train_complete(run_path: Path, command: list[str]) -> None:
+def _digest(value) -> str:
+    """sha256 of the canonical JSON of `value`."""
+    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def _file_sha256(path: Path) -> str:
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def _identity(parts: dict[str, str]) -> dict[str, str]:
+    return {**parts, "sha256": _digest(parts)}
+
+
+def run_identity(command: Sequence[str], config: Path, machine: Path, fold_path: Path) -> dict[str, str]:
+    """Digest of each input that determines a training run, plus their overall `sha256`.
+
+    The fold is `splits.json` plus every file under `labels/` (path and bytes), sorted.
+    """
+    fold_path = Path(fold_path)
+    files = [fold_path / "splits.json", *sorted(p for p in (fold_path / "labels").rglob("*") if p.is_file())]
+    return _identity({
+        "command": _digest(list(command)),
+        "config": _file_sha256(config),
+        "machine": _file_sha256(machine),
+        "fold": _digest([[p.relative_to(fold_path).as_posix(), _file_sha256(p)] for p in files]),
+    })
+
+
+def eval_identity(run_sha256: str, split: str, command: Sequence[str]) -> dict[str, str]:
+    return _identity({"run": run_sha256, "split": split, "command": _digest(list(command))})
+
+
+def require_identity(marker: Path, current: dict[str, str], key: str) -> None:
+    """Return only if `marker` records `current`; a missing, legacy or other identity stops the runner."""
+    try:
+        stored = json.loads(Path(marker).read_text()).get("identity")
+    except (OSError, ValueError, AttributeError):
+        stored = None
+    stored = stored if isinstance(stored, dict) else {}
+    if stored.get("sha256") == current["sha256"]:
+        return
+    detail = (
+        "changed: " + ", ".join(k for k in current if k != "sha256" and stored.get(k) != current[k])
+        if stored else f"{Path(marker).name} has no identity"
+    )
+    where = Path(marker).parent
+    raise RunnerError(
+        f"{key}: {where} comes from other settings ({detail}); it is not reused and not overwritten. "
+        f"Use a different --checkpoints-root/--reports-root, or delete {where} and re-run."
+    )
+
+
+def mark_train_complete(run_path: Path, command: list[str], identity: dict[str, str]) -> None:
     payload = {
         "command": command,
         "completed_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "identity": identity,
         "returncode": 0,
     }
     (Path(run_path) / COMPLETE_MARKER).write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
@@ -359,13 +419,15 @@ def run_kfold(options: RunnerOptions, execute=None) -> dict[str, str]:
                 reports = report_run_dir(options.reports_root, arm, fold, seed)
 
                 train_key = f"{base}/train"
+                cmd = build_train_command(
+                    options.python, config, options.machine, fold_path, run, seed,
+                    options.epochs, options.extra_overrides,
+                )
+                identity = run_identity(cmd, config, options.machine, fold_path)
                 if is_train_complete(run):
+                    require_identity(run / COMPLETE_MARKER, identity, train_key)
                     skip(train_key, f"{COMPLETE_MARKER} found")
                 else:
-                    cmd = build_train_command(
-                        options.python, config, options.machine, fold_path, run, seed,
-                        options.epochs, options.extra_overrides,
-                    )
                     if not options.dry_run:
                         aside = move_aside_incomplete(run)
                         if aside is not None:
@@ -381,23 +443,27 @@ def run_kfold(options: RunnerOptions, execute=None) -> dict[str, str]:
                             raise RunnerError(
                                 f"{train_key} exited 0 but wrote no {CHECKPOINT} in {run}; not marking it complete."
                             )
-                        mark_train_complete(run, cmd)
+                        mark_train_complete(run, cmd, identity)
                     summary[train_key] = "dry-run" if options.dry_run else "ran"
 
                 for split in EVAL_SPLITS:
                     key = f"{base}/eval_{split}"
                     out = reports / split
-                    if (out / "metrics.json").is_file():
-                        skip(key, "metrics.json found")
-                        continue
                     cmd = build_eval_command(
                         options.python, config, run / CHECKPOINT, split, fold_path,
                         run / f"eval_{split}", out, eval_machine_overrides, options.extra_overrides,
                     )
+                    eval_id = eval_identity(identity["sha256"], split, cmd)
+                    if (out / "metrics.json").is_file():
+                        require_identity(out / EVAL_MARKER, eval_id, key)
+                        skip(key, "metrics.json found")
+                        continue
                     _run_step(key, cmd, options, log, execute)
                     if not options.dry_run and not (out / "metrics.json").is_file():
                         log.write("FAILED", key, "exit code 0 but no metrics.json")
                         raise RunnerError(f"{key} exited 0 but wrote no metrics.json in {out}.")
+                    if not options.dry_run:
+                        (out / EVAL_MARKER).write_text(json.dumps({"identity": eval_id}, indent=2, sort_keys=True) + "\n")
                     summary[key] = "dry-run" if options.dry_run else "ran"
     return summary
 

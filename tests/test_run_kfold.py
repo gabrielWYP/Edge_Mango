@@ -10,6 +10,7 @@ import json
 import os
 import shlex
 import signal
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -227,7 +228,7 @@ def test_run_is_complete_only_with_the_marker_and_a_checkpoint(tmp_path: Path) -
     run.mkdir()
     (run / "best_model.pt").write_bytes(b"x")          # appears mid-training
     assert not rk.is_train_complete(run)
-    rk.mark_train_complete(run, ["py", "-m", "src.training.train"])
+    rk.mark_train_complete(run, ["py", "-m", "src.training.train"], {"sha256": "x"})
     assert rk.is_train_complete(run)
     (run / "best_model.pt").unlink()
     assert not rk.is_train_complete(run)
@@ -441,3 +442,108 @@ def test_sigterm_is_handled_like_ctrl_c_and_the_handler_is_restored(tmp_path: Pa
     assert code == 130
     assert "re-run the same command" in capsys.readouterr().err.lower()
     assert signal.getsignal(signal.SIGTERM) == before
+
+
+# --------------------------------------------------------------------------
+# Run identity: a marker only counts for the settings that produced it
+# --------------------------------------------------------------------------
+
+
+def _identity_inputs(tmp_path: Path) -> tuple[Path, Path, Path]:
+    """Private copies of an arm config, a machine profile and one fold, so tests can edit them."""
+    config, machine = tmp_path / "arm.yaml", tmp_path / "machine.yaml"
+    config.write_text(TWOSTREAM.read_text())
+    machine.write_text(RTX3080.read_text())
+    fold = _make_folds(tmp_path / "folds") / "fold_0"
+    (fold / "labels" / "train" / "a.txt").write_text("0 0.5 0.5 0.1 0.1\n")
+    return config, machine, fold
+
+
+def _identity(config: Path, machine: Path, fold: Path, epochs=None, extra_overrides=()) -> dict[str, str]:
+    cmd = rk.build_train_command("py", config, machine, fold, fold.parent / "run", 42, epochs, list(extra_overrides))
+    return rk.run_identity(cmd, config, machine, fold)
+
+
+# Each mutation edits the inputs on disk and/or returns RunnerOptions field replacements.
+def _epochs(config, machine, fold): return {"epochs": 1}
+def _extra(config, machine, fold): return {"extra_overrides": ["rgb_dir=/x/rgb"]}
+def _machine(config, machine, fold): machine.write_text(machine.read_text() + "# edit\n")
+def _config(config, machine, fold): config.write_text(config.read_text() + "# edit\n")
+def _label(config, machine, fold): (fold / "labels" / "train" / "a.txt").write_text("1 0.5 0.5 0.1 0.1\n")
+def _manifest(config, machine, fold): (fold / "splits.json").write_text('{"train": ["a"]}')
+
+
+IDENTITY_CHANGES = [
+    pytest.param(_epochs, "command", id="epochs"), pytest.param(_extra, "command", id="extra-override"),
+    pytest.param(_machine, "machine", id="machine"), pytest.param(_config, "config", id="config-bytes"),
+    pytest.param(_label, "fold", id="fold-label"), pytest.param(_manifest, "fold", id="manifest"),
+]
+
+
+@pytest.mark.parametrize("mutate, part", IDENTITY_CHANGES)
+def test_run_identity_changes_with_everything_that_determines_the_result(tmp_path: Path, mutate, part: str) -> None:
+    config, machine, fold = _identity_inputs(tmp_path)
+    before = _identity(config, machine, fold)
+    assert _identity(config, machine, fold) == before
+    after = _identity(config, machine, fold, **(mutate(config, machine, fold) or {}))
+    assert [k for k in before if before[k] != after[k]] == [part, "sha256"]
+
+
+@pytest.mark.parametrize("mutate, part", IDENTITY_CHANGES)
+def test_resume_with_other_settings_stops_instead_of_skipping(tmp_path: Path, mutate, part: str) -> None:
+    config, machine, fold = _identity_inputs(tmp_path)
+    options = _options(tmp_path, folds=[0], arms=[config], machine=machine)
+    rk.run_kfold(options, FakeExecutor())
+    run = tmp_path / "ckpt" / "arm" / "fold0" / "seed42"
+    marker = (run / "run_complete.json").read_text()
+
+    changes = mutate(config, machine, fold) or {}
+    executor = FakeExecutor()
+    with pytest.raises(rk.RunnerError, match=rf"\(changed: {part}\)") as error:
+        rk.run_kfold(replace(options, **changes), executor)
+
+    assert str(run) in str(error.value) and "--checkpoints-root" in str(error.value)
+    assert executor.calls == []
+    assert (run / "best_model.pt").read_bytes() == b"weights"           # neither retrained nor moved
+    assert (run / "run_complete.json").read_text() == marker
+    assert not list(run.parent.glob("seed42.interrupted-*"))
+
+
+def test_legacy_marker_without_an_identity_stops_instead_of_skipping(tmp_path: Path) -> None:
+    options = _options(tmp_path, folds=[0], arms=[TWOSTREAM])
+    run = tmp_path / "ckpt" / "twostream" / "fold0" / "seed42"
+    run.mkdir(parents=True)
+    (run / "best_model.pt").write_bytes(b"old")
+    (run / "run_complete.json").write_text(json.dumps({"command": ["py"], "returncode": 0}))
+    executor = FakeExecutor()
+    with pytest.raises(rk.RunnerError, match="no identity"):
+        rk.run_kfold(options, executor)
+    assert executor.calls == [] and not list(run.parent.glob("seed42.interrupted-*"))
+
+
+def test_fresh_run_writes_both_markers_with_the_identity(tmp_path: Path) -> None:
+    options = _options(tmp_path, folds=[0], arms=[TWOSTREAM])
+    executor = FakeExecutor()
+    rk.run_kfold(options, executor)
+    identity = rk.run_identity(executor.calls[0], TWOSTREAM, RTX3080, options.folds_dir / "fold_0")
+    run = tmp_path / "ckpt" / "twostream" / "fold0" / "seed42"
+    assert json.loads((run / "run_complete.json").read_text())["identity"] == identity
+    for call, split in zip(executor.calls[1:], rk.EVAL_SPLITS):
+        marker = tmp_path / "reports" / "twostream" / "fold0_seed42" / split / "eval_complete.json"
+        assert json.loads(marker.read_text())["identity"] == rk.eval_identity(identity["sha256"], split, call)
+
+
+def test_eval_is_skipped_only_with_a_matching_eval_complete_marker(tmp_path: Path) -> None:
+    options = _options(tmp_path, folds=[0], arms=[TWOSTREAM])
+    rk.run_kfold(options, FakeExecutor())
+    marker = tmp_path / "reports" / "twostream" / "fold0_seed42" / "val" / "eval_complete.json"
+    executor = FakeExecutor()
+    stale = json.loads(marker.read_text())
+    stale["identity"].update(sha256="0" * 64, command="0" * 64)           # evaluated with another command
+    marker.write_text(json.dumps(stale))
+    with pytest.raises(rk.RunnerError, match=r"eval_val.*\(changed: command\)"):
+        rk.run_kfold(options, executor)
+    marker.unlink()                                                     # metrics.json of unknown origin
+    with pytest.raises(rk.RunnerError, match=r"eval_val.*no identity"):
+        rk.run_kfold(options, executor)
+    assert executor.calls == []
