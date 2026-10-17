@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import math
 import sys
 from pathlib import Path
 
@@ -146,6 +147,103 @@ def _check_arch_version(checkpoint_path: str, arch_version, fusion_mode: str) ->
     )
 
 
+# What a checkpoint trained before the ROI crop existed implicitly used.
+_LEGACY_ROI_CROP = False
+_LEGACY_ROI_CROP_MARGIN = 0.10
+
+
+def _check_roi_crop_binding(
+    checkpoint_path: str, checkpoint_config: dict | None, config: TrainingConfig,
+) -> None:
+    """Raise unless the eval config feeds the model the crop it was trained on.
+
+    `checkpoint_config` is the training config the Trainer recorded under
+    `"config"` (`config.__dict__`). The crop changes the input distribution
+    but adds no state_dict key, so `strict=True` cannot catch a mismatch and
+    the metrics of a crop-trained checkpoint scored full-frame (or vice
+    versa) would be silently wrong. Neither side is adopted silently: a
+    disagreement on `roi_crop`, or on `roi_crop_margin` while the crop is on,
+    fails with the config to pass instead.
+
+    A recorded config without the `roi_crop*` keys predates the crop and
+    counts as `roi_crop=False`, `roi_crop_margin=0.10`. A checkpoint with no
+    recorded config at all (a raw state_dict) cannot be checked: it warns and
+    proceeds with the eval config.
+    """
+    if not checkpoint_config:
+        logger.warning(
+            "Checkpoint at %s records no training config, so its roi_crop cannot "
+            "be verified; evaluating with the config's roi_crop=%s "
+            "(roi_crop_margin=%s).",
+            checkpoint_path, config.roi_crop, config.roi_crop_margin,
+        )
+        return
+
+    trained_crop = bool(checkpoint_config.get("roi_crop", _LEGACY_ROI_CROP))
+    trained_margin = float(checkpoint_config.get("roi_crop_margin", _LEGACY_ROI_CROP_MARGIN))
+
+    if trained_crop != config.roi_crop:
+        if trained_crop:
+            trained = f"roi_crop=True (roi_crop_margin={trained_margin:g})"
+            fix = (
+                "Evaluate it with the config it was trained with (e.g. "
+                "configs/experiment/twostream_roi_crop.yaml) or pass "
+                f"--override roi_crop=true roi_crop_margin={trained_margin:g}."
+            )
+        else:
+            trained = "roi_crop=False"
+            fix = (
+                "Evaluate it with the config it was trained with (e.g. "
+                "configs/experiment/twostream.yaml) or pass --override roi_crop=false."
+            )
+        raise ValueError(
+            f"Checkpoint at {checkpoint_path} was trained with {trained}, but the "
+            f"eval config has roi_crop={config.roi_crop} "
+            f"(roi_crop_margin={config.roi_crop_margin:g}); the metrics would "
+            f"come from the wrong input crop. {fix}"
+        )
+
+    if trained_crop and not math.isclose(
+        trained_margin, config.roi_crop_margin, rel_tol=0.0, abs_tol=1e-9,
+    ):
+        raise ValueError(
+            f"Checkpoint at {checkpoint_path} was trained with "
+            f"roi_crop_margin={trained_margin:g}, but the eval config has "
+            f"roi_crop_margin={config.roi_crop_margin:g}; the metrics would come "
+            "from a differently cropped input. Evaluate it with the config it was "
+            f"trained with or pass --override roi_crop_margin={trained_margin:g}."
+        )
+
+
+def _roi_crop_provenance(config: TrainingConfig) -> dict:
+    """The crop settings an evaluation ran with, for the JSON it writes."""
+    return {"roi_crop": config.roi_crop, "roi_crop_margin": config.roi_crop_margin}
+
+
+def _build_eval_dataset(config: TrainingConfig, split: str) -> YOLODataset:
+    """Build the evaluation dataset for `split`.
+
+    `roi_crop_jitter` is pinned to 0.0 whatever the config or split says:
+    `YOLODataset` jitters the crop margin on `split == "train"`, and an
+    evaluation (including `--split train`) must score the same crop every run.
+    """
+    return YOLODataset(
+        rgb_dir=config.rgb_dir,
+        nir_dir=config.nir_dir,
+        labels_dir=config.labels_dir,
+        split=split,
+        image_size=config.image_size,
+        nir_mean=config.nir_mean,
+        nir_std=config.nir_std,
+        letterbox_value=config.letterbox_value,
+        manifest_path=config.split_manifest,
+        nir_homography_path=config.nir_homography_path,
+        roi_crop=config.roi_crop,
+        roi_crop_margin=config.roi_crop_margin,
+        roi_crop_jitter=0.0,
+    )
+
+
 def _resolve_head_strides(checkpoint: dict, fusion_mode: str) -> list[int]:
     """Return the strides to rebuild the checkpoint's MasterModel with.
 
@@ -190,6 +288,11 @@ def _resolve_fusion_pos_encoding(checkpoint: dict, config: TrainingConfig) -> bo
 def _load_model(model_type: str, checkpoint_path: str, config: TrainingConfig, device: torch.device):
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     is_checkpoint_dict = isinstance(checkpoint, dict) and "model_state_dict" in checkpoint
+    # The checkpoint is already in hand: bind the eval crop to the trained one
+    # before any model is built or any weight loaded.
+    _check_roi_crop_binding(
+        checkpoint_path, checkpoint.get("config") if is_checkpoint_dict else None, config,
+    )
 
     head_strides = None
     fusion_pos_encoding = config.fusion_pos_encoding
@@ -337,22 +440,11 @@ def main() -> int:
         # predictions against the wrong anchor grid.
         config.head_strides = model.head_strides
 
-    dataset = YOLODataset(
-        rgb_dir=config.rgb_dir,
-        nir_dir=config.nir_dir,
-        labels_dir=config.labels_dir,
-        split=args.split,
-        image_size=config.image_size,
-        nir_mean=config.nir_mean,
-        nir_std=config.nir_std,
-        letterbox_value=config.letterbox_value,
-        manifest_path=config.split_manifest,
-        nir_homography_path=config.nir_homography_path,
-        roi_crop=config.roi_crop,
-        roi_crop_margin=config.roi_crop_margin,
-        roi_crop_jitter=config.roi_crop_jitter,
+    dataset = _build_eval_dataset(config, args.split)
+    logger.info(
+        "Split '%s': %d images (roi_crop=%s, roi_crop_margin=%g, jitter off)",
+        args.split, len(dataset), config.roi_crop, config.roi_crop_margin,
     )
-    logger.info("Split '%s': %d images", args.split, len(dataset))
 
     loader = build_dataloader(
         dataset, batch_size=config.batch_size, shuffle=False,
@@ -360,13 +452,16 @@ def main() -> int:
     )
 
     if args.assigner_stats:
-        result = _run_assigner_stats(model, config, loader, device, output_dir)
+        result = {
+            **_run_assigner_stats(model, config, loader, device, output_dir),
+            **_roi_crop_provenance(config),
+        }
         (output_dir / "assigner_stats_summary.json").write_text(json.dumps(result, indent=2))
         print(json.dumps(result["summary"], indent=2))
         return 0
 
     trainer = Trainer(model=model, config=config, train_loader=None, val_loader=loader)
-    metrics = trainer.evaluate()
+    metrics = {**trainer.evaluate(), **_roi_crop_provenance(config)}
 
     metrics_path = output_dir / "metrics.json"
     metrics_path.write_text(json.dumps(metrics, indent=2, default=str))
