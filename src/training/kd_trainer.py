@@ -41,6 +41,7 @@ from .fusion_modes import fusion_pos_encoding_from_checkpoint
 from .kd_config import KDConfig
 from .kd_loss import KDLoss
 from .loop import Trainer
+from .neck_norm import neck_norm_from_checkpoint
 from .precision import autocast_ctx
 from .strides import STUDENT_STRIDES, select_by_strides
 from src.models.master.master_model import MasterModel
@@ -136,6 +137,10 @@ class KDTrainer(Trainer):
         # `fusion_pos_encoding` adds no key, so strict loading cannot catch
         # it — it is read from the teacher checkpoint's own recorded config
         # (absent -> False), never from the student's KD config.
+        # The neck norm is part of the state_dict schema too (GroupNorm has no
+        # running statistics), and is read from the same recorded config
+        # (absent -> BatchNorm, what every earlier checkpoint was trained with).
+        neck_norm, neck_gn_groups = neck_norm_from_checkpoint(checkpoint)
         teacher = MasterModel(
             num_classes=config.num_classes,
             pretrained_backbone=False,
@@ -143,6 +148,8 @@ class KDTrainer(Trainer):
             head_strides=config.head_strides,
             fusion_mode=config.fusion_mode,
             fusion_pos_encoding=fusion_pos_encoding_from_checkpoint(checkpoint),
+            neck_norm=neck_norm,
+            neck_gn_groups=neck_gn_groups,
         )
 
         teacher.load_state_dict(checkpoint["model_state_dict"])
@@ -295,6 +302,12 @@ class KDTrainer(Trainer):
                     self.scaler.update()
                 else:
                     optimizer.step()
+                # No gradient accumulation here, so every successful batch is
+                # one optimizer step - the same once-per-step EMA contract as
+                # `Trainer._train_epoch`. Adapters are not part of the EMA:
+                # they are training-only and never saved into the student.
+                if self.ema is not None:
+                    self.ema.update(self.model)
 
             except RuntimeError as e:
                 if "out of memory" in str(e).lower():

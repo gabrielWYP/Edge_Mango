@@ -18,6 +18,8 @@ Features:
     - Gradient clipping
     - CosineAnnealingWarmRestarts with linear warmup
     - Early stopping on val mAP@0.5
+    - Optional weight EMA (`config.ema`): validation, selection and saved
+      checkpoints use the averaged weights
     - Best checkpoint + periodic checkpointing
     - TensorBoard logging, including per-module gradient norms (D-F)
 """
@@ -35,6 +37,7 @@ from torch.utils.data import DataLoader
 
 from .config import DAMAGE_CLASS_ID, TrainingConfig
 from .decode import decode_detections
+from .ema import ModelEMA
 from .loss import YOLOv8Loss
 from .fusion_modes import DEFAULT_FUSION_MODE, arch_version_for_mode
 from .machine import derive_grad_accum_steps
@@ -73,6 +76,10 @@ class Trainer:
         val_loader: Validation data loader.
     """
 
+    # Weight EMA shadow (set in `__init__` when `config.ema`). Declared at
+    # class level so instances built without `__init__` still read None.
+    ema: ModelEMA | None = None
+
     def __init__(
         self,
         model: nn.Module,
@@ -94,6 +101,15 @@ class Trainer:
         else:
             self.device = torch.device(config.device)
         self.model.to(self.device)
+
+        # Weight EMA (src/training/ema.py), built after the model is on its
+        # device so the shadow lives there too. Only built when there is
+        # something to train: an eval-only Trainer (train_loader=None, e.g.
+        # scripts/evaluate_checkpoint.py) evaluates the weights it was given,
+        # which for an EMA checkpoint already are the EMA weights.
+        self.ema = None
+        if config.ema and train_loader is not None:
+            self.ema = ModelEMA(self.model, decay=config.ema_decay, tau=config.ema_tau)
 
         # Gradient accumulation (D-H): effective_batch is the experimental
         # constant; batch_size is a memory knob. Derived, never read from a
@@ -148,6 +164,12 @@ class Trainer:
             self.writer = SummaryWriter(log_dir=str(self.output_dir / "logs"))
         except ImportError:
             print("[Trainer] TensorBoard not available, skipping logging.")
+
+    @property
+    def eval_model(self) -> nn.Module:
+        """The weights validation, selection and checkpoints use: the EMA
+        shadow when `config.ema` is on, otherwise the live model."""
+        return self.ema.module if self.ema is not None else self.model
 
     def fit(self) -> dict:
         """Run training.
@@ -618,6 +640,14 @@ class Trainer:
             else:
                 optimizer.step()
             optimizer.zero_grad(set_to_none=True)
+            # Once per optimizer step (never per micro-batch), so gradient
+            # accumulation does not shorten the EMA horizon. Reached only
+            # when a step actually ran: a NaN/OOM-skipped micro-batch never
+            # gets here. (Under fp16 a GradScaler that skips an inf-gradient
+            # step still lands here; the EMA then blends the unchanged live
+            # weights once more, which is harmless.)
+            if self.ema is not None:
+                self.ema.update(self.model)
             steps_taken += 1
 
         for batch in self.train_loader:
@@ -749,7 +779,10 @@ class Trainer:
             Dict with map50, map_50_95, per_class_ap_50, per_class_ap_50_95,
             per_class precision/recall/f1, and per_class_counts.
         """
-        self.model.eval()
+        # The EMA shadow when enabled (it is kept in eval mode and never
+        # touched here), otherwise the live model, exactly as before.
+        model = self.eval_model
+        model.eval()
 
         all_pred_boxes = []
         all_pred_scores = []
@@ -763,9 +796,9 @@ class Trainer:
 
             with autocast_ctx(self.device.type, self.config.precision):
                 if self.config.model_type == "student":
-                    output = self.model(rgb)
+                    output = model(rgb)
                 else:
-                    output = self.model(rgb, nir)
+                    output = model(rgb, nir)
 
             # Decode predictions for mAP computation
             preds = output["preds"]  # list of (B, nc+4, H, W)
@@ -881,13 +914,23 @@ class Trainer:
         (`scripts/evaluate_checkpoint.py`,
         `scripts/visualize_damage_predictions.py`) instead of a 200-line
         missing/unexpected-key dump.
+
+        Weight EMA: `model_state_dict` always holds the weights validation
+        ran on - the EMA weights when `config.ema` is on - so every loader
+        (`evaluate_checkpoint.py`, the KD teacher, `aggregate_kfold.py`)
+        picks them up unchanged. `ema` records which kind they are and
+        `ema_updates` how many optimizer steps the average has seen. The live
+        weights are NOT stored: nothing resumes training from a checkpoint.
+        Checkpoints without these keys predate the EMA and hold live weights.
+        The norm choice (`neck_norm`, `neck_gn_groups`) travels in `config`.
         """
         path = self.output_dir / filename
         checkpoint = {
             "epoch": epoch,
             "phase": phase,
             "arch_version": arch_version_for_mode(self.config.fusion_mode),
-            "model_state_dict": self.model.state_dict(),
+            "model_state_dict": self.eval_model.state_dict(),
+            "ema": self.ema is not None,
             "metrics": metrics,
             "best_map50": self.best_map50,
             "selection_metric": self.config.selection_metric,
@@ -902,6 +945,8 @@ class Trainer:
             },
         }
         checkpoint.update(self._auxiliary_checkpoint_state())
+        if self.ema is not None:
+            checkpoint["ema_updates"] = self.ema.updates
         if train_metrics is not None:
             checkpoint["oom_skipped"] = train_metrics.get("oom_skipped")
             checkpoint["nan_skipped"] = train_metrics.get("nan_skipped")

@@ -347,8 +347,11 @@ class TestConfig:
     def test_existing_experiment_configs_stay_full_frame(self) -> None:
         paths = sorted((REPO_ROOT / "configs" / "experiment").glob("*.yaml"))
         assert paths
+        # The `_stable` variant is the crop experiment plus GroupNorm + EMA
+        # (pinned in tests/training/test_neck_norm.py), so it crops too.
+        crop_experiments = {"twostream_roi_crop.yaml", "twostream_roi_crop_stable.yaml"}
         for path in paths:
-            if path.name == "twostream_roi_crop.yaml":
+            if path.name in crop_experiments:
                 continue
             assert TrainingConfig.from_yaml(path).roi_crop is False, path.name
 

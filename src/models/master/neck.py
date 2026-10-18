@@ -35,6 +35,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from src.training.neck_norm import DEFAULT_NECK_GN_GROUPS, DEFAULT_NECK_NORM, make_norm
 from src.training.strides import (
     ALL_STRIDES,
     CROSS_ATTENTION_HEAD_STRIDES,
@@ -204,6 +205,12 @@ class DualFPN(nn.Module):
         emit_strides (Sequence[int] | None): Strides to fuse and emit,
             finest-first. Defaults to `CROSS_ATTENTION_HEAD_STRIDES`
             (`(8, 16, 32)`), so every existing call site is unchanged.
+        norm (str): Norm layer inside each fusion conv - "batch" (default,
+            `nn.BatchNorm2d`, the existing checkpoint schema) or "group"
+            (`nn.GroupNorm`, no batch statistics). See
+            `src/training/neck_norm.py`.
+        gn_groups (int): GroupNorm group-count cap (the largest divisor of
+            `out_channels` <= `gn_groups` is used). Ignored for "batch".
     """
 
     def __init__(
@@ -212,6 +219,8 @@ class DualFPN(nn.Module):
         out_channels: int = 256,
         dropout: float = 0.1,
         emit_strides: Sequence[int] | None = None,
+        norm: str = DEFAULT_NECK_NORM,
+        gn_groups: int = DEFAULT_NECK_GN_GROUPS,
     ):
         super().__init__()
 
@@ -230,7 +239,7 @@ class DualFPN(nn.Module):
         self.fusion_convs = nn.ModuleList([
             nn.Sequential(
                 nn.Conv2d(out_channels * 2, out_channels, kernel_size=1),
-                nn.BatchNorm2d(out_channels),
+                make_norm(norm, out_channels, gn_groups),
                 nn.ReLU(inplace=True),
                 nn.Dropout2d(p=dropout),
             )
