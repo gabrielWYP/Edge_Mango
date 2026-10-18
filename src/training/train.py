@@ -184,6 +184,15 @@ def main():
         f"  Batch size: {config.batch_size}, Precision: {config.precision}, "
         f"Device: {config.device}, effective_batch: {config.effective_batch}"
     )
+    print(
+        f"  ema: {config.ema}"
+        + (f" (decay={config.ema_decay}, tau={config.ema_tau})" if config.ema else "")
+        + (
+            f", neck_norm: {config.neck_norm} (groups={config.neck_gn_groups})"
+            if config.model_type == "master"
+            else ""
+        )
+    )
     if run_experiment_sha256:
         print(f"  experiment_sha256: {run_experiment_sha256}")
 
@@ -259,6 +268,8 @@ def main():
             in_channels=config.in_channels,
             fusion_mode=config.fusion_mode,
             fusion_pos_encoding=config.fusion_pos_encoding,
+            neck_norm=config.neck_norm,
+            neck_gn_groups=config.neck_gn_groups,
         )
         params = model.count_parameters()
         print(f"Model parameters: {params['total']:,} total, {params['backbone']:,} backbone")

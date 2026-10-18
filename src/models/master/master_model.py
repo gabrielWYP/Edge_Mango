@@ -78,6 +78,12 @@ from src.training.fusion_modes import (
     FUSION_MODE_EARLY,
     validate_fusion_mode,
 )
+from src.training.neck_norm import (
+    DEFAULT_NECK_GN_GROUPS,
+    DEFAULT_NECK_NORM,
+    validate_neck_norm,
+    validate_neck_norm_for_fusion_mode,
+)
 from src.training.strides import (
     CROSS_ATTENTION_HEAD_STRIDES,
     CROSS_ATTENTION_SUPPORTED_HEAD_STRIDES,
@@ -123,6 +129,17 @@ class MasterModel(nn.Module):
             `src/models/master/fusion.py`). Default False keeps the
             pre-existing behaviour; adds no state_dict key either way.
             `fusion_mode="cross_attention"` only — True raises on "early".
+        neck_norm (str): Norm layer of the `DualFPN` fusion convs - "batch"
+            (default, `nn.BatchNorm2d`) or "group" (`nn.GroupNorm`, no batch
+            statistics). These are the only BatchNorm layers in the model:
+            the backbone and the cross-modal fusion use LayerNorm and the
+            detection head has no normalization layer. Changes the
+            state_dict schema (GroupNorm has no running statistics), so a
+            checkpoint of one cannot be loaded into the other.
+            `fusion_mode="cross_attention"` only - "group" raises on "early"
+            (its `FPNNeck` has no norm layer). See
+            `src/training/neck_norm.py`.
+        neck_gn_groups (int): GroupNorm group-count cap for `neck_norm="group"`.
     """
 
     # ConvNeXt stage channels (identical for Tiny and Small)
@@ -140,11 +157,17 @@ class MasterModel(nn.Module):
         fusion_dropout: float = 0.1,
         fpn_dropout: float = 0.1,
         fusion_pos_encoding: bool = False,
+        neck_norm: str = DEFAULT_NECK_NORM,
+        neck_gn_groups: int = DEFAULT_NECK_GN_GROUPS,
     ):
         super().__init__()
 
         validate_fusion_mode(fusion_mode)
         self.fusion_mode = fusion_mode
+
+        validate_neck_norm(neck_norm, neck_gn_groups)
+        validate_neck_norm_for_fusion_mode(neck_norm, fusion_mode)
+        self.neck_norm = neck_norm
 
         strides = self._resolve_strides(fusion_mode, head_strides)
         validate_strides(strides)
@@ -196,6 +219,8 @@ class MasterModel(nn.Module):
                 out_channels=fpn_channels,
                 dropout=fpn_dropout,
                 emit_strides=tuple(strides),
+                norm=neck_norm,
+                gn_groups=neck_gn_groups,
             )
 
         # --- YOLO-style detection head (compatible with YOLO Nano student) ---

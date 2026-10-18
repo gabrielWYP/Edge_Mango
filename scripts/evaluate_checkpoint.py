@@ -50,6 +50,7 @@ from src.training.fusion_modes import (
     fusion_pos_encoding_from_checkpoint,
 )
 from src.training.loop import Trainer
+from src.training.neck_norm import check_norm_compatible, neck_norm_from_checkpoint
 from src.training.strides import (
     CROSS_ATTENTION_HEAD_STRIDES,
     resolve_active_strides,
@@ -285,6 +286,32 @@ def _resolve_fusion_pos_encoding(checkpoint: dict, config: TrainingConfig) -> bo
     return resolved
 
 
+def _resolve_neck_norm(checkpoint: dict | None, config: TrainingConfig) -> tuple[str, int]:
+    """Return `(neck_norm, neck_gn_groups)` to rebuild the checkpoint's
+    MasterModel with.
+
+    The neck norm is part of the state_dict schema (BatchNorm carries
+    running-statistics buffers, GroupNorm does not), so the checkpoint's own
+    recorded config wins over the eval config - like `head_strides` and
+    `fusion_pos_encoding` - and a disagreeing caller config is overridden with
+    a warning rather than failing on missing/unexpected keys. A recorded
+    config without the field predates it and was trained with BatchNorm. When
+    nothing is recorded at all (a raw state_dict) the eval config is trusted,
+    and `check_norm_compatible` fails loudly if the weights disagree.
+    """
+    if not (checkpoint or {}).get("config"):
+        return config.neck_norm, config.neck_gn_groups
+    norm, groups = neck_norm_from_checkpoint(checkpoint)
+    # The group count is only meaningful for GroupNorm.
+    if norm != config.neck_norm or (norm == "group" and groups != config.neck_gn_groups):
+        logger.warning(
+            "Checkpoint records neck_norm=%r (neck_gn_groups=%s) but the config "
+            "says neck_norm=%r (neck_gn_groups=%s); using the checkpoint's value.",
+            norm, groups, config.neck_norm, config.neck_gn_groups,
+        )
+    return norm, groups
+
+
 def _load_model(model_type: str, checkpoint_path: str, config: TrainingConfig, device: torch.device):
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     is_checkpoint_dict = isinstance(checkpoint, dict) and "model_state_dict" in checkpoint
@@ -296,6 +323,7 @@ def _load_model(model_type: str, checkpoint_path: str, config: TrainingConfig, d
 
     head_strides = None
     fusion_pos_encoding = config.fusion_pos_encoding
+    neck_norm, neck_gn_groups = config.neck_norm, config.neck_gn_groups
     if is_checkpoint_dict:
         arch_version = checkpoint.get("arch_version")
         if model_type == "master":
@@ -310,10 +338,14 @@ def _load_model(model_type: str, checkpoint_path: str, config: TrainingConfig, d
             _check_arch_version(checkpoint_path, arch_version, config.fusion_mode)
             head_strides = _resolve_head_strides(checkpoint, config.fusion_mode)
             fusion_pos_encoding = _resolve_fusion_pos_encoding(checkpoint, config)
+            neck_norm, neck_gn_groups = _resolve_neck_norm(checkpoint, config)
+        # `model_state_dict` is the weights validation ran on: the EMA weights
+        # for an `ema` run (see `Trainer._save_checkpoint`).
         state_dict = checkpoint["model_state_dict"]
         logger.info(
-            "Loaded checkpoint (epoch=%s, best_map50=%s)",
+            "Loaded checkpoint (epoch=%s, best_map50=%s, weights=%s)",
             checkpoint.get("epoch", "?"), checkpoint.get("best_map50", "?"),
+            "ema" if checkpoint.get("ema") else "live",
         )
     else:
         state_dict = checkpoint
@@ -328,7 +360,10 @@ def _load_model(model_type: str, checkpoint_path: str, config: TrainingConfig, d
             in_channels=config.in_channels,
             fusion_mode=config.fusion_mode,
             fusion_pos_encoding=fusion_pos_encoding,
+            neck_norm=neck_norm,
+            neck_gn_groups=neck_gn_groups,
         )
+        check_norm_compatible(model, state_dict, source=f"Checkpoint at {checkpoint_path}")
     else:
         model = StudentModel(num_classes=config.num_classes)
         # Pre-fix KD checkpoints stored the training-only adapters inside

@@ -19,7 +19,14 @@ from .fusion_modes import (
     validate_fusion_mode,
     validate_fusion_pos_encoding,
 )
+from .ema import DEFAULT_EMA_DECAY, DEFAULT_EMA_TAU, validate_ema
 from .machine import derive_grad_accum_steps
+from .neck_norm import (
+    DEFAULT_NECK_GN_GROUPS,
+    DEFAULT_NECK_NORM,
+    validate_neck_norm,
+    validate_neck_norm_for_fusion_mode,
+)
 from .nir_registration import DEFAULT_NIR_HOMOGRAPHY_PATH
 from .precision import validate_bf16_support, validate_precision
 from .roi_crop import validate_roi_crop
@@ -145,6 +152,36 @@ class TrainingConfig:
             stem is intentionally NOT in this group — it is 4-channel and
             out of ImageNet distribution by construction, so it trains at
             the full (non-discriminated) rate alongside the neck and head.
+        neck_norm: "batch" (default) | "group". Norm layer of the
+            cross-attention neck's fusion convs, the only BatchNorm layers in
+            the master model (`src/training/neck_norm.py`). "group" swaps in
+            GroupNorm, which has no batch statistics: with a physical batch of
+            2 the BatchNorm running statistics are noisy and drift between
+            epochs. Changes the checkpoint schema; loaders read it back from
+            the checkpoint's recorded config (absent -> "batch").
+            `fusion_mode="cross_attention"` only - "group" is rejected on
+            "early", whose neck has no norm layer. Ignored for
+            model_type="student".
+        neck_gn_groups: GroupNorm group-count cap; the largest divisor of the
+            channel count <= `neck_gn_groups` is used (256 channels -> 32).
+        ema: Keep an exponential moving average of the weights
+            (`src/training/ema.py`), updated once per OPTIMIZER step. When
+            on, validation, best-checkpoint selection and early stopping use
+            the EMA weights, and every checkpoint stores them as
+            `model_state_dict` (with `ema: True`), so evaluation tooling
+            works unchanged. Off by default so existing runs are unchanged.
+        ema_decay: Asymptotic EMA decay, in (0, 1); the average spans about
+            1 / (1 - ema_decay) optimizer steps. The default 0.99 (~100
+            steps) is about 5-6 epochs on the leave-one-lot-out folds, whose
+            117-162 training pairs give 15-21 optimizer steps per epoch at
+            `effective_batch=8` (1.5k-2.1k steps over 100 epochs). The
+            YOLOv8-style 0.9998 would span 5000 steps - longer than the whole
+            run.
+        ema_tau: EMA warm-up time constant in optimizer steps (> 0): the
+            decay applied by update `n` is
+            `ema_decay * (1 - exp(-n / ema_tau))`, so the average tracks the
+            live weights early instead of staying anchored to the
+            initialization. The default 50 reaches ~0.87 after 5 epochs.
     """
 
     # Paths
@@ -285,6 +322,18 @@ class TrainingConfig:
     schedule: str = "end_to_end"
     backbone_lr_mult: float = 0.1
 
+    # Neck normalization (src/training/neck_norm.py) - MasterModel only, and
+    # only meaningful for fusion_mode="cross_attention". "batch" is the
+    # existing checkpoint schema.
+    neck_norm: str = DEFAULT_NECK_NORM
+    neck_gn_groups: int = DEFAULT_NECK_GN_GROUPS
+
+    # Weight EMA (src/training/ema.py) - opt-in, so every existing config
+    # keeps validating and saving the live weights.
+    ema: bool = False
+    ema_decay: float = DEFAULT_EMA_DECAY
+    ema_tau: float = DEFAULT_EMA_TAU
+
     def __post_init__(self) -> None:
         valid_types = {"master", "student"}
         if self.model_type not in valid_types:
@@ -318,6 +367,8 @@ class TrainingConfig:
         # is valid for both model types.
         validate_fusion_mode(self.fusion_mode)
         validate_roi_crop(self.roi_crop_margin, self.roi_crop_jitter)
+        validate_neck_norm(self.neck_norm, self.neck_gn_groups)
+        validate_ema(self.ema, self.ema_decay, self.ema_tau)
         if self.selection_metric not in SELECTION_METRICS:
             raise ValueError(
                 f"Invalid selection_metric '{self.selection_metric}'. "
@@ -332,6 +383,7 @@ class TrainingConfig:
             )
         if self.model_type == "master":
             validate_fusion_pos_encoding(self.fusion_pos_encoding, self.fusion_mode)
+            validate_neck_norm_for_fusion_mode(self.neck_norm, self.fusion_mode)
             validate_strides(self.head_strides, self.assigner_level_ranges)
             # `DualFPN` builds one fusion conv per emitted level, so the
             # cross-attention path can honour its 3-level default or the

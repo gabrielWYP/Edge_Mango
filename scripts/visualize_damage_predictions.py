@@ -54,12 +54,14 @@ from scripts.evaluate_checkpoint import (
     _check_arch_version,
     _resolve_fusion_pos_encoding,
     _resolve_head_strides,
+    _resolve_neck_norm,
 )
 from src.models.master.master_model import MasterModel
 from src.models.student.student_model import StudentModel, strip_legacy_kd_adapter_keys
 from src.training.config import TrainingConfig
 from src.training.dataset import letterbox
 from src.training.decode import decode_detections
+from src.training.neck_norm import check_norm_compatible
 from src.training.nir_registration import load_homography, register_nir_to_rgb
 from src.training.strides import STUDENT_STRIDES
 
@@ -192,6 +194,7 @@ def load_model(
 
     head_strides = None
     fusion_pos_encoding = config.fusion_pos_encoding
+    neck_norm, neck_gn_groups = config.neck_norm, config.neck_gn_groups
     if is_checkpoint_dict:
         arch_version = checkpoint.get("arch_version")
         if model_type == "master":
@@ -203,6 +206,7 @@ def load_model(
             _check_arch_version(checkpoint_path, arch_version, config.fusion_mode)
             head_strides = _resolve_head_strides(checkpoint, config.fusion_mode)
             fusion_pos_encoding = _resolve_fusion_pos_encoding(checkpoint, config)
+            neck_norm, neck_gn_groups = _resolve_neck_norm(checkpoint, config)
         state_dict = checkpoint["model_state_dict"]
         logger.info(
             "Loaded checkpoint dict (epoch=%s, best_map50=%s)",
@@ -222,7 +226,10 @@ def load_model(
             in_channels=config.in_channels,
             fusion_mode=config.fusion_mode,
             fusion_pos_encoding=fusion_pos_encoding,
+            neck_norm=neck_norm,
+            neck_gn_groups=neck_gn_groups,
         )
+        check_norm_compatible(model, state_dict, source=f"Checkpoint at {checkpoint_path}")
         strides = list(model.head_strides)
     else:
         model = StudentModel(num_classes=config.num_classes)
