@@ -44,6 +44,10 @@ tensorboard           # Trainer already logs per-module grad_norm_* here (loop.p
 transformers==4.39.3
 accelerate
 
+# --- Statistics (fold-level inference and seed planning: src/evaluation) ---
+numpy
+scipy>=1.11           # scipy.stats.t: corrected resampled t, correlated Bayesian t, MDE
+
 # --- Florence-2 large attention (needed by the HF model) ---
 # NOTE: flash-attn requires CUDA build; on Lightning AI it may fail to install.
 # If training environment cannot compile it, use Florence-2-base or keep these commented.
