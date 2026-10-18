@@ -1,0 +1,118 @@
+{
+ "note": "Per-lot medians over images; AUCs are max(a, 1-a), i.e. sign-agnostic. pooled_lolo_auc lists the AUC per held-out lot (lot1..lot5) of a logistic classifier on damage vs healthy fruit pixels.",
+ "per_lot_medians": {
+  "lot1": {
+   "n_images": 24,
+   "n_images_with_pixel_auc": 20,
+   "median_ncc_raw": -0.0035,
+   "median_ncc_reg": 0.0724,
+   "median_shift": 2.8665,
+   "median_nir_p50": 23.5,
+   "median_nir_p99": 63.5,
+   "median_nir_clip_hi": 0.0,
+   "median_nir_clip_lo": 0.0001,
+   "median_r2_nir_from_rgb": 0.4618,
+   "median_corr_nir_r": 0.5138,
+   "median_auc_R": 0.7219,
+   "median_auc_G": 0.665,
+   "median_auc_B": 0.6342,
+   "median_auc_NIR": 0.7115
+  },
+  "lot2": {
+   "n_images": 51,
+   "n_images_with_pixel_auc": 36,
+   "median_ncc_raw": -0.0056,
+   "median_ncc_reg": 0.0394,
+   "median_shift": 5.0919,
+   "median_nir_p50": 26.0,
+   "median_nir_p99": 70.0,
+   "median_nir_clip_hi": 0.0,
+   "median_nir_clip_lo": 0.002,
+   "median_r2_nir_from_rgb": 0.6324,
+   "median_corr_nir_r": 0.5855,
+   "median_auc_R": 0.7324,
+   "median_auc_G": 0.6533,
+   "median_auc_B": 0.6567,
+   "median_auc_NIR": 0.6267
+  },
+  "lot3": {
+   "n_images": 42,
+   "n_images_with_pixel_auc": 28,
+   "median_ncc_raw": -0.0076,
+   "median_ncc_reg": 0.0767,
+   "median_shift": 4.5469,
+   "median_nir_p50": 25.0,
+   "median_nir_p99": 65.5,
+   "median_nir_clip_hi": 0.0,
+   "median_nir_clip_lo": 0.0013,
+   "median_r2_nir_from_rgb": 0.5837,
+   "median_corr_nir_r": 0.6051,
+   "median_auc_R": 0.6857,
+   "median_auc_G": 0.6529,
+   "median_auc_B": 0.6488,
+   "median_auc_NIR": 0.6045
+  },
+  "lot4": {
+   "n_images": 69,
+   "n_images_with_pixel_auc": 52,
+   "median_ncc_raw": -0.0228,
+   "median_ncc_reg": 0.0367,
+   "median_shift": 3.9931,
+   "median_nir_p50": 24.0,
+   "median_nir_p99": 68.0,
+   "median_nir_clip_hi": 0.0,
+   "median_nir_clip_lo": 0.0105,
+   "median_r2_nir_from_rgb": 0.5939,
+   "median_corr_nir_r": 0.545,
+   "median_auc_R": 0.6835,
+   "median_auc_G": 0.6546,
+   "median_auc_B": 0.616,
+   "median_auc_NIR": 0.6004
+  },
+  "lot5": {
+   "n_images": 50,
+   "n_images_with_pixel_auc": 50,
+   "median_ncc_raw": -0.0125,
+   "median_ncc_reg": 0.0126,
+   "median_shift": 10.4899,
+   "median_nir_p50": 23.0,
+   "median_nir_p99": 61.0,
+   "median_nir_clip_hi": 0.0,
+   "median_nir_clip_lo": 0.0037,
+   "median_r2_nir_from_rgb": 0.6118,
+   "median_corr_nir_r": 0.5398,
+   "median_auc_R": 0.7267,
+   "median_auc_G": 0.6652,
+   "median_auc_B": 0.6251,
+   "median_auc_NIR": 0.6529
+  }
+ },
+ "pooled_lolo_auc_per_test_lot": {
+  "RGB": [
+   0.693,
+   0.771,
+   0.655,
+   0.717,
+   0.711
+  ],
+  "RGB+NIR": [
+   0.661,
+   0.778,
+   0.601,
+   0.708,
+   0.715
+  ],
+  "NIR": [
+   0.688,
+   0.615,
+   0.599,
+   0.576,
+   0.633
+  ]
+ },
+ "pooled_lolo_auc_mean": {
+  "RGB": 0.709,
+  "RGB+NIR": 0.693,
+  "NIR": 0.622
+ }
+}
