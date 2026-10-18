@@ -213,6 +213,7 @@ def main():
         roi_crop=config.roi_crop,
         roi_crop_margin=config.roi_crop_margin,
         roi_crop_jitter=config.roi_crop_jitter,
+        roi_crop_train_margin_range=config.roi_crop_train_margin_range,
     )
 
     val_dataset = YOLODataset(
@@ -229,6 +230,7 @@ def main():
         roi_crop=config.roi_crop,
         roi_crop_margin=config.roi_crop_margin,
         roi_crop_jitter=config.roi_crop_jitter,
+        roi_crop_train_margin_range=config.roi_crop_train_margin_range,
     )
 
     print(f"Dataset: {len(train_dataset)} train, {len(val_dataset)} val images")

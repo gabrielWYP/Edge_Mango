@@ -362,6 +362,9 @@ class Trainer:
             per_class_recall = val_metrics.get("per_class_recall", {})
             per_class_f1 = val_metrics.get("per_class_f1", {})
             per_class_counts = val_metrics.get("per_class_counts", {})
+            per_class_ap_30 = val_metrics.get("per_class_ap_30", {})
+            per_class_ap_center = val_metrics.get("per_class_ap_center", {})
+            per_class_center_recall = val_metrics.get("per_class_center_recall", {})
             ap50_text = ", ".join(
                 f"AP50[c{cls_id}]={ap:.4f}"
                 for cls_id, ap in sorted(per_class_ap_50.items())
@@ -395,6 +398,9 @@ class Trainer:
                 per_class_recall=per_class_recall,
                 per_class_f1=per_class_f1,
                 per_class_counts=per_class_counts,
+                per_class_ap_30=per_class_ap_30,
+                per_class_ap_center=per_class_ap_center,
+                per_class_center_recall=per_class_center_recall,
                 extra_losses={
                     **{
                         name: value
@@ -493,10 +499,27 @@ class Trainer:
         `self.model` (see `_auxiliary_param_groups`). Empty by default."""
         return {}
 
+    # Per-class val metric each localization-tolerant `selection_metric` reads.
+    _LOCALIZATION_SELECTION_KEYS = {
+        "damage_ap30": "per_class_ap_30",
+        "damage_ap_center": "per_class_ap_center",
+    }
+
     def _selection_score(self, val_metrics: dict) -> float:
         """Value of `config.selection_metric` in one epoch's val metrics."""
-        if self.config.selection_metric == "damage_ap50":
+        metric = self.config.selection_metric
+        if metric == "damage_ap50":
             return val_metrics.get("per_class_ap_50", {}).get(DAMAGE_CLASS_ID, 0.0)
+        if metric in self._LOCALIZATION_SELECTION_KEYS:
+            key = self._LOCALIZATION_SELECTION_KEYS[metric]
+            if key not in val_metrics:
+                # A silent 0.0 would save epoch 1 as "best" for the whole run.
+                raise KeyError(
+                    f"selection_metric '{metric}' needs '{key}' in the validation "
+                    f"metrics, which only compute_map() of this version produces; "
+                    f"got keys {sorted(val_metrics)}."
+                )
+            return val_metrics[key].get(DAMAGE_CLASS_ID, 0.0)
         return val_metrics.get("map50", 0.0)
 
     def _discriminative_param_groups(self, lr: float) -> list[dict]:
@@ -777,7 +800,9 @@ class Trainer:
 
         Returns:
             Dict with map50, map_50_95, per_class_ap_50, per_class_ap_50_95,
-            per_class precision/recall/f1, and per_class_counts.
+            per_class precision/recall/f1, per_class_counts, and the
+            localization-tolerant per_class_ap_30, per_class_ap_center and
+            per_class_center_recall (see `metrics.compute_map`).
         """
         # The EMA shadow when enabled (it is kept in eval mode and never
         # touched here), otherwise the live model, exactly as before.

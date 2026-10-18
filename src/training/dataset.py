@@ -11,6 +11,7 @@ Label format: `class_id cx cy w h` (normalized 0-1, YOLO convention)
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Callable
 import warnings
@@ -28,7 +29,12 @@ from .augmentations import (
     get_val_transforms,
 )
 from .nir_registration import load_homography, register_nir_to_rgb
-from .roi_crop import MANGO_CLASS_ID, crop_to_roi, validate_roi_crop
+from .roi_crop import (
+    MANGO_CLASS_ID,
+    crop_to_roi,
+    validate_roi_crop,
+    validate_roi_crop_train_margin_range,
+)
 
 # ImageNet RGB normalization stats
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
@@ -184,6 +190,12 @@ class YOLODataset(Dataset):
             deterministic. Its randomness comes from torch's global RNG (see
             `_roi_crop_rng`), so `torch.manual_seed` and DataLoader worker
             seeding govern it.
+        roi_crop_train_margin_range: `(min_total, max_total)` or None (off).
+            Train split only: replaces the symmetric margin with a random
+            asymmetric window (see `roi_crop.crop_to_roi`) so the mango and its
+            damage land at varied positions and scales. Needs `roi_crop` and
+            excludes `roi_crop_jitter > 0`. Draws from torch's global RNG like
+            the jitter; val/test crops stay deterministic.
     """
 
     def __init__(
@@ -203,8 +215,12 @@ class YOLODataset(Dataset):
         roi_crop: bool = False,
         roi_crop_margin: float = 0.10,
         roi_crop_jitter: float = 0.0,
+        roi_crop_train_margin_range: Sequence[float] | None = None,
     ):
         validate_roi_crop(roi_crop_margin, roi_crop_jitter)
+        self.roi_crop_train_margin_range = validate_roi_crop_train_margin_range(
+            roi_crop_train_margin_range, roi_crop_jitter, roi_crop
+        )
         self.rgb_dir = Path(rgb_dir)
         self.nir_dir = Path(nir_dir)
         self.labels_dir = Path(labels_dir) / split
@@ -424,6 +440,7 @@ class YOLODataset(Dataset):
                 margin=self.roi_crop_margin,
                 margin_jitter=self._roi_crop_jitter_range(),
                 rng=self._roi_crop_rng(),
+                margin_range=self._roi_crop_margin_range(),
             )
 
         # Letterbox both images (RGB uses gray=114, NIR uses its own mean ~14)
@@ -497,8 +514,12 @@ class YOLODataset(Dataset):
         """Margin jitter in effect: train augmentation only, deterministic otherwise."""
         return self.roi_crop_jitter if self.split == "train" else 0.0
 
+    def _roi_crop_margin_range(self) -> tuple[float, float] | None:
+        """Asymmetric-window range in effect: train augmentation only, None otherwise."""
+        return self.roi_crop_train_margin_range if self.split == "train" else None
+
     def _roi_crop_rng(self) -> np.random.Generator | None:
-        """Per-call generator for the crop margin jitter, or None when it is off.
+        """Per-call generator for the crop margin jitter / range, or None when both are off.
 
         Seeded from one draw of torch's global RNG, the only seeding the
         pipeline has: `torch.manual_seed(config.seed)` seeds it in the main
@@ -506,10 +527,11 @@ class YOLODataset(Dataset):
         a fresh `base_seed` every epoch), so jitter is reproducible under the
         run seed in both single-process and multi-worker loading. numpy's
         global RNG is not seeded by the run, so it would not be reproducible
-        in single-process mode. The draw happens only when jitter is active,
-        leaving the full-frame and val/test paths' RNG streams untouched.
+        in single-process mode. The draw happens only when jitter or the
+        margin range is active, leaving the full-frame and val/test paths' RNG
+        streams untouched.
         """
-        if self._roi_crop_jitter_range() == 0.0:
+        if self._roi_crop_jitter_range() == 0.0 and self._roi_crop_margin_range() is None:
             return None
         return np.random.default_rng(int(torch.randint(0, 2**31 - 1, (1,)).item()))
 

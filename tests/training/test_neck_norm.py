@@ -41,6 +41,8 @@ from src.training.neck_norm import (
 
 EXPERIMENT_DIR = REPO_ROOT / "configs" / "experiment"
 STABLE = EXPERIMENT_DIR / "twostream_roi_crop_stable.yaml"
+# `_stable` plus the prior-breaking crop window (tests/training/test_roi_crop.py).
+STABLE_SHIFT = EXPERIMENT_DIR / "twostream_roi_crop_stable_shift.yaml"
 CROP = EXPERIMENT_DIR / "twostream_roi_crop.yaml"
 
 
@@ -275,7 +277,7 @@ class TestStableExperimentConfig:
         paths = sorted(EXPERIMENT_DIR.glob("*.yaml"))
         assert STABLE in paths
         for path in paths:
-            if path == STABLE:
+            if path in (STABLE, STABLE_SHIFT):
                 continue
             config = TrainingConfig.from_yaml(path)
             assert config.neck_norm == "batch", path.name

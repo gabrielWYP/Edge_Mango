@@ -224,9 +224,10 @@ def _roi_crop_provenance(config: TrainingConfig) -> dict:
 def _build_eval_dataset(config: TrainingConfig, split: str) -> YOLODataset:
     """Build the evaluation dataset for `split`.
 
-    `roi_crop_jitter` is pinned to 0.0 whatever the config or split says:
-    `YOLODataset` jitters the crop margin on `split == "train"`, and an
-    evaluation (including `--split train`) must score the same crop every run.
+    `roi_crop_jitter` is pinned to 0.0 and `roi_crop_train_margin_range` to
+    None whatever the config or split says: `YOLODataset` randomizes the crop
+    window on `split == "train"`, and an evaluation (including `--split train`)
+    must score the same crop every run.
     """
     return YOLODataset(
         rgb_dir=config.rgb_dir,
@@ -242,6 +243,7 @@ def _build_eval_dataset(config: TrainingConfig, split: str) -> YOLODataset:
         roi_crop=config.roi_crop,
         roi_crop_margin=config.roi_crop_margin,
         roi_crop_jitter=0.0,
+        roi_crop_train_margin_range=None,
     )
 
 
@@ -508,8 +510,20 @@ def main() -> int:
         precision = metrics["per_class_precision"].get(cls_id, 0.0)
         recall = metrics["per_class_recall"].get(cls_id, 0.0)
         counts = metrics["per_class_counts"].get(cls_id, {})
+        # Localization-tolerant metrics (IoU 0.3, impact point); absent from a
+        # trainer that predates them.
+        localization = "".join(
+            f" {label}={metrics[key][cls_id]:.4f}"
+            for label, key in (
+                ("AP30", "per_class_ap_30"),
+                ("APcenter", "per_class_ap_center"),
+                ("center_recall", "per_class_center_recall"),
+            )
+            if cls_id in metrics.get(key, {})
+        )
         print(
-            f"  class {cls_id}: AP50={ap:.4f} precision={precision:.4f} recall={recall:.4f} "
+            f"  class {cls_id}: AP50={ap:.4f}{localization} precision={precision:.4f} "
+            f"recall={recall:.4f} "
             f"tp={counts.get('tp', 0)} fp={counts.get('fp', 0)} fn={counts.get('fn', 0)}"
         )
 
