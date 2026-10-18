@@ -7,6 +7,7 @@
 | **Status** | Findings 1-3 are measured on existing checkpoints and labels. Finding 4 is a design plus a capture script that **has not been run on the Pi**. The stabilization of section 5 is implemented but **not trained yet**. |
 | **Compute** | Every analysis here ran on the CPU (the commands below set `CUDA_VISIBLE_DEVICES=""`); no model was trained. |
 | **Evidence** | [Evidence index and reproduction commands](#8-evidence-index-and-reproduction) |
+| **See also** | [Capture calibration with diffusers and the first calibrated capture](capture-calibration.md): final settings, script v2.2 and the findings on one impacted mango. |
 
 ## Related work
 
@@ -398,6 +399,8 @@ Per-pixel damage-vs-healthy AUC, median over images:
 - **The definitive test is an ablation**: the same two-stream model with the NIR input replaced by a constant, on the same LOLO folds, paired by fold.
 
 ## 4. Finding 4: capture protocol and script v2.1
+
+> **Update:** the protocol was later calibrated on the Pi and script v2.2 was run there; the calibration, the final settings and the findings on a first impacted capture are in [capture-calibration.md](capture-calibration.md).
 
 ### 4.1 Issues found in the v1 Pi script
 
