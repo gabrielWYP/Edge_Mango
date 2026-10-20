@@ -15,16 +15,16 @@ Cambios respecto de la version anterior:
 
 Ejemplos:
   # Calibracion al inicio de cada sesion (hoja gris uniforme y tablero ArUco)
-  python3 captura_dual.py --calib gris  --nir-shutter 20000 --nir-gain 2 --rgb-exposure 150 --rgb-wb 4600
-  python3 captura_dual.py --calib aruco --nir-shutter 20000 --nir-gain 2 --rgb-exposure 150 --rgb-wb 4600
+  python3 captura_dual.py --calib gris  --nir-shutter 20000 --nir-gain 1 --rgb-exposure 150 --rgb-wb 6500
+  python3 captura_dual.py --calib aruco --nir-shutter 20000 --nir-gain 1 --rgb-exposure 150 --rgb-wb 6500
 
   # Mango 12, cara 3, impactado en la cara 3 (zona superior) a las 10:15
   python3 captura_dual.py --mango-id 12 --cara 3 --impacto si --cara-impacto 3 --zona-impacto superior \
-      --hora-impacto 10:15 --nir-shutter 20000 --nir-gain 2 --rgb-exposure 150 --rgb-wb 4600
+      --hora-impacto 10:15 --nir-shutter 20000 --nir-gain 1 --rgb-exposure 150 --rgb-wb 6500
 
   # Mismo mango, cara 1 (no impactada); el JSON marca que en esta foto no se espera dano
   python3 captura_dual.py --mango-id 12 --cara 1 --impacto si --cara-impacto 3 --zona-impacto superior \
-      --hora-impacto 10:15 --nir-shutter 20000 --nir-gain 2 --rgb-exposure 150 --rgb-wb 4600
+      --hora-impacto 10:15 --nir-shutter 20000 --nir-gain 1 --rgb-exposure 150 --rgb-wb 6500
 
   # Mango control sin impacto, todo automatico como antes (NIR con EV)
   python3 captura_dual.py --mango-id 13 --cara 2 --impacto no --ev -3
@@ -56,7 +56,7 @@ import time
 import requests
 from gpiozero import OutputDevice
 
-SCRIPT_VERSION = "2.1"
+SCRIPT_VERSION = "2.2"
 
 # --- CONFIGURACION ---
 OUTPUT_DIR = "fotos_tesis"
@@ -196,6 +196,37 @@ def tomar_foto_csi(ruta_archivo, args):
         except Exception as e:
             print(f"[CSI] {binario} fallo: {e}")
     return False
+
+
+# --- REPORTE DE BRILLO (calibracion rapida sin mirar la foto) ---
+def reportar_brillo(ruta, etiqueta):
+    """Imprime y devuelve percentiles de brillo del 50% central de la imagen.
+
+    Objetivo de calibracion: p99 del centro entre ~200 y ~240 y menos de 1% de
+    pixeles saturados (>=250). Requiere Pillow y numpy; si faltan, no hace nada.
+    """
+    try:
+        import numpy as np
+        from PIL import Image
+    except ImportError:
+        print(f"[{etiqueta}] Reporte de brillo omitido (falta Pillow o numpy).")
+        return None
+    try:
+        img = np.asarray(Image.open(ruta).convert("RGB"), dtype=np.float32)
+    except Exception as e:
+        print(f"[{etiqueta}] No se pudo leer la imagen para el reporte: {e}")
+        return None
+    h, w = img.shape[:2]
+    centro = img[h // 4: 3 * h // 4, w // 4: 3 * w // 4]
+    gris = centro.mean(axis=2)  # promedio de canales: no pondera solo el verde
+    p1, p50, p99 = (float(np.percentile(gris, q)) for q in (1, 50, 99))
+    saturado = float((centro.max(axis=2) >= 250).mean() * 100)
+    medias = [round(float(centro[..., i].mean()), 1) for i in range(3)]
+    estado = "OK" if 200 <= p99 <= 240 and saturado < 1 else ("SUBIR exposicion" if p99 < 200 else "BAJAR exposicion")
+    print(f"[{etiqueta}] centro: p1={p1:.0f} p50={p50:.0f} p99={p99:.0f} saturado={saturado:.1f}% "
+          f"medias R,G,B={medias} -> {estado}")
+    return {"p1": round(p1, 1), "p50": round(p50, 1), "p99": round(p99, 1),
+            "saturado_pct": round(saturado, 2), "medias_rgb": medias, "estado": estado}
 
 
 # --- SUBIDA ---
@@ -344,11 +375,14 @@ if __name__ == "__main__":
         rele_nir.off()
         print("Hardware liberado y apagado.")
 
+    brillo = {"rgb": reportar_brillo(archivo_rgb, "RGB") if exito_rgb else None,
+              "nir": reportar_brillo(archivo_nir, "NIR") if exito_nir else None}
     archivo_dng = os.path.splitext(archivo_nir)[0] + ".dng"
     meta = {
         "script_version": SCRIPT_VERSION, "timestamp": ts, "fecha_local": dt.datetime.now().isoformat(timespec="seconds"),
         "mango_id": args.mango_id, "cara": args.cara, "sesion": args.sesion, "calib": args.calib, "nota": args.nota,
         "impacto": impacto,
+        "brillo_centro": brillo,
         "exito": {"rgb": exito_rgb, "nir": exito_nir},
         "nir": {"modo": "manual" if args.nir_shutter is not None else "auto",
                 "shutter_us": args.nir_shutter, "gain": args.nir_gain if args.nir_shutter is not None else None,
