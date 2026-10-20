@@ -107,6 +107,25 @@ class TestEvaluateUsesEvalThreshold:
         assert metrics["per_class_recall"][DAMAGE] == pytest.approx(1.0)
 
 
+class TestEvaluateReportsLocalizationMetrics:
+    """`Trainer.evaluate` carries AP@0.3 and the impact-point metrics, with the same
+    split between the full ranked list (AP) and the operating point (recall)."""
+
+    def test_low_score_true_positive_counts_toward_both_aps(self):
+        metrics = _evaluate(damage_score=0.2)
+        assert metrics["per_class_ap_30"][DAMAGE] == pytest.approx(1.0)
+        assert metrics["per_class_ap_center"][DAMAGE] == pytest.approx(1.0)
+
+    def test_center_recall_uses_conf_threshold_like_the_other_operating_point_metrics(self):
+        assert _evaluate(damage_score=0.2)["per_class_center_recall"][DAMAGE] == pytest.approx(0.0)
+        assert _evaluate(damage_score=0.9)["per_class_center_recall"][DAMAGE] == pytest.approx(1.0)
+
+    def test_every_class_is_reported(self):
+        metrics = _evaluate(damage_score=0.9)
+        for key in ("per_class_ap_30", "per_class_ap_center", "per_class_center_recall"):
+            assert set(metrics[key]) == {0, 1}, key
+
+
 class TestEvalConfThresholdConfig:
     def test_default(self):
         assert TrainingConfig().eval_conf_threshold == pytest.approx(0.001)

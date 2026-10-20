@@ -29,7 +29,7 @@ from .neck_norm import (
 )
 from .nir_registration import DEFAULT_NIR_HOMOGRAPHY_PATH
 from .precision import validate_bf16_support, validate_precision
-from .roi_crop import validate_roi_crop
+from .roi_crop import validate_roi_crop, validate_roi_crop_train_margin_range
 from .strides import (
     CROSS_ATTENTION_SUPPORTED_HEAD_STRIDES,
     DEFAULT_HEAD_STRIDES,
@@ -38,9 +38,13 @@ from .strides import (
 
 # Class index of the damage class in every label file ([mango, damage]).
 DAMAGE_CLASS_ID = 1
-# Validation metrics `selection_metric` may name. Both are AP@0.5 on the val
-# split: "map50" is the two-class mean, "damage_ap50" is class DAMAGE_CLASS_ID.
-SELECTION_METRICS = frozenset({"map50", "damage_ap50"})
+# Validation metrics `selection_metric` may name, all on the val split:
+# "map50" is the two-class AP@0.5 mean; the "damage_*" metrics are class
+# DAMAGE_CLASS_ID alone: "damage_ap50" is AP@0.5, "damage_ap30" is AP at IoU 0.3
+# and "damage_ap_center" is AP under the impact-point criterion (the prediction
+# box contains the GT box center). The last two tolerate the uncertain extent of
+# the induced-impact damage boxes (see src/training/metrics.py).
+SELECTION_METRICS = frozenset({"map50", "damage_ap50", "damage_ap30", "damage_ap_center"})
 
 
 @dataclass
@@ -73,6 +77,15 @@ class TrainingConfig:
             model sees varied framing; val/test crops stay deterministic.
             Must be in [0, 1], which guarantees the crop contains the whole
             mango box. 0 disables it.
+        roi_crop_train_margin_range: `[min_total, max_total]` or null (off,
+            today's behavior). Train split only: per axis, a TOTAL margin
+            `t ~ U(min_total, max_total)` (a fraction of the mango box size) is
+            split asymmetrically (`left = t * f`, `right = t * (1 - f)`,
+            `f ~ U(0, 1)`), so the window still contains the whole mango box
+            but the mango, and the damage the impact protocol concentrates at
+            its center, lands at varied positions and scales in the input.
+            Val/test keep the centered `roi_crop_margin`. Needs `roi_crop` and
+            is mutually exclusive with `roi_crop_jitter > 0`.
         split_manifest: Path to the split manifest (splits.json) used to
             fail-fast if a split's directory contents diverge from it. Set to
             None to skip this guard (e.g., synthetic/unsplit test fixtures).
@@ -204,6 +217,7 @@ class TrainingConfig:
     roi_crop: bool = False
     roi_crop_margin: float = 0.10
     roi_crop_jitter: float = 0.0
+    roi_crop_train_margin_range: list[float] | None = None
 
     # Training
     batch_size: int = 2
@@ -264,7 +278,8 @@ class TrainingConfig:
     # "damage_ap50" selects on the damage-class AP50 alone: under "map50" the
     # mango AP (~0.9) dominates the mean, so the epoch with the best damage AP
     # can go unsaved (twostream seed 42: val damage AP50 0.2077 at epoch 35,
-    # never written to best_model.pt).
+    # never written to best_model.pt). "damage_ap30" / "damage_ap_center" select
+    # on the localization-tolerant damage AP instead (IoU 0.3 / impact point).
     selection_metric: str = "map50"
 
     # Logging
@@ -367,6 +382,9 @@ class TrainingConfig:
         # is valid for both model types.
         validate_fusion_mode(self.fusion_mode)
         validate_roi_crop(self.roi_crop_margin, self.roi_crop_jitter)
+        validate_roi_crop_train_margin_range(
+            self.roi_crop_train_margin_range, self.roi_crop_jitter, self.roi_crop
+        )
         validate_neck_norm(self.neck_norm, self.neck_gn_groups)
         validate_ema(self.ema, self.ema_decay, self.ema_tau)
         if self.selection_metric not in SELECTION_METRICS:

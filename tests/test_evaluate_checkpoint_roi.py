@@ -262,6 +262,38 @@ class TestMainWiring:
         (dataset,) = fake_dataset.instances
         assert dataset.kwargs["roi_crop_jitter"] == 0.0
 
+    def test_metrics_json_carries_the_localization_tolerant_metrics(
+        self, patched, monkeypatch, fake_dataset, capsys
+    ):
+        class _Trainer(_FakeTrainer):
+            def evaluate(self) -> dict:
+                return {
+                    **super().evaluate(),
+                    "per_class_ap_30": {0: 0.95, 1: 0.45},
+                    "per_class_ap_center": {0: 0.97, 1: 0.6},
+                    "per_class_center_recall": {0: 1.0, 1: 0.7},
+                }
+
+        monkeypatch.setattr(ec, "Trainer", _Trainer)
+        self._argv(monkeypatch, patched)
+        assert ec.main() == 0
+
+        metrics = json.loads((patched / "metrics.json").read_text())
+        # JSON class ids are strings, like every other per-class entry.
+        assert metrics["per_class_ap_30"]["1"] == pytest.approx(0.45)
+        assert metrics["per_class_ap_center"]["1"] == pytest.approx(0.6)
+        assert metrics["per_class_center_recall"]["1"] == pytest.approx(0.7)
+        out = capsys.readouterr().out
+        assert "AP30=0.4500" in out and "APcenter=0.6000" in out and "center_recall=0.7000" in out
+
+    def test_a_trainer_without_the_new_metrics_still_prints_and_writes(
+        self, patched, monkeypatch, fake_dataset, capsys
+    ):
+        self._argv(monkeypatch, patched)
+        assert ec.main() == 0
+        assert "AP30" not in capsys.readouterr().out
+        assert "per_class_ap_30" not in json.loads((patched / "metrics.json").read_text())
+
     def test_assigner_stats_summary_records_crop_settings(self, patched, monkeypatch):
         monkeypatch.setattr(
             ec, "_run_assigner_stats",

@@ -5,16 +5,27 @@ Reads `<reports-root>/<arm>/fold<k>_seed<S>/<split>/metrics.json` (the file
 `scripts/evaluate_checkpoint.py` writes) and produces, for the damage class
 (id 1) on `val` and `test`:
 
-  * a per-fold table per arm (AP50, AP50-95, precision, recall, number of
-    damage GT boxes) and the mean +/- sigma across folds (sigma is the sample
-    standard deviation, ddof=1);
+  * a per-fold table per arm (AP50, AP@0.3, AP_center, AP50-95, precision,
+    recall, number of damage GT boxes) and the mean +/- sigma across folds
+    (sigma is the sample standard deviation, ddof=1);
   * the PAIRED difference `treatment - baseline` per fold (default
-    twostream_roi_crop - twostream) with its mean +/- sigma across folds.
+    twostream_roi_crop - twostream) with its mean +/- sigma across folds. It
+    needs two different arms: with a single arm (or `--baseline` equal to
+    `--treatment`) the section is skipped with a note, not computed against
+    itself.
 
 With several seeds, a fold's value is the mean over the seeds present, and a
 fold's paired difference averages `treatment - baseline` over the seeds both
 arms have. Precision and recall are read at the `conf_threshold` operating
-point; AP50 / AP50-95 integrate the whole ranked list.
+point; AP50 / AP@0.3 / AP_center / AP50-95 integrate the whole ranked list.
+
+AP@0.3 (`per_class_ap_30`) is the AP at IoU 0.3 and AP_center
+(`per_class_ap_center`) the AP under the impact-point criterion (the predicted
+box contains the GT box center). Both tolerate the uncertain extent of the
+induced-impact damage boxes. A `metrics.json` written before they existed has
+no such keys: its cells show as missing ("—"), it never enters their
+statistics, and it is listed under "Missing metrics" (re-run
+`scripts/evaluate_checkpoint.py` on its checkpoint to fill them).
 
 Runs that are absent or unreadable are listed as missing in both outputs and
 never enter a statistic.
@@ -43,8 +54,17 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 DAMAGE_CLASS_ID = 1
 SPLITS = ("val", "test")
-METRICS = ("ap50", "ap50_95", "precision", "recall")
-METRIC_LABELS = {"ap50": "AP50", "ap50_95": "AP50-95", "precision": "Precision", "recall": "Recall"}
+METRICS = ("ap50", "ap30", "ap_center", "ap50_95", "precision", "recall")
+METRIC_LABELS = {
+    "ap50": "AP50",
+    "ap30": "AP@0.3",
+    "ap_center": "AP_center",
+    "ap50_95": "AP50-95",
+    "precision": "Precision",
+    "recall": "Recall",
+}
+# Metrics that `metrics.json` files written before they existed do not carry.
+OPTIONAL_METRICS = ("ap30", "ap_center")
 DEFAULT_FOLDS = "0,1,2,3,4"
 
 
@@ -60,11 +80,24 @@ def _class_value(per_class: dict, cls_id: int = DAMAGE_CLASS_ID):
     return per_class[cls_id]
 
 
+def _optional_class_value(metrics: dict, key: str):
+    """Damage-class value of `key`, or None when the file predates that metric."""
+    if key not in metrics:
+        return None
+    return float(_class_value(metrics[key]))
+
+
 def damage_summary(metrics: dict) -> dict:
-    """AP50, AP50-95, precision, recall and GT box count of the damage class."""
+    """AP50, AP@0.3, AP_center, AP50-95, precision, recall and GT box count of the damage class.
+
+    AP@0.3 and AP_center are None for a file without `per_class_ap_30` /
+    `per_class_ap_center`; every other key is required.
+    """
     counts = _class_value(metrics["per_class_counts"])
     return {
         "ap50": float(_class_value(metrics["per_class_ap_50"])),
+        "ap30": _optional_class_value(metrics, "per_class_ap_30"),
+        "ap_center": _optional_class_value(metrics, "per_class_ap_center"),
         "ap50_95": float(_class_value(metrics["per_class_ap_50_95"])),
         "num_gt": int(counts["tp"]) + int(counts["fn"]),     # tp + fn == GT boxes
         "precision": float(_class_value(metrics["per_class_precision"])),
@@ -81,6 +114,12 @@ def mean_std(values: list[float]) -> dict:
         "std": statistics.stdev(values) if len(values) > 1 else None,
         "n": len(values),
     }
+
+
+def _mean_present(values: list[float | None]) -> float | None:
+    """Mean of the values that exist (a metric missing from some files), None if none do."""
+    present = [v for v in values if v is not None]
+    return statistics.fmean(present) if present else None
 
 
 def load_run(reports_root: Path, arm: str, fold: int, seed: int, split: str) -> dict:
@@ -117,6 +156,14 @@ def aggregate(
         {k: run[k] for k in ("arm", "fold", "seed", "split", "status", "reason")}
         for run in runs.values() if run["status"] != "ok"
     ]
+    missing_metrics = [
+        {
+            **{k: run[k] for k in ("arm", "fold", "seed", "split")},
+            "metrics": [m for m in OPTIONAL_METRICS if run[m] is None],
+        }
+        for run in runs.values()
+        if run["status"] == "ok" and any(run[m] is None for m in OPTIONAL_METRICS)
+    ]
 
     per_fold: dict = {}
     summary: dict = {}
@@ -129,16 +176,27 @@ def aggregate(
                       if runs[(arm, fold, seed, split)]["status"] == "ok"]
                 if ok:
                     rows[str(fold)] = {
-                        **{m: statistics.fmean(r[m] for r in ok) for m in METRICS},
+                        **{m: _mean_present([r[m] for r in ok]) for m in METRICS},
                         "num_gt": ok[0]["num_gt"],
                         "seeds": [r["seed"] for r in ok],
                     }
             per_fold[arm][split] = rows
-            summary[arm][split] = {m: mean_std([row[m] for row in rows.values()]) for m in METRICS}
+            summary[arm][split] = {
+                m: mean_std([row[m] for row in rows.values() if row[m] is not None])
+                for m in METRICS
+            }
 
+    # A paired difference compares two arms; one arm against itself is 0 +/- 0 by
+    # construction and says nothing, so it is skipped with a reason instead.
+    skipped = None
+    if baseline == treatment:
+        skipped = (
+            f"baseline and treatment are the same arm ({baseline}); a paired difference "
+            "needs two different arms"
+        )
     paired_rows: dict = {}
     paired_summary: dict = {}
-    for split in SPLITS:
+    for split in (SPLITS if skipped is None else ()):
         rows = {}
         for fold in folds:
             common = [
@@ -149,16 +207,20 @@ def aggregate(
             if common:
                 rows[str(fold)] = {
                     **{
-                        m: statistics.fmean(
+                        m: _mean_present([
                             runs[(treatment, fold, s, split)][m] - runs[(baseline, fold, s, split)][m]
                             for s in common
-                        )
+                            if runs[(treatment, fold, s, split)][m] is not None
+                            and runs[(baseline, fold, s, split)][m] is not None
+                        ])
                         for m in METRICS
                     },
                     "seeds": common,
                 }
         paired_rows[split] = rows
-        paired_summary[split] = {m: mean_std([row[m] for row in rows.values()]) for m in METRICS}
+        paired_summary[split] = {
+            m: mean_std([row[m] for row in rows.values() if row[m] is not None]) for m in METRICS
+        }
 
     return {
         "arms": list(arms),
@@ -166,9 +228,11 @@ def aggregate(
         "folds": list(folds),
         "metrics": list(METRICS),
         "missing": missing,
+        "missing_metrics": missing_metrics,
         "paired": {
             "baseline": baseline,
             "per_fold": paired_rows,
+            "skipped": skipped,
             "summary": paired_summary,
             "treatment": treatment,
         },
@@ -208,8 +272,11 @@ def render_markdown(results: dict) -> str:
         f"Damage class (id {results['damage_class_id']}). Arms: {', '.join(results['arms'])}. "
         f"Folds: {', '.join(map(str, folds))}. Seeds: {', '.join(map(str, seeds))}.",
         "",
-        "AP50 and AP50-95 integrate the ranked detections; precision and recall are read at the "
+        "AP50, AP@0.3 (IoU 0.3), AP_center (the predicted box contains the GT box center) and AP50-95 "
+        "integrate the ranked detections; precision and recall are read at the "
         "`conf_threshold` operating point; #GT is the number of damage GT boxes in the evaluated split. "
+        "A damage box is labeled from an induced impact, so its extent is uncertain and AP@0.3 / AP_center "
+        "read the same detections more leniently than AP50. "
         "**mean ± σ** is across folds, σ the sample standard deviation (ddof=1, n/a for a single fold); "
         "a fold with several seeds contributes the mean over its seeds.",
     ]
@@ -235,6 +302,10 @@ def render_markdown(results: dict) -> str:
                 f"| **mean ± σ** | n={n} of {len(folds)} | "
                 + " | ".join(_fmt_stat(stats[m]) for m in METRICS) + " | |"
             )
+        if results["paired"]["skipped"]:
+            lines += ["", f"### Paired difference ({split})", "",
+                      f"_Skipped: {results['paired']['skipped']}._"]
+            continue
         lines += ["", f"### Paired difference {treat} − {base} ({split})", "",
                   "| fold | seeds | " + " | ".join(f"Δ{label}" for label in labels) + " |",
                   "|---|---|" + "---|" * len(METRICS)]
@@ -253,6 +324,15 @@ def render_markdown(results: dict) -> str:
             f"| **mean ± σ** | n={stats['ap50']['n']} of {len(folds)} | "
             + " | ".join(_fmt_stat(stats[m], signed=True) for m in METRICS) + " |"
         )
+
+    if results["missing_metrics"]:
+        lines += ["", "## Missing metrics", "",
+                  f"{len(results['missing_metrics'])} evaluation(s) lack some localization-tolerant "
+                  "metrics (their `metrics.json` predates them) and show \"—\" in those columns; "
+                  "re-run `scripts/evaluate_checkpoint.py` on their checkpoint to fill them:", ""]
+        for m in results["missing_metrics"]:
+            names = ", ".join(METRIC_LABELS[x] for x in m["metrics"])
+            lines.append(f"- {m['arm']} fold {m['fold']} seed {m['seed']} {m['split']}: {names}")
 
     lines += ["", "## Missing runs", ""]
     if not results["missing"]:

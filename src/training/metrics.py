@@ -3,12 +3,22 @@ Detection metrics: mAP@0.5, mAP@0.5:0.95, per-class AP.
 
 Custom implementation using torchvision.ops.box_iou — no torchmetrics
 or pycocotools dependency required.
+
+Two localization-tolerant per-class metrics sit next to the IoU-based ones,
+because the damage labels come from induced impacts (a 66 g steel ball dropped
+from 50 cm, labeled from the known impact location) and the GT box extent is
+therefore uncertain:
+
+* AP@0.3 (`per_class_ap_30`): the same matching as AP@0.5 at IoU 0.3.
+* Impact-point criterion (`per_class_ap_center`, `per_class_center_recall`): a
+  prediction matches a GT when the prediction box contains the GT box center.
 """
 
 from __future__ import annotations
 
 import csv
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -17,6 +27,9 @@ import numpy as np
 from torchvision.ops import box_iou
 
 logger = logging.getLogger(__name__)
+
+# IoU threshold of the localization-tolerant AP (`per_class_ap_30`).
+LOOSE_IOU_THRESHOLD = 0.3
 
 
 @dataclass
@@ -41,6 +54,11 @@ class LossHistory:
     per_class_recall: list[dict[int, float]] = field(default_factory=list)
     per_class_f1: list[dict[int, float]] = field(default_factory=list)
     per_class_counts: list[dict[int, dict[str, int]]] = field(default_factory=list)
+    # Localization-tolerant metrics (see the module docstring). Empty dicts for
+    # callers that do not provide them, in which case the CSV omits the columns.
+    per_class_ap_30: list[dict[int, float]] = field(default_factory=list)
+    per_class_ap_center: list[dict[int, float]] = field(default_factory=list)
+    per_class_center_recall: list[dict[int, float]] = field(default_factory=list)
     extra_losses: dict[str, list[float]] = field(default_factory=dict)
 
     def update(
@@ -59,6 +77,9 @@ class LossHistory:
         per_class_recall: dict[int, float] | None = None,
         per_class_f1: dict[int, float] | None = None,
         per_class_counts: dict[int, dict[str, int]] | None = None,
+        per_class_ap_30: dict[int, float] | None = None,
+        per_class_ap_center: dict[int, float] | None = None,
+        per_class_center_recall: dict[int, float] | None = None,
         extra_losses: dict[str, float] | None = None,
     ) -> None:
         """Append one epoch of train and validation metrics."""
@@ -75,6 +96,9 @@ class LossHistory:
         self.per_class_recall.append(per_class_recall or {})
         self.per_class_f1.append(per_class_f1 or {})
         self.per_class_counts.append(per_class_counts or {})
+        self.per_class_ap_30.append(per_class_ap_30 or {})
+        self.per_class_ap_center.append(per_class_ap_center or {})
+        self.per_class_center_recall.append(per_class_center_recall or {})
 
         extra_losses = extra_losses or {}
         for key in set(self.extra_losses) | set(extra_losses):
@@ -90,6 +114,9 @@ class LossHistory:
             + self.per_class_precision
             + self.per_class_recall
             + self.per_class_f1
+            + self.per_class_ap_30
+            + self.per_class_ap_center
+            + self.per_class_center_recall
         ):
             ids.update(int(class_id) for class_id in per_epoch)
         return sorted(ids)
@@ -101,18 +128,69 @@ def _cxcywh_to_xyxy(boxes: torch.Tensor) -> torch.Tensor:
     return torch.stack([cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2], dim=-1)
 
 
-def _compute_ap_at_iou(
+# A matcher decides whether one prediction matches a GT of its image: it gets the
+# prediction box, the (non-empty) GT boxes of the same image and class, and the
+# indices of those GTs already matched, and returns the matched GT index or None.
+Matcher = Callable[[torch.Tensor, torch.Tensor, set[int]], "int | None"]
+
+
+def _iou_matcher(iou_threshold: float) -> Matcher:
+    """Match the best-IoU GT when its IoU reaches `iou_threshold` and it is still free."""
+
+    def match(pred_box: torch.Tensor, gt_boxes: torch.Tensor, matched: set[int]) -> int | None:
+        ious = box_iou(pred_box.unsqueeze(0), gt_boxes).squeeze(0)
+        best_iou, best_gt = ious.max(dim=0)
+        if best_iou >= iou_threshold and best_gt.item() not in matched:
+            return best_gt.item()
+        return None
+
+    return match
+
+
+def _center_inside(pred_box: torch.Tensor, gt_boxes: torch.Tensor) -> torch.Tensor:
+    """(G,) bool: which GT box centers lie inside `pred_box` (borders included)."""
+    cx = (gt_boxes[:, 0] + gt_boxes[:, 2]) / 2
+    cy = (gt_boxes[:, 1] + gt_boxes[:, 3]) / 2
+    return (
+        (cx >= pred_box[0]) & (cx <= pred_box[2]) & (cy >= pred_box[1]) & (cy <= pred_box[3])
+    )
+
+
+def _center_match(pred_box: torch.Tensor, gt_boxes: torch.Tensor, matched: set[int]) -> int | None:
+    """Impact-point match: a free GT whose center the prediction box contains.
+
+    A prediction matches at most one GT: when it contains several free centers
+    it takes the one closest to its own center. A GT is matched at most once,
+    so callers rank predictions by score and the first to cover it wins.
+    """
+    candidates = _center_inside(pred_box, gt_boxes)
+    for index in matched:
+        candidates[index] = False
+    if not candidates.any():
+        return None
+    cx = (gt_boxes[:, 0] + gt_boxes[:, 2]) / 2
+    cy = (gt_boxes[:, 1] + gt_boxes[:, 3]) / 2
+    distance = (cx - (pred_box[0] + pred_box[2]) / 2) ** 2 + (
+        cy - (pred_box[1] + pred_box[3]) / 2
+    ) ** 2
+    distance[~candidates] = float("inf")
+    return int(distance.argmin())
+
+
+def _compute_ap(
     pred_boxes: list[torch.Tensor],
     pred_scores: list[torch.Tensor],
     pred_labels: list[torch.Tensor],
     gt_boxes: list[torch.Tensor],
     gt_labels: list[torch.Tensor],
-    iou_threshold: float,
+    matcher: Matcher,
     num_classes: int,
 ) -> tuple[float, dict[int, float]]:
-    """Compute Average Precision at a single IoU threshold.
+    """Compute Average Precision under the match criterion `matcher`.
 
-    Uses all-point interpolation (VOC2010+ style).
+    Uses all-point interpolation (VOC2010+ style). Predictions are ranked by
+    score over the whole dataset and matched greedily, each GT at most once and
+    only within its own image.
 
     Args:
         pred_boxes: List of (P_i, 4) predicted boxes per image in xyxy format.
@@ -120,7 +198,7 @@ def _compute_ap_at_iou(
         pred_labels: List of (P_i,) predicted class IDs per image.
         gt_boxes: List of (G_i, 4) ground truth boxes per image in xyxy format.
         gt_labels: List of (G_i,) ground truth class IDs per image.
-        iou_threshold: IoU threshold for positive match.
+        matcher: Match criterion (see `Matcher`).
         num_classes: Total number of classes.
 
     Returns:
@@ -154,7 +232,7 @@ def _compute_ap_at_iou(
 
         class_predictions.sort(key=lambda item: item[0], reverse=True)
 
-        matched_gt = set()
+        matched_gt: list[set[int]] = [set() for _ in class_gt_boxes]
         tp = torch.zeros(len(class_predictions))
         fp = torch.zeros(len(class_predictions))
 
@@ -164,12 +242,10 @@ def _compute_ap_at_iou(
                 fp[i] = 1
                 continue
 
-            ious = box_iou(pred_box.unsqueeze(0), gt_boxes_i).squeeze(0)
-            best_iou, best_gt = ious.max(dim=0)
-            match_key = (image_idx, best_gt.item())
-            if best_iou >= iou_threshold and match_key not in matched_gt:
+            matched = matcher(pred_box, gt_boxes_i, matched_gt[image_idx])
+            if matched is not None:
                 tp[i] = 1
-                matched_gt.add(match_key)
+                matched_gt[image_idx].add(matched)
             else:
                 fp[i] = 1
 
@@ -198,6 +274,82 @@ def _compute_ap_at_iou(
     # Mean AP across all classes
     mAP = np.mean(list(per_class_ap.values())) if per_class_ap else 0.0
     return float(mAP), per_class_ap
+
+
+def _compute_ap_at_iou(
+    pred_boxes: list[torch.Tensor],
+    pred_scores: list[torch.Tensor],
+    pred_labels: list[torch.Tensor],
+    gt_boxes: list[torch.Tensor],
+    gt_labels: list[torch.Tensor],
+    iou_threshold: float,
+    num_classes: int,
+) -> tuple[float, dict[int, float]]:
+    """Compute Average Precision at a single IoU threshold.
+
+    A prediction is a true positive when its best-IoU GT reaches
+    `iou_threshold` and has not been matched by a higher-scored prediction.
+    See `_compute_ap` for the ranking and the argument layout.
+    """
+    return _compute_ap(
+        pred_boxes, pred_scores, pred_labels, gt_boxes, gt_labels,
+        _iou_matcher(iou_threshold), num_classes,
+    )
+
+
+def _compute_ap_center(
+    pred_boxes: list[torch.Tensor],
+    pred_scores: list[torch.Tensor],
+    pred_labels: list[torch.Tensor],
+    gt_boxes: list[torch.Tensor],
+    gt_labels: list[torch.Tensor],
+    num_classes: int,
+) -> tuple[float, dict[int, float]]:
+    """Average Precision under the impact-point criterion.
+
+    A prediction is a true positive when its box contains the center of a GT
+    that no higher-scored prediction has matched (see `_center_match`).
+    """
+    return _compute_ap(
+        pred_boxes, pred_scores, pred_labels, gt_boxes, gt_labels, _center_match, num_classes
+    )
+
+
+def _compute_center_recall(
+    pred_boxes: list[torch.Tensor],
+    pred_scores: list[torch.Tensor],
+    pred_labels: list[torch.Tensor],
+    gt_boxes: list[torch.Tensor],
+    gt_labels: list[torch.Tensor],
+    score_threshold: float,
+    num_classes: int,
+) -> dict[int, float]:
+    """Classwise fraction of GT centers covered by a prediction scoring >= `score_threshold`.
+
+    Same matching as `_compute_ap_center` (greedy by score, one GT per
+    prediction, one prediction per GT) restricted to the operating point.
+    A class without GT has recall 0.0.
+    """
+    recall: dict[int, float] = {}
+    for cls_id in range(num_classes):
+        n_gt = covered = 0
+        for boxes_i, scores_i, labels_i, gt_boxes_i, gt_labels_i in zip(
+            pred_boxes, pred_scores, pred_labels, gt_boxes, gt_labels
+        ):
+            targets = gt_boxes_i[gt_labels_i == cls_id]
+            n_gt += len(targets)
+            keep = (labels_i == cls_id) & (scores_i >= score_threshold)
+            if len(targets) == 0 or not keep.any():
+                continue
+            order = torch.sort(scores_i[keep], descending=True, stable=True).indices
+            matched: set[int] = set()
+            for box in boxes_i[keep][order]:
+                index = _center_match(box, targets, matched)
+                if index is not None:
+                    matched.add(index)
+            covered += len(matched)
+        recall[cls_id] = covered / n_gt if n_gt else 0.0
+    return recall
 
 
 def _compute_operating_point(
@@ -283,7 +435,11 @@ def compute_map(
 
     Returns:
         Dict with mAP, AP, and classwise precision/recall/F1 at IoU=0.5 and
-        `score_threshold`.
+        `score_threshold`, followed by the localization-tolerant per-class
+        metrics: `per_class_ap_30` (AP at IoU 0.3), `per_class_ap_center` (AP
+        under the impact-point criterion: the prediction box contains the GT
+        box center) and `per_class_center_recall` (that criterion's recall at
+        `score_threshold`).
     """
     pred_boxes_xyxy = [
         _cxcywh_to_xyxy(boxes) if len(boxes) > 0 else boxes
@@ -347,6 +503,18 @@ def compute_map(
                 cls_id, observed, gt_total,
             )
 
+    _, per_class_30 = _compute_ap_at_iou(
+        pred_boxes_xyxy, pred_scores, pred_labels,
+        gt_boxes_xyxy, gt_labels, LOOSE_IOU_THRESHOLD, num_classes,
+    )
+    _, per_class_center = _compute_ap_center(
+        pred_boxes_xyxy, pred_scores, pred_labels, gt_boxes_xyxy, gt_labels, num_classes,
+    )
+    center_recall = _compute_center_recall(
+        pred_boxes_xyxy, pred_scores, pred_labels, gt_boxes_xyxy, gt_labels,
+        score_threshold, num_classes,
+    )
+
     return {
         "map50": map50,
         "map_50_95": map_50_95,
@@ -356,12 +524,23 @@ def compute_map(
         "per_class_recall": recall,
         "per_class_f1": f1,
         "per_class_counts": counts,
+        "per_class_ap_30": per_class_30,
+        "per_class_ap_center": per_class_center,
+        "per_class_center_recall": center_recall,
     }
 
 
 def _write_metrics_csv(history: LossHistory, output_dir: Path) -> None:
-    """Persist epoch metrics as a CSV file for notebooks and thesis tables."""
+    """Persist epoch metrics as a CSV file for notebooks and thesis tables.
+
+    The localization-tolerant columns (`ap30_class_k`, `apcenter_class_k`,
+    `center_recall_class_k`) come last and only when the history carries them,
+    so a history built without them keeps the columns it always had.
+    """
     class_ids = history.class_ids()
+    has_localization = any(
+        history.per_class_ap_30 + history.per_class_ap_center + history.per_class_center_recall
+    )
     fieldnames = [
         "epoch",
         "phase",
@@ -379,6 +558,15 @@ def _write_metrics_csv(history: LossHistory, output_dir: Path) -> None:
         *[f"tp_class_{class_id}" for class_id in class_ids],
         *[f"fp_class_{class_id}" for class_id in class_ids],
         *[f"fn_class_{class_id}" for class_id in class_ids],
+        *(
+            [
+                *[f"ap30_class_{class_id}" for class_id in class_ids],
+                *[f"apcenter_class_{class_id}" for class_id in class_ids],
+                *[f"center_recall_class_{class_id}" for class_id in class_ids],
+            ]
+            if has_localization
+            else []
+        ),
     ]
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -407,6 +595,14 @@ def _write_metrics_csv(history: LossHistory, output_dir: Path) -> None:
                 row[f"tp_class_{class_id}"] = counts.get("tp", 0)
                 row[f"fp_class_{class_id}"] = counts.get("fp", 0)
                 row[f"fn_class_{class_id}"] = counts.get("fn", 0)
+                if has_localization:
+                    row[f"ap30_class_{class_id}"] = history.per_class_ap_30[idx].get(class_id, 0.0)
+                    row[f"apcenter_class_{class_id}"] = history.per_class_ap_center[idx].get(
+                        class_id, 0.0
+                    )
+                    row[f"center_recall_class_{class_id}"] = history.per_class_center_recall[
+                        idx
+                    ].get(class_id, 0.0)
             writer.writerow(row)
 
 

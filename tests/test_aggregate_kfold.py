@@ -15,8 +15,27 @@ TREAT = "twostream_roi_crop"
 
 
 def _metrics(ap50: float, *, ap50_95: float = 0.1, precision: float = 0.2, recall: float = 0.5,
-             tp: int = 10, fn: int = 5, fp: int = 20) -> dict:
-    """The JSON `scripts/evaluate_checkpoint.py` writes (class ids are string keys)."""
+             tp: int = 10, fn: int = 5, fp: int = 20,
+             ap30: float | None = None, ap_center: float | None = None,
+             center_recall: float | None = None) -> dict:
+    """The JSON `scripts/evaluate_checkpoint.py` writes (class ids are string keys).
+
+    Without `ap30` / `ap_center` / `center_recall` the file is in the OLD format, i.e. it
+    predates the localization-tolerant metrics and carries none of their keys.
+    """
+    metrics = _old_metrics(ap50, ap50_95=ap50_95, precision=precision, recall=recall,
+                           tp=tp, fn=fn, fp=fp)
+    if ap30 is not None:
+        metrics["per_class_ap_30"] = {"0": 1.0, "1": ap30}
+    if ap_center is not None:
+        metrics["per_class_ap_center"] = {"0": 1.0, "1": ap_center}
+    if center_recall is not None:
+        metrics["per_class_center_recall"] = {"0": 1.0, "1": center_recall}
+    return metrics
+
+
+def _old_metrics(ap50: float, *, ap50_95: float, precision: float, recall: float,
+                 tp: int, fn: int, fp: int) -> dict:
     return {
         "map50": (1.0 + ap50) / 2,
         "map_50_95": 0.3,
@@ -218,3 +237,162 @@ def test_main_fails_when_no_result_exists_and_writes_nothing(tmp_path: Path, cap
     assert agg.main(["--reports-root", str(tmp_path)]) == 1
     assert "No evaluation results" in capsys.readouterr().err
     assert not (tmp_path / "kfold_results.json").exists()
+
+
+# --------------------------------------------------------------------------
+# Localization-tolerant metrics: AP@0.3 and AP_center next to AP50
+# --------------------------------------------------------------------------
+
+
+def test_damage_summary_reads_ap30_and_ap_center() -> None:
+    summary = agg.damage_summary(_metrics(0.1, ap30=0.45, ap_center=0.6))
+    assert summary["ap30"] == pytest.approx(0.45)
+    assert summary["ap_center"] == pytest.approx(0.6)
+    assert summary["ap50"] == pytest.approx(0.1)
+
+
+def test_damage_summary_of_an_old_metrics_file_reports_the_new_metrics_as_missing() -> None:
+    summary = agg.damage_summary(_metrics(0.1))                 # no per_class_ap_30 / _center keys
+    assert summary["ap30"] is None and summary["ap_center"] is None
+    assert summary["ap50"] == pytest.approx(0.1)                # everything else still reads
+
+
+def test_new_metrics_are_listed_next_to_ap50() -> None:
+    assert list(agg.METRICS[:3]) == ["ap50", "ap30", "ap_center"]
+    assert agg.METRIC_LABELS["ap30"] == "AP@0.3" and agg.METRIC_LABELS["ap_center"] == "AP_center"
+
+
+def _localization_tree(root: Path) -> None:
+    base = {0: (0.20, 0.50, 0.60), 1: (0.30, 0.55, 0.65), 2: (0.40, 0.60, 0.80)}
+    treat = {0: (0.50, 0.70, 0.75), 1: (0.45, 0.60, 0.70), 2: (0.70, 0.90, 0.95)}
+    for fold in (0, 1, 2):
+        for split in ("val", "test"):
+            for arm, table in ((BASE, base), (TREAT, treat)):
+                ap50, ap30, apc = table[fold]
+                _write(root, arm, fold, 42, split, _metrics(ap50, ap30=ap30, ap_center=apc))
+
+
+def test_per_fold_mean_std_and_paired_difference_of_the_new_metrics(tmp_path: Path) -> None:
+    _localization_tree(tmp_path)
+    results = _aggregate(tmp_path)
+
+    base_test = results["per_fold"][BASE]["test"]
+    assert {f: v["ap30"] for f, v in base_test.items()} == {
+        "0": pytest.approx(0.50), "1": pytest.approx(0.55), "2": pytest.approx(0.60)}
+    assert {f: v["ap_center"] for f, v in base_test.items()} == {
+        "0": pytest.approx(0.60), "1": pytest.approx(0.65), "2": pytest.approx(0.80)}
+
+    stat = results["summary"][BASE]["test"]["ap30"]
+    assert stat["mean"] == pytest.approx(0.55)
+    assert stat["std"] == pytest.approx(statistics.stdev([0.50, 0.55, 0.60]))
+    assert stat["n"] == 3
+
+    deltas = [0.70 - 0.50, 0.60 - 0.55, 0.90 - 0.60]
+    paired = results["paired"]["summary"]["test"]["ap30"]
+    assert paired["mean"] == pytest.approx(statistics.fmean(deltas))
+    assert paired["std"] == pytest.approx(statistics.stdev(deltas))
+    center_deltas = [0.75 - 0.60, 0.70 - 0.65, 0.95 - 0.80]
+    assert results["paired"]["summary"]["test"]["ap_center"]["mean"] == pytest.approx(
+        statistics.fmean(center_deltas))
+    assert results["missing_metrics"] == []
+
+
+def test_old_format_files_do_not_crash_and_leave_the_old_columns_untouched(tmp_path: Path) -> None:
+    _full_tree(tmp_path)                                        # old format: no new keys at all
+    results = _aggregate(tmp_path)
+
+    assert results["missing"] == []                             # the runs themselves are fine
+    assert results["summary"][BASE]["test"]["ap50"]["mean"] == pytest.approx(0.30)
+    for arm in (BASE, TREAT):
+        assert results["per_fold"][arm]["test"]["0"]["ap30"] is None
+        assert results["summary"][arm]["test"]["ap30"] == {"mean": None, "std": None, "n": 0}
+        assert results["summary"][arm]["test"]["ap_center"] == {"mean": None, "std": None, "n": 0}
+    assert results["paired"]["summary"]["test"]["ap30"]["n"] == 0
+    assert results["paired"]["per_fold"]["test"]["0"]["ap30"] is None
+    assert results["paired"]["summary"]["test"]["ap50"]["mean"] == pytest.approx(
+        statistics.fmean([0.30, 0.15, 0.30]))
+    # Each old-format evaluation is named, so the user knows what to re-run.
+    assert len(results["missing_metrics"]) == 2 * 3 * 2
+    assert {tuple(m["metrics"]) for m in results["missing_metrics"]} == {("ap30", "ap_center")}
+
+
+def test_a_mix_of_old_and_new_files_uses_only_the_runs_that_have_the_metric(tmp_path: Path) -> None:
+    _localization_tree(tmp_path)
+    _write(tmp_path, BASE, 1, 42, "test", _metrics(0.30))       # baseline fold 1 re-written in the old format
+    results = _aggregate(tmp_path)
+
+    assert results["per_fold"][BASE]["test"]["1"]["ap30"] is None
+    assert results["summary"][BASE]["test"]["ap30"]["n"] == 2   # folds 0 and 2 only
+    assert results["summary"][BASE]["test"]["ap50"]["n"] == 3
+    # Fold 1 cannot be paired on ap30, but is still paired on ap50.
+    assert results["paired"]["per_fold"]["test"]["1"]["ap30"] is None
+    assert results["paired"]["per_fold"]["test"]["1"]["ap50"] == pytest.approx(0.15)
+    assert results["paired"]["summary"]["test"]["ap30"]["n"] == 2
+    assert [m for m in results["missing_metrics"]] == [
+        {"arm": BASE, "fold": 1, "seed": 42, "split": "test", "metrics": ["ap30", "ap_center"]}]
+
+
+def test_markdown_has_the_new_columns_and_marks_missing_ones(tmp_path: Path) -> None:
+    _localization_tree(tmp_path)
+    _write(tmp_path, BASE, 1, 42, "test", _metrics(0.30))
+    text = agg.render_markdown(_aggregate(tmp_path))
+
+    assert "AP@0.3" in text and "AP_center" in text
+    assert "ΔAP@0.3" in text and "ΔAP_center" in text
+    header = next(line for line in text.splitlines() if line.startswith("| fold |") and "AP50-95" in line)
+    assert header.index("AP50 ") < header.index("AP@0.3") < header.index("AP_center") < header.index("AP50-95")
+    assert "| 1 | 42 | 0.3000 | — | — |" in text                # the old-format fold: "—" cells
+    assert "AP@0.3, AP_center" in text and "re-run" in text.lower()
+
+
+def test_markdown_of_a_complete_tree_has_no_missing_metrics_section(tmp_path: Path) -> None:
+    _localization_tree(tmp_path)
+    assert "Missing metrics" not in agg.render_markdown(_aggregate(tmp_path))
+
+
+# --------------------------------------------------------------------------
+# The paired section needs two different arms
+# --------------------------------------------------------------------------
+
+
+def test_a_single_arm_skips_the_paired_difference_instead_of_comparing_it_with_itself(
+        tmp_path: Path) -> None:
+    _localization_tree(tmp_path)
+    results = agg.aggregate(tmp_path, arms=[TREAT], folds=[0, 1, 2], seeds=[42],
+                            baseline=TREAT, treatment=TREAT)
+
+    paired = results["paired"]
+    assert paired["skipped"] and TREAT in paired["skipped"]
+    assert paired["per_fold"] == {} and paired["summary"] == {}
+    assert results["summary"][TREAT]["test"]["ap50"]["n"] == 3       # the per-arm tables are intact
+
+    text = agg.render_markdown(results)
+    assert "skipped" in text.lower()
+    assert "0.0000 ± 0.0000" not in text                             # the old meaningless 0 ± 0
+    assert "Paired difference" in text                                # the note says WHY it is skipped
+    assert "+0.0000" not in text
+
+
+def test_identical_baseline_and_treatment_skip_the_paired_difference(tmp_path: Path) -> None:
+    _localization_tree(tmp_path)
+    results = agg.aggregate(tmp_path, arms=[BASE, TREAT], folds=[0, 1, 2], seeds=[42],
+                            baseline=BASE, treatment=BASE)
+    assert results["paired"]["skipped"]
+    assert results["paired"]["per_fold"] == {}
+    assert set(results["summary"]) == {BASE, TREAT}
+
+
+def test_two_different_arms_are_still_paired(tmp_path: Path) -> None:
+    _localization_tree(tmp_path)
+    results = _aggregate(tmp_path)
+    assert results["paired"]["skipped"] is None
+    assert "Skipped" not in agg.render_markdown(results)
+
+
+def test_main_with_one_arm_succeeds_and_writes_the_note(tmp_path: Path) -> None:
+    _localization_tree(tmp_path)
+    assert agg.main(["--reports-root", str(tmp_path), "--arms", TREAT, "--folds", "0,1,2"]) == 0
+    data = json.loads((tmp_path / "kfold_results.json").read_text())
+    assert data["paired"]["skipped"]
+    text = (tmp_path / "kfold_results.md").read_text()
+    assert "0.0000 ± 0.0000" not in text and "skipped" in text.lower()

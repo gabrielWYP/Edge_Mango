@@ -1,0 +1,229 @@
+# Experiment config: configs/experiment/twostream_roi_crop_stable.yaml with a
+# PRIOR-BREAKING train crop window (roi_crop_train_margin_range).
+#
+# Identical to twostream_roi_crop_stable.yaml except for output_dir,
+# roi_crop_jitter (0.5 -> 0.0: it is mutually exclusive with the range, which
+# replaces it) and the new roi_crop_train_margin_range. Val/test framing
+# (roi_crop_margin 0.10, centered) is unchanged, so the metrics stay comparable
+# with the stable config's. The stable config's own header follows this block.
+#
+# WHY - a positional prior the model can learn. Damage labels come from INDUCED
+# impacts: a 66 g steel ball dropped from 50 cm, labeled empirically from the
+# known impact location. Two consequences:
+#  * The box EXTENT is uncertain: damage AP at IoU 0.3 is 2.3-5.3x AP@0.5.
+#  * The POSITION is set by the protocol: 85% of the damage-box centers lie in
+#    the central 50% of the mango box (a uniform placement would give 25%).
+# The symmetric crop (margin 0.10 per side, optionally jittered) centers the
+# mango every time, so the damage lands at nearly the same input pixels in every
+# training image. The spatial augmentations in src/training/augmentations.py
+# (flips, rotate90, rotate +-20 deg, perspective, transpose) act around the image
+# center and keep central damage central, so they do not break the prior. The
+# model learned it: in one fold 99% of the false positives have the same
+# ~125x134 px size near the crop center.
+#
+# WHAT - roi_crop_train_margin_range: [0.2, 1.0], train split only. Per axis a
+# TOTAL margin t ~ U(0.2, 1.0), as a fraction of the mango box size on that
+# axis, is split asymmetrically: left = t * f and right = t * (1 - f) with
+# f ~ U(0, 1) (same for top/bottom). The window therefore always contains the
+# whole mango box, but the mango, and its damage, land at varied positions and
+# scales in the letterboxed input (the mango spans 1 / (1 + t) = 50-83% of the
+# window per axis). The minimum total 0.2 equals the eval-time 0.1 per side, so
+# the test framing lies inside the training distribution. The window is clipped
+# to the image as before. scripts/position_prior_check.py measures the effect on
+# the damage-box centers without a model.
+#
+# READ the result next to damage AP50 with the localization-tolerant per-class
+# metrics: per_class_ap_30 (AP@0.3), per_class_ap_center and
+# per_class_center_recall (the prediction box contains the GT box center) in
+# metrics.json, ap30_class_k / apcenter_class_k / center_recall_class_k in
+# metrics_history.csv, and scripts/aggregate_kfold.py. Checkpoints are still
+# selected on damage_ap50 (below) so this run differs from the stable config
+# only by the crop window; damage_ap30 / damage_ap_center are available.
+#
+# Run it with the same protocol as the stable config (patience=1000, see the
+# command below).
+#
+# ---- The stable config's header, unchanged except where it names the jitter ----
+#
+# WHY: leave-one-lot-out runs of twostream_roi_crop.yaml are unstable from
+# epoch to epoch. Val damage TP goes 36 -> 0 -> 49 at epochs 50/60/70 and val
+# mango AP50 flips between 0.00 and 0.99, so picking the best epoch from such a
+# curve is close to random (fold 4 selected epoch 3). Two causes, one fix each:
+#
+#  1. BatchNorm statistics. The only BatchNorm layers in the master model are
+#     the three DualFPN fusion convs (neck.fusion_convs.*); the ConvNeXt
+#     backbone and the cross-modal fusion use LayerNorm and the head has no
+#     norm layer. On the GTX 1660S the physical batch is 2 (effective_batch 8
+#     comes from gradient accumulation, which does not change BatchNorm: each
+#     forward still normalizes with the statistics of 2 images), so the running
+#     statistics eval mode relies on are noisy and drift between epochs.
+#     neck_norm: group swaps those layers for GroupNorm, which has no batch
+#     statistics: train and eval mode normalize identically and one image's
+#     output does not depend on the rest of the batch. Same trainable-parameter
+#     count; the checkpoint schema differs (no running_mean/var buffers), which
+#     is why the choice is recorded in the checkpoint and read back by
+#     scripts/evaluate_checkpoint.py.
+#  2. Few optimizer steps per epoch. A fold trains on 117-162 pairs, i.e. 15-21
+#     optimizer steps per epoch at effective_batch 8 (1.5k-2.1k over 100
+#     epochs), so the weights at the end of any one epoch are a noisy sample.
+#     ema: true validates, selects on and saves an exponential moving average of
+#     the weights; best_model.pt holds the EMA weights as model_state_dict, so
+#     evaluation tooling is unchanged. ema_decay 0.99 averages the last ~100
+#     optimizer steps (about 5-6 epochs); ema_tau 50 lets the average track the
+#     live weights during the first epochs instead of anchoring it to the
+#     initialization. (A decay of 0.9998 would span 5000 steps, longer than the
+#     whole run.) An earlier EMA-only experiment (checkpoints/stability_fold0/
+#     {base,ema}/metrics_history.csv on origin/feat/kfold-stability: fold 0,
+#     60 epochs, unregistered NIR, a different split) shows, base vs EMA: the
+#     same best val damage AP50 (0.174), a last-10-epoch mean of 0.111 vs 0.136,
+#     and a largest epoch-to-epoch jump of 0.11 vs 0.067. Weak evidence: one
+#     seed, older pipeline.
+#
+# Checkpoints written here are NOT loadable into a BatchNorm model (or the other
+# way around); evaluate them with any config - the checkpoint's recorded
+# neck_norm decides how the model is rebuilt.
+#
+# WHY: frames are 1280x720 and the mango covers only ~8% of them (p5-p95:
+# 5-11%, measured on all 236 labeled pairs). Letterboxing the whole frame to
+# 640 halves the resolution, which leaves the damage boxes (class 1) at ~26 px
+# median short side at the model input. Cropping RGB and registered NIR to the
+# ground-truth mango box (class 0) plus a 10% margin BEFORE the letterbox puts
+# them at ~92 px. All 368 damage boxes lie fully inside their image's mango
+# box, and every image has exactly one mango box.
+#
+# CAVEAT - ORACLE ROI: the crop window is the GT mango box in EVERY split, val
+# and test included. Metrics from this config are therefore an UPPER BOUND on
+# what a deployable two-stage pipeline (detect mango -> crop -> detect damage)
+# can reach. No such inference path exists yet and the export path
+# (src/export/) still takes the full frame. Mango (class 0) AP is meaningless
+# here (the box fills ~83% of every crop in each dimension), which is why
+# checkpoints are selected on damage_ap50 instead of the two-class map50.
+#
+# (The stable config's roi_crop_jitter, which scales each side's margin by
+# uniform(0.5, 1.5), is 0 here: roi_crop_train_margin_range replaces it, see the
+# top of this file. Val/test crops are deterministic in both.)
+#
+# Checkpoints written here carry arch_version=1 and are NOT loadable by the
+# early-fusion path (and vice versa). Evaluate them with this same config:
+# scripts/evaluate_checkpoint.py only reproduces the crops when roi_crop is on.
+#
+# COMPARE AGAINST the full-frame two-stream teacher on registered NIR in
+# reports/final-run-20261014/ (seed 42, no early stopping, selected on
+# damage_ap50): val damage AP50 0.737, test 0.398. Run this config with the
+# same protocol (patience=1000, see the command below) so the crop is the only
+# difference. Earlier baselines (reports/twostream-v3-3seeds/, 0.177 +- 0.102)
+# used unregistered NIR and are not comparable.
+#
+# WHAT is measured - byte-identical on every machine (fusion-redesign D-H).
+# HOW it runs (device/batch_size/num_workers/pin_memory/precision) lives in
+# a separate configs/machines/*.yaml profile, applied on top of this file:
+#
+#   python -m src.training.train \
+#       --config configs/experiment/twostream_roi_crop_stable_shift.yaml \
+#       --machine configs/machines/gtx1660s.yaml \
+#       --model master --override seed=42 patience=1000
+#
+# Do not add device/batch_size/num_workers/pin_memory/precision here - those
+# are machine-profile keys; a machine profile that tried to override them
+# would silently change what is being measured (D-H whitelist enforcement
+# lives in src/training/machine.py, on the machine-profile side).
+
+# Data paths
+rgb_dir: "data/cache/mango/rgb"
+nir_dir: "data/cache/mango/nir"
+# Register NIR to the RGB frame at load time (labels are in the RGB frame).
+# Runs before 2026-10 trained on unregistered NIR; null = explicit ablation only.
+nir_homography_path: "notebooks/matriz_homografia_aruco.npy"
+labels_dir: "data/annotations/yolo/labels"
+output_dir: "checkpoints/twostream_roi_crop_stable_shift"
+split_manifest: "data/annotations/yolo/splits.json"
+
+model_type: master
+backbone_variant: "tiny"
+num_classes: 2
+
+# Image
+image_size: 640
+letterbox_value: 114
+
+# Mango ROI crop (src/training/roi_crop.py): crop RGB and registered NIR to the
+# GT mango box + margin before the letterbox. Val/test use the GT box too
+# (oracle ROI, see the header); the range applies to the train split only.
+roi_crop: true
+roi_crop_margin: 0.10              # val/test framing: centered, 0.10 per side
+roi_crop_jitter: 0.0               # 0.5 in the stable config; excludes the range
+roi_crop_train_margin_range: [0.2, 1.0]   # [min_total, max_total], see the header
+
+# Architecture (fusion-redesign W1-W5). These match TrainingConfig's
+# defaults exactly — spelled out here so the experiment file is the
+# self-documenting single source of truth, not an implicit default.
+fusion_mode: cross_attention         # two-stream + cross-attention; see configs/experiment/fusion.yaml
+in_channels: 4                       # unused by this mode: the stems are fixed at 3ch RGB / 1ch NIR
+head_strides: [8, 16, 32]            # fixed by DualFPN (P2 is dropped before fusion)
+assigner_level_ranges: [64, 128]     # must be len(head_strides) - 1, enforced at load
+
+# Training schedule (fusion-redesign D-4): end-to-end from epoch 0,
+# pretrained backbone stages at backbone_lr_mult * lr.
+schedule: end_to_end
+epochs: 100
+lr: 0.001
+backbone_lr_mult: 0.1
+weight_decay: 0.0005
+warmup_epochs: 5
+patience: 20
+
+# Select on the damage class alone: mango AP is meaningless under the crop.
+selection_metric: damage_ap50
+
+# The experimental constant (Q7, fusion-redesign) — fixed before V1 and
+# immutable afterwards. Physical batch_size is a machine-profile memory
+# knob; grad_accum_steps is always derived, never set directly.
+effective_batch: 8
+
+# Loss
+box_weight: 7.5
+cls_weight: 0.5
+class_weights: [0.5, 1.5]
+
+# Logging
+log_interval: 5
+save_interval: 10
+
+# Gradient clipping
+grad_clip: 10.0
+
+# NIR normalization stats
+nir_mean: 0.0569
+nir_std: 0.0546
+
+# Reproducibility — overridden per-rung via --override seed=<S> for the
+# validation ladder's 3-seed rungs (42, 1337, 2024).
+seed: 42
+
+# Decode (src/training/decode.py::decode_detections) — carried unchanged
+# from training_mango.yaml so the mango guardrail comparison stays valid.
+conf_threshold: 0.25
+nms_iou_threshold: 0.5
+nms_enabled: true
+decode_per_class: true
+max_detections: 300
+
+# Task-Aligned Assigner (src/training/loss.py)
+assigner_center_radius: 0.0
+assigner_collect_stats: false
+
+# --- Training-stability fixes (with the crop-window keys above, the only
+# differences from twostream_roi_crop.yaml besides output_dir) --------------
+
+# Norm layer of the DualFPN fusion convs: "batch" (twostream_roi_crop.yaml) or
+# "group". GroupNorm needs no batch statistics; 32 groups of 8 channels each over
+# the 256 FPN channels.
+neck_norm: group
+neck_gn_groups: 32
+
+# Weight EMA (src/training/ema.py), updated once per optimizer step. Validation,
+# best-checkpoint selection (damage_ap50) and early stopping all use the EMA
+# weights, and every checkpoint stores them as model_state_dict.
+ema: true
+ema_decay: 0.99    # averages the last ~100 optimizer steps (~5-6 epochs per fold)
+ema_tau: 50.0      # warm-up: decay = 0.99 * (1 - exp(-step / 50)); ~0.87 after 5 epochs
