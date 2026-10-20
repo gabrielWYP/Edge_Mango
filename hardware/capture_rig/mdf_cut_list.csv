@@ -1,0 +1,10 @@
+part,qty,length_mm,width_mm,thickness_mm,material,used_for,notes
+M1,1,420,380,9,MDF 9 mm,WALL_BACK,"back wall, 2x D12 at X=-150/150, Z=60; paint the inner face matte black"
+M2,1,420,380,9,MDF 9 mm,DOOR,front door hinged on the left (nominal size: cut 1 mm smaller per side for clearance); paint the inner face matte black
+M3,1,438,358,9,MDF 9 mm,FLOOR,floor; paint the upper face matte black
+M4,1,438,358,9,MDF 9 mm,TOP_PANEL,"top panel with the camera opening (90x60 at X=-30,Y=0); paint the lower face matte black"
+M5,2,380,358,9,MDF 9 mm,WALL_L+WALL_R,"side wall (stands on the floor, carries the top panel); paint the inner face matte black"
+P6,1,420,340,3,PVC foam board 3 mm,LINER_CEILING,"white lining, ceiling, with the camera opening (90x60)"
+P7,1,414,247,3,PVC foam board 3 mm,LINER_DOOR,"white lining, upper door (lower edge at Z=130)"
+P8,1,414,247,3,PVC foam board 3 mm,LINER_BACK,"white lining, upper walls (lower edge at Z=130)"
+P9,2,334,247,3,PVC foam board 3 mm,LINER_L+LINER_R,"white lining, upper walls (lower edge at Z=130)"
