@@ -2,7 +2,7 @@
 
 **Tesis de pregrado — Ingeniería de Sistemas**
 
-Pipeline end-to-end de detección de daño en mango usando imágenes RGB+NIR (cámara MAPIR Survey3W), un maestro multimodal de fusión temprana con backbone ConvNeXt-Tiny, y conocimiento destilado (KD) hacia un modelo estudiante YOLOv8-Nano para despliegue eficiente.
+Pipeline end-to-end de detección de daño en mango usando imágenes RGB+NIR capturadas con una Raspberry Pi, un maestro multimodal de dos streams con backbone ConvNeXt-Tiny y atención cross-modal, y conocimiento destilado (KD) hacia un modelo estudiante YOLOv8-Nano para despliegue eficiente.
 
 ---
 
@@ -10,9 +10,9 @@ Pipeline end-to-end de detección de daño en mango usando imágenes RGB+NIR (c�
 
 El proyecto construye un sistema de detección de daño en frutos de mango usando:
 
-- **Imágenes multiespectrales** (RGB + NIR) capturadas con cámara MAPIR Survey3W
+- **Imágenes multiespectrales** (RGB + NIR) capturadas con una Raspberry Pi: RGB con una cámara USB Arducam IMX219 bajo luz blanca y NIR con una Pi Camera NoIR v2 (IMX219) bajo iluminación IR de 850 nm (`docs/findings/2026-10-18/capture/captura_dual.py:93`, `:170`, `:336`)
 - **Anotación automática** con Florence-2-large + refinamiento manual en Label Studio
-- **Modelo maestro (Teacher)** multimodal de fusión temprana: EarlyFusionBackbone (ConvNeXt-Tiny) + SingleFPN + YOLODetectionHead (35.3M params)
+- **Modelo maestro (Teacher)** multimodal con dos arquitecturas seleccionables por `fusion_mode`. El maestro actual (`configs/experiment/twostream.yaml`) usa `cross_attention`: DualConvNeXtBackbone (ConvNeXt-Tiny) + CrossModalFusion + DualFPN + YOLODetectionHead (46.6M params). El modo `early` (EarlyFusionBackbone + SingleFPN, 35.3M params) sigue disponible. Detalle en la sección 2.1
 - **Modelo estudiante (Student)** YOLOv8-Nano from scratch (~6.9M params) para recibir conocimiento destilado en capas intermedias
 - **Training loop** YOLOv8 personalizado (TAL assigner, CIoU, Focal Loss) — sin dependencia de ultralytics
 - **Knowledge Distillation** a nivel de features (backbone, FPN, head stems), no solo logits finales
@@ -49,26 +49,72 @@ seed 42, sin early stopping y con el checkpoint elegido por AP de daño. Procedi
 
 ### 2.1 Modelo Maestro (Teacher) — `src/models/master/`
 
+`MasterModel` admite dos arquitecturas de fusión mutuamente excluyentes, seleccionadas por `fusion_mode`
+(`src/training/fusion_modes.py:34-39`; descripción completa en `src/models/master/master_model.py:7-63`).
+La firma `forward(rgb, nir)` y el diccionario de 7 salidas son idénticos en ambos modos, así que el dataset,
+el `Trainer` y el `KDTrainer` no distinguen entre ellos.
+
+| `fusion_mode` | Arquitectura | Params | `head_strides` | Config |
+|---------------|--------------|-------:|----------------|--------|
+| `cross_attention` (**maestro actual**) | DualConvNeXtBackbone + CrossModalFusion + DualFPN + YOLODetectionHead | 46,642,930 | `[8, 16, 32]` (también admite `[4, 8, 16, 32]`) | `configs/experiment/twostream.yaml:48` |
+| `early` (default del código) | EarlyFusionBackbone + FPNNeck (SingleFPN) + YOLODetectionHead | 35,276,920 | `[4, 8, 16, 32]` | `configs/experiment/fusion.yaml:38` |
+
+Los resultados de la sección 1 corresponden al modo `cross_attention`. `configs/kd_training_twostream.yaml:5-6`
+reconstruye el maestro con ese mismo modo para la destilación.
+
+#### Modo `cross_attention` (maestro actual)
+
+```
+RGB (N,3,640,640)                 NIR (N,1,640,640)
+       │                                 │
+  rgb_stem (3→96)                   nir_stem (1→96)
+       └───────────────┬─────────────────┘
+        Etapas ConvNeXt-Tiny compartidas (mismos pesos, una pasada por modalidad)
+       ┌───────────────┴─────────────────┐
+   RGB [S1..S4]                      NIR [S1..S4]
+       └───────────────┬─────────────────┘
+        CrossModalFusion: atención por etapa (Q = RGB, K/V = NIR)
+       ┌───────────────┴─────────────────┐
+   [F1..F4] fusionadas               NIR [S1..S4]
+       │                                 │
+    FPN RGB                           FPN NIR
+       └───────────────┬─────────────────┘
+        DualFPN: concat + conv 1×1 por nivel ─→ [P3, P4, P5]
+                       │
+        YOLODetectionHead (3 × DecoupledHead)
+                       ├── preds (bboxes + clases)
+                       ├── distill_backbone = [F1..F4] → Proyecciones → KD
+                       ├── distill_fpn                 → Proyecciones → KD
+                       ├── distill_head_cls            → Proyecciones → KD
+                       └── distill_head_reg            → Proyecciones → KD
+```
+
+- **DualConvNeXtBackbone** (`src/models/master/backbone.py:299`): dos stems separados, `rgb_stem` `Conv2d(3→96, k4, s4)` y `nir_stem` `Conv2d(1→96, k4, s4)` (`backbone.py:340-341`), sobre las 4 etapas de ConvNeXt-**Tiny** compartidas (`torchvision.models.convnext_tiny`, pesos `IMAGENET1K_V1`; `backbone.py:344-347`). Cada modalidad recorre las mismas etapas por separado (`backbone.py:422-426`). Con pesos preentrenados, el stem RGB copia el stem de ImageNet y el stem NIR usa su promedio por canal (`backbone.py:442-478`). Etapas `[96, 192, 384, 768]` a strides `[4, 8, 16, 32]`.
+- **CrossModalFusion** (`src/models/master/fusion.py:234`): una `StageAttentionFusion` por etapa (`fusion.py:70`). Las features RGB son la query y las NIR la key/value de un `nn.MultiheadAttention`, con conexión residual sobre RGB. Usa `[4, 8, 8, 8]` cabezas por etapa (`fusion.py:252`). Devuelve las features fusionadas `[F1..F4]` y las NIR sin cambios. La codificación posicional 2D es opcional (`fusion_pos_encoding`, `fusion.py:24-35`).
+- **DualFPN** (`src/models/master/neck.py:170`): una `SingleFPN` por modalidad (`neck.py:235-236`) y, por cada nivel emitido, una fusión `concat → Conv 1×1 → norm → ReLU → Dropout2d` (`neck.py:239-248`). Con `head_strides=[8, 16, 32]`, ambas FPN calculan P2, pero ese nivel se descarta antes de la fusión.
+- **YOLODetectionHead**: un head desacoplado (cls + reg) por nivel emitido (3 en el maestro actual), bias de `cls_pred` inicializado en −4.595 (p=0.01; `src/models/master/head.py:80-83`).
+
+#### Modo `early`
+
 ```
 RGB (N,3,640,640) ─┐
                    ├─ cat(dim=1) ─→ (N,4,640,640) ─→ EarlyFusionBackbone ─→ SingleFPN ─→ 4 × DecoupledHead
-NIR (N,1,640,640) ─┘                                                                        │
-                                                                  ├── preds (bboxes + clases)
-                                                                  ├── distill_backbone → Proyecciones → KD
-                                                                  ├── distill_fpn      → Proyecciones → KD
-                                                                  ├── distill_head_cls → Proyecciones → KD
-                                                                  └── distill_head_reg → Proyecciones → KD
+NIR (N,1,640,640) ─┘
 ```
 
-- **Fusión temprana**: RGB y NIR se concatenan en un tensor de 4 canales *antes* del backbone (`master_model.py:130-131`). No hay atención cross-modal en ninguna parte del modelo.
-- **EarlyFusionBackbone**: ConvNeXt-**Tiny** de un solo stream (`torchvision.models.convnext_tiny`, pesos `IMAGENET1K_V1`), con un único stem `Conv2d(4→96, k4, s4)`. El stem preentrenado de 3 canales se adapta a 4: `W[:, :3] = W_imagenet * 0.75` y `W[:, 3] = mean(W_imagenet, dim=1) * 0.75` (`backbone.py:253-256`). Etapas `[96, 192, 384, 768]` a strides `[4, 8, 16, 32]`.
-- **SingleFPN**: FPN top-down clásica (laterales 1×1 + upsample nearest + convs 3×3 de salida), 256 canales, **4 niveles** `[P2, P3, P4, P5]`.
-- **YOLODetectionHead**: 4 heads desacoplados independientes (cls + reg), bias de `cls_pred` inicializado en −4.595 (p=0.01).
-- **ProjectionLayers**: Capas de proyección lineal que adaptan features del maestro a las dimensiones del estudiante para KD.
+- **Fusión temprana**: RGB y NIR se concatenan en un tensor de 4 canales *antes* del backbone (`master_model.py:288-289`). Este modo no tiene atención cross-modal ni segunda FPN.
+- **EarlyFusionBackbone** (`backbone.py:128`): ConvNeXt-Tiny de un solo stream con un único stem `Conv2d(4→96, k4, s4)`. El stem preentrenado de 3 canales se adapta a 4: `W[:, :3] = W_imagenet * 0.75` y `W[:, 3] = mean(W_imagenet, dim=1) * 0.75` (`backbone.py:283-286`).
+- **FPNNeck** (`neck.py:125`) sobre **SingleFPN** (`neck.py:48`): FPN top-down clásica (laterales 1×1 + upsample nearest + convs 3×3 de salida), 256 canales, **4 niveles** `[P2, P3, P4, P5]`.
 
-> **Nota histórica.** `DualConvNeXt`, `CrossModalFusion` y `DualFPN` fueron **eliminados** el 2026-08-30 (commit `c9a247f`,
-> tareas 8.2/7.2 de `openspec/changes/fusion-redesign/`). `src/models/master/fusion.py` ya no existe. Si encuentras
-> documentación —incluida la memoria de tesis— que describa esos módulos, está desactualizada.
+#### Común a ambos modos
+
+- **ProjectionLayers**: capas de proyección que adaptan las features del estudiante al espacio de canales del maestro para KD.
+- **Checkpoints**: no son intercambiables entre modos. `arch_version` (1 = `cross_attention`, 2 = `early`) impide cargar uno en el otro (`src/training/fusion_modes.py:41-45`).
+
+> **Historial.** El cambio `fusion-redesign` (commit `c9a247f`, 2026-08-30) eliminó `fusion.py` y dejó solo la fusión
+> temprana. La medición del 2026-09-06 (una sola semilla) mostró que ese modo no detectaba daño en val ni en test, así que el camino de dos
+> streams se restauró como `fusion_mode="cross_attention"` (commit `bc715e4`, 2026-09-06). Detalle en
+> [`src/models/master/README.md`](src/models/master/README.md) y `reports/session-2026-09-06/experiments.md`.
 
 ### 2.2 Modelo Estudiante (Student) — `src/models/student/`
 
@@ -113,7 +159,7 @@ annotate_mango_florence.py       convert_nir_labels.py
           ┌────────┴────────┐
           ▼                 ▼
    MasterModel        YOLOv8-Nano Student
-   (Teacher 35.3M)    (Student ~6.9M)
+   (Teacher 46.6M)    (Student ~6.9M)
           │                 │
           └────────┬────────┘
                    ▼
@@ -232,7 +278,7 @@ openspec/
 │   ├── annotation/         # Florence-2, bbox projection, NIR segmentation
 │   ├── data_pipeline/      # OCI client y pair discovery para cache RGB/NIR
 │   ├── models/
-│   │   ├── master/         # Teacher: EarlyFusionBackbone, SingleFPN, YOLODetectionHead
+│   │   ├── master/         # Teacher: fusion_mode cross_attention (DualConvNeXtBackbone, CrossModalFusion, DualFPN) o early (EarlyFusionBackbone, SingleFPN) + YOLODetectionHead
 │   │   └── student/        # Student: CSPDarknetNano, PANet, YOLOStudentHead
 │   ├── training/           # Training loop: dataset, loss (TAL+BCE+CIoU), metrics, augmentations
 │   ├── storage_logic/      # Object storage (S3/OCI)
