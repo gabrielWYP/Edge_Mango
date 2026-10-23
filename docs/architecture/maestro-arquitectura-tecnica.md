@@ -7,6 +7,7 @@
 | **Código** | [`src/models/master/`](../../src/models/master/) |
 | **Verificado contra** | `main` en `649eebb` (2026-10-23). Conteo de parámetros, shapes y cómputo medidos ejecutando el modelo en CPU, entrada 640×640. |
 | **Documento hermano** | [`src/models/master/README.md`](../../src/models/master/README.md) (vista de usuario de ambos modos de fusión) |
+| **Estado** | Maestro explorado. La propuesta vigente lo reemplaza por un maestro chico de la misma arquitectura que el estudiante: ver [`rediseno-maestro-y-experimento-central.md`](rediseno-maestro-y-experimento-central.md) |
 
 Este documento describe, bloque por bloque, la arquitectura del maestro que propone la tesis
 (sección 5.3.2, Figura 5.8): qué entra y qué sale de cada parte, qué decisión técnica se tomó y
