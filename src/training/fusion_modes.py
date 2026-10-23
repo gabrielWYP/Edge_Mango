@@ -31,6 +31,8 @@ checkpoint can never be an early-fusion one.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 FUSION_MODE_EARLY = "early"
 FUSION_MODE_CROSS_ATTENTION = "cross_attention"
 
@@ -128,3 +130,133 @@ def fusion_pos_encoding_from_checkpoint(checkpoint: dict) -> bool:
     """
     config_dict = checkpoint.get("config") or {}
     return bool(config_dict.get("fusion_pos_encoding", False))
+
+
+# --------------------------------------------------------------------------
+# Attention ablation flags (cross_attention only)
+# --------------------------------------------------------------------------
+#
+# Two opt-in switches carve the two-stream teacher into the three arms of the
+# attention ablation, all `arch_version` 1:
+#
+#   A  fusion_attention=True,  use_nir=True   the default two-stream model
+#   B  fusion_attention=False, use_nir=True   no `CrossModalFusion`: F_i = RGB_i,
+#                                             NIR reaches the head through the
+#                                             `DualFPN` concat only
+#   C  fusion_attention=False, use_nir=False  RGB-only two-stream skeleton: no
+#                                             `nir_stem`, no NIR pass, no
+#                                             `fpn_nir`; `nir` is accepted and
+#                                             ignored
+#
+# B and C each drop state_dict keys (`fusion.*`; plus `backbone.nir_stem.*` and
+# `neck.fpn_nir.*`, and the fusion convs shrink from 512 to 256 inputs), so a
+# checkpoint of one arm cannot be loaded into another. Loaders rebuild the arm
+# from the checkpoint's recorded config (`*_from_checkpoint`, absent -> True,
+# which every checkpoint predating the flags was trained with) and
+# `check_fusion_ablation_compatible` turns a residual mismatch into one
+# sentence.
+
+# State_dict prefixes that exist only in arm A / only when NIR is streamed.
+_FUSION_ATTENTION_PREFIX = "fusion."
+_NIR_STREAM_PREFIX = "backbone.nir_stem."
+# Present in every cross-attention state_dict, whatever the arm.
+_CROSS_ATTENTION_PREFIX = "backbone.rgb_stem."
+
+
+def validate_fusion_ablation(
+    fusion_attention: bool,
+    use_nir: bool,
+    fusion_mode: str,
+    fusion_pos_encoding: bool = False,
+) -> None:
+    """Raise `ValueError` unless the ablation flags form a buildable arm.
+
+    Strictly bools, for the same reason as `validate_fusion_pos_encoding`.
+    Both flags only exist on the cross-attention path: the early path has no
+    attention module and fuses NIR at the input, so turning either off there
+    would be silently ignored. `use_nir=False` removes the NIR stream the
+    attention attends over, so it requires `fusion_attention=False`; and
+    `fusion_pos_encoding=True` without the attention would encode position
+    into a module that does not exist.
+    """
+    for name, value in (("fusion_attention", fusion_attention), ("use_nir", use_nir)):
+        if not isinstance(value, bool):
+            raise ValueError(
+                f"{name} must be a bool, got {value!r} ({type(value).__name__})."
+            )
+    if fusion_mode != FUSION_MODE_CROSS_ATTENTION and not (fusion_attention and use_nir):
+        raise ValueError(
+            f"fusion_attention={fusion_attention} / use_nir={use_nir} are "
+            f"ablations of fusion_mode='{FUSION_MODE_CROSS_ATTENTION}', got "
+            f"fusion_mode={fusion_mode!r}: the early path has no attention "
+            "module and fuses NIR at the input, so the flags would be silently "
+            "ignored. Use in_channels=3 for its RGB-only arm."
+        )
+    if not use_nir and fusion_attention:
+        raise ValueError(
+            "use_nir=False requires fusion_attention=False: the cross-modal "
+            "attention attends RGB queries over NIR keys, which no longer exist."
+        )
+    if fusion_pos_encoding and not fusion_attention:
+        raise ValueError(
+            "fusion_pos_encoding=True requires fusion_attention=True: with no "
+            "cross-modal attention there is no query/key to encode position "
+            "into, and the flag would be silently ignored."
+        )
+
+
+def fusion_attention_from_checkpoint(checkpoint: dict) -> bool:
+    """Return the `fusion_attention` a checkpoint was trained with.
+
+    Read from the Trainer's recorded `"config"`, like
+    `fusion_pos_encoding_from_checkpoint`. Checkpoints written before the
+    field existed record none and were trained with the attention, so absence
+    resolves to True.
+    """
+    config_dict = checkpoint.get("config") or {}
+    return bool(config_dict.get("fusion_attention", True))
+
+
+def use_nir_from_checkpoint(checkpoint: dict) -> bool:
+    """Return the `use_nir` a checkpoint was trained with (absent -> True)."""
+    config_dict = checkpoint.get("config") or {}
+    return bool(config_dict.get("use_nir", True))
+
+
+def check_fusion_ablation_compatible(
+    model,
+    state_dict: Mapping[str, object],
+    source: str = "checkpoint",
+) -> None:
+    """Raise unless `state_dict` and `model` (a `MasterModel`) are the same arm.
+
+    Compares the presence of the `fusion.*` (attention) and
+    `backbone.nir_stem.*` (NIR stream) keys, which tell arms A, B and C apart.
+    Only cross-attention state_dicts on both sides are compared: anything else
+    (an early-fusion model or checkpoint) is `arch_version`'s job, and is left
+    to strict loading.
+    """
+    def has(sd: Mapping[str, object], prefix: str) -> bool:
+        return any(key.startswith(prefix) for key in sd)
+
+    model_state_dict = model.state_dict()
+    if not (has(model_state_dict, _CROSS_ATTENTION_PREFIX) and has(state_dict, _CROSS_ATTENTION_PREFIX)):
+        return
+    mismatches = []
+    for name, prefix in (
+        ("fusion_attention", _FUSION_ATTENTION_PREFIX),
+        ("use_nir", _NIR_STREAM_PREFIX),
+    ):
+        checkpoint_value, model_value = has(state_dict, prefix), has(model_state_dict, prefix)
+        if checkpoint_value != model_value:
+            mismatches.append((name, checkpoint_value, model_value))
+    if not mismatches:
+        return
+    checkpoint_flags = ", ".join(f"{name}={ckpt}" for name, ckpt, _ in mismatches)
+    model_flags = ", ".join(f"{name}={model}" for name, _, model in mismatches)
+    raise ValueError(
+        f"{source} has {checkpoint_flags} weights but the model was built with "
+        f"{model_flags}. The attention-ablation arms have different state_dict "
+        f"schemas - rebuild the model with {checkpoint_flags} (the config the "
+        "checkpoint was trained with, or --override ...)."
+    )

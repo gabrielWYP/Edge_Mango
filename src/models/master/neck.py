@@ -211,6 +211,12 @@ class DualFPN(nn.Module):
             `src/training/neck_norm.py`.
         gn_groups (int): GroupNorm group-count cap (the largest divisor of
             `out_channels` <= `gn_groups` is used). Ignored for "batch".
+        use_nir (bool): Build the NIR FPN (default True). False is the
+            RGB-only arm of the attention ablation
+            (`src/training/fusion_modes.py`): no `fpn_nir` (`self.fpn_nir` is
+            None and adds no state_dict key), and each fusion conv keeps the
+            same Conv1x1 -> norm -> ReLU -> Dropout2d block over
+            `out_channels` inputs instead of the `2 * out_channels` concat.
     """
 
     def __init__(
@@ -221,6 +227,7 @@ class DualFPN(nn.Module):
         emit_strides: Sequence[int] | None = None,
         norm: str = DEFAULT_NECK_NORM,
         gn_groups: int = DEFAULT_NECK_GN_GROUPS,
+        use_nir: bool = True,
     ):
         super().__init__()
 
@@ -232,13 +239,17 @@ class DualFPN(nn.Module):
         validate_strides(emit_strides)
         self.emit_strides = tuple(emit_strides)
 
+        self.use_nir = use_nir
         self.fpn_rgb = SingleFPN(in_channels, out_channels)
-        self.fpn_nir = SingleFPN(in_channels, out_channels)
+        # A plain None attribute when absent: no `neck.fpn_nir.*` key.
+        self.fpn_nir = SingleFPN(in_channels, out_channels) if use_nir else None
 
-        # Fusion: concat (2 * out_channels) → out_channels per pyramid level
+        # Fusion: concat (2 * out_channels) → out_channels per pyramid level;
+        # RGB-only (out_channels) → out_channels when there is no NIR pyramid.
+        fusion_in_channels = out_channels * 2 if use_nir else out_channels
         self.fusion_convs = nn.ModuleList([
             nn.Sequential(
-                nn.Conv2d(out_channels * 2, out_channels, kernel_size=1),
+                nn.Conv2d(fusion_in_channels, out_channels, kernel_size=1),
                 make_norm(norm, out_channels, gn_groups),
                 nn.ReLU(inplace=True),
                 nn.Dropout2d(p=dropout),
@@ -250,26 +261,44 @@ class DualFPN(nn.Module):
     def forward(
         self,
         fused_features: list[torch.Tensor],
-        nir_features: list[torch.Tensor],
+        nir_features: list[torch.Tensor] | None,
     ) -> list[torch.Tensor]:
         """
         Args:
             fused_features: [F1, F2, F3, F4] — cross-attention fused RGB+NIR
-            nir_features:   [S1, S2, S3, S4] — original NIR backbone features
+                (the RGB backbone features themselves when the model is
+                built with `fusion_attention=False`)
+            nir_features:   [S1, S2, S3, S4] — original NIR backbone
+                features. Must be None when `use_nir=False`, and must not be
+                None otherwise: either mismatch would silently drop a stream.
 
         Returns:
             pyramid: the levels named by `self.emit_strides`, finest-first,
                 each at `out_channels`. Index `k` corresponds to
                 `self.emit_strides[k]`.
         """
+        if (nir_features is None) == self.use_nir:
+            raise ValueError(
+                f"DualFPN(use_nir={self.use_nir}) got "
+                f"nir_features={'None' if nir_features is None else 'a feature list'}."
+            )
+
         # Build per-modality pyramids
         rgb_pyramid = self.fpn_rgb(fused_features)   # [P2..P5] at 256ch
-        nir_pyramid = self.fpn_nir(nir_features)     # [P2..P5] at 256ch
 
         # Select the levels to fuse by stride, not by position: a positional
         # slice silently truncates when the requested pyramid and the
         # computed one disagree.
         rgb_levels = select_by_strides(rgb_pyramid, ALL_STRIDES, self.emit_strides)
+
+        if not self.use_nir:
+            # RGB-only arm: the same per-level block, over the RGB level alone.
+            return [
+                fusion_conv(rgb_level)
+                for rgb_level, fusion_conv in zip(rgb_levels, self.fusion_convs)
+            ]
+
+        nir_pyramid = self.fpn_nir(nir_features)     # [P2..P5] at 256ch
         nir_levels = select_by_strides(nir_pyramid, ALL_STRIDES, self.emit_strides)
 
         unified_pyramid = []

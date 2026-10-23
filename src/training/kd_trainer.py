@@ -37,7 +37,12 @@ from torch.optim import AdamW
 from torch.utils.data import DataLoader
 
 from .config import TrainingConfig
-from .fusion_modes import fusion_pos_encoding_from_checkpoint
+from .fusion_modes import (
+    check_fusion_ablation_compatible,
+    fusion_attention_from_checkpoint,
+    fusion_pos_encoding_from_checkpoint,
+    use_nir_from_checkpoint,
+)
 from .kd_config import KDConfig
 from .kd_loss import KDLoss
 from .loop import Trainer
@@ -140,6 +145,8 @@ class KDTrainer(Trainer):
         # The neck norm is part of the state_dict schema too (GroupNorm has no
         # running statistics), and is read from the same recorded config
         # (absent -> BatchNorm, what every earlier checkpoint was trained with).
+        # So are the attention-ablation flags (arm B drops `fusion.*`, arm C
+        # also the NIR stream), read the same way (absent -> True, arm A).
         neck_norm, neck_gn_groups = neck_norm_from_checkpoint(checkpoint)
         teacher = MasterModel(
             num_classes=config.num_classes,
@@ -150,8 +157,13 @@ class KDTrainer(Trainer):
             fusion_pos_encoding=fusion_pos_encoding_from_checkpoint(checkpoint),
             neck_norm=neck_norm,
             neck_gn_groups=neck_gn_groups,
+            fusion_attention=fusion_attention_from_checkpoint(checkpoint),
+            use_nir=use_nir_from_checkpoint(checkpoint),
         )
 
+        check_fusion_ablation_compatible(
+            teacher, checkpoint["model_state_dict"], source=f"Teacher checkpoint at {ckpt_path}"
+        )
         teacher.load_state_dict(checkpoint["model_state_dict"])
 
         # Freeze all teacher parameters
