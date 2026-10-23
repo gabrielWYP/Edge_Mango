@@ -100,6 +100,7 @@ class KDTrainer(Trainer):
         self.kd_criterion = KDLoss(
             level_weights=config.distill_levels,
             temperature=config.kd_temperature,
+            loss_type=config.kd_loss_type,
         ).to(self.device)
 
     def _auxiliary_param_groups(self, lr: float) -> list[dict]:

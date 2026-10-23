@@ -14,6 +14,8 @@ teacher_checkpoint: checkpoints/mastermodel_mango/best_model.pt
 # --- KD Hyperparameters ---
 kd_weight: 1.0
 kd_temperature: 1.0
+# Feature-imitation loss: mse (raw features) | pearson (PKD, arXiv 2207.02039).
+kd_loss_type: mse
 distill_levels:
   backbone: 1.0
   fpn: 0.1
