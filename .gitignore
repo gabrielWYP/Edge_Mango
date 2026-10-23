@@ -61,6 +61,7 @@ data/cache/
 data/augmented/
 data/annotations/
 data/label_studio*/
+data/exports/
 checkpoints/**/checkpoint*.pt
 
 # Pero SÍ versionar exports de Label Studio NIR para reproducir entrenamiento

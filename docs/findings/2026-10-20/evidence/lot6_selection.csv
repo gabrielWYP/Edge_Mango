@@ -1,0 +1,37 @@
+stem,timestamp,local_time,mango_id,face,decision,reason,qc_flags,impacted_faces,impact_zone,minutes_since_impact
+mango_rgb_1792336581,1792336581,10:16:21,,,exclude,"pre-metadata capture: no JSON sidecar, auto exposure, RGB overexposed",RGB_OVER|NIR_UNDER|MISALIGN,,,
+mango_rgb_1792336785,1792336785,10:19:45,,,exclude,"pre-metadata capture: no JSON sidecar, auto exposure, RGB overexposed",RGB_OVER|NIR_UNDER|MISALIGN,,,
+mango_rgb_1792336910,1792336910,10:21:50,,,exclude,"pre-metadata capture: no JSON sidecar, auto exposure, RGB overexposed",RGB_OVER|NIR_UNDER|MISALIGN,,,
+mango_rgb_1792337046,1792337046,10:24:06,,,exclude,"pre-metadata capture: no JSON sidecar, auto exposure, RGB overexposed",RGB_OVER|NIR_UNDER|MISALIGN,,,
+mango_rgb_1792348876,1792348876,13:41:16,1,1,keep,kept,,1,centro,0.3
+mango_rgb_1792349334,1792349334,13:48:54,1,2,keep,kept,,2,centro,7.9
+mango_rgb_1792351957,1792351957,14:32:37,1,3,keep,kept; 51.6 min after impact (> 10 min); MISALIGN is not a reason to exclude (the whole lot shares one offset),MISALIGN|LATE_>10min_after_impact,3,centro,51.6
+mango_rgb_1792353173,1792353173,14:52:53,1,4,keep,kept,,4,centro,1.9
+mango_rgb_1792353731,1792353731,15:02:11,2,1,keep,"kept; NIR_OVER: 1.9 % of the fruit region saturated in NIR; 11.2 min after impact (> 10 min); same mango_id and face as the 2 test captures (1792343585, 1792344644)",NIR_OVER|LATE_>10min_after_impact|same_mango_id+cara_as_2_TEST_captures,1,centro,11.2
+mango_rgb_1792353836,1792353836,15:03:56,2,2,keep,kept; NIR_OVER: 2.7 % of the fruit region saturated in NIR,NIR_OVER,2,izquierda,1.9
+mango_rgb_1792353937,1792353937,15:05:37,2,3,keep,kept; NIR_OVER: 4.1 % of the fruit region saturated in NIR,NIR_OVER,3,centro,0.6
+mango_rgb_1792354158,1792354158,15:09:18,2,4,keep,kept,,4,centro,1.3
+mango_rgb_1792355197,1792355197,15:26:37,3,1,keep,kept,,1,derecha,1.6
+mango_rgb_1792355284,1792355284,15:28:04,3,2,keep,kept; MISALIGN is not a reason to exclude (the whole lot shares one offset),MISALIGN,2,centro,1.1
+mango_rgb_1792356266,1792356266,15:44:26,3,3,keep,kept; MISALIGN is not a reason to exclude (the whole lot shares one offset),MISALIGN,3,centro,1.4
+mango_rgb_1792356345,1792356345,15:45:45,3,4,keep,kept,,4,centro,0.8
+mango_rgb_1792357237,1792357237,16:00:37,4,1,keep,kept; 14.6 min after impact (> 10 min),LATE_>10min_after_impact,1,izquierda,14.6
+mango_rgb_1792357582,1792357582,16:06:22,4,2,keep,kept; MISALIGN is not a reason to exclude (the whole lot shares one offset),MISALIGN,2,derecha,5.4
+mango_rgb_1792357752,1792357752,16:09:12,4,3,keep,kept,,3,centro,2.2
+mango_rgb_1792357845,1792357845,16:10:45,4,4,keep,kept,,4,centro,1.8
+mango_rgb_1792357957,1792357957,16:12:37,5,1,exclude,"RGB blown out (white reference R,G,B = 252,255,248); duplicate of mango 5 face 1",RGB_OVER|DUP_FACE,1,derecha,3.6
+mango_rgb_1792358104,1792358104,16:15:04,5,1,exclude,"RGB blown out (white reference R,G,B = 247,252,245); duplicate of mango 5 face 1",MASK_UNRELIABLE|RGB_OVER|DUP_FACE,1,centro,1.1
+mango_rgb_1792358239,1792358239,16:17:19,5,3,exclude,"RGB blown out (white reference R,G,B = 250,253,249)",MASK_UNRELIABLE|RGB_OVER,3,izquierda,2.3
+mango_rgb_1792358367,1792358367,16:19:27,5,4,exclude,"RGB blown out (white reference R,G,B = 250,253,249)",MASK_UNRELIABLE|RGB_OVER,4,derecha,2.5
+mango_rgb_1792358952,1792358952,16:29:12,6,1,exclude,"RGB blown out (white reference R,G,B = 250,253,249)",MASK_UNRELIABLE|RGB_OVER,1,centro,1.2
+mango_rgb_1792359063,1792359063,16:31:03,6,2,exclude,"RGB blown out (white reference R,G,B = 250,253,249)",MASK_UNRELIABLE|RGB_OVER,2,centro,1.1
+mango_rgb_1792359136,1792359136,16:32:16,6,3,exclude,"RGB blown out (white reference R,G,B = 249,253,248)",MASK_UNRELIABLE|RGB_OVER,3,izquierda,1.3
+mango_rgb_1792359593,1792359593,16:39:53,6,4,exclude,"RGB blown out (white reference R,G,B = 248,252,247)",MASK_UNRELIABLE|RGB_OVER,4,derecha,7.9
+mango_rgb_1792359746,1792359746,16:42:26,7,1,exclude,"RGB blown out (white reference R,G,B = 250,253,249)",MASK_UNRELIABLE|RGB_OVER,1,centro,2.4
+mango_rgb_1792359839,1792359839,16:43:59,7,2,exclude,"RGB blown out (white reference R,G,B = 250,253,249)",MASK_UNRELIABLE|RGB_OVER,2,izquierda,1
+mango_rgb_1792359975,1792359975,16:46:15,7,3,exclude,"RGB blown out (white reference R,G,B = 250,253,249)",MASK_UNRELIABLE|RGB_OVER,3,centro,1.2
+mango_rgb_1792360065,1792360065,16:47:45,7,4,exclude,"RGB blown out (white reference R,G,B = 249,253,248)",MASK_UNRELIABLE|RGB_OVER,4,centro,1.8
+mango_rgb_1792360549,1792360549,16:55:49,8,1,exclude,"RGB blown out (white reference R,G,B = 248,252,247)",MASK_UNRELIABLE|RGB_OVER,1,izquierda,1.8
+mango_rgb_1792360655,1792360655,16:57:35,8,2,exclude,"RGB blown out (white reference R,G,B = 250,253,249)",MASK_UNRELIABLE|RGB_OVER,2,centro,1.6
+mango_rgb_1792360937,1792360937,17:02:17,8,3,exclude,"RGB blown out (white reference R,G,B = 250,253,248)",MASK_UNRELIABLE|RGB_OVER,3,centro,4.3
+mango_rgb_1792361045,1792361045,17:04:05,8,4,exclude,"RGB blown out (white reference R,G,B = 250,253,249)",MASK_UNRELIABLE|RGB_OVER,4,centro,0.1
