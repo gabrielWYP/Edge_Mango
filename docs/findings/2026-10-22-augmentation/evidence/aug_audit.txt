@@ -1,0 +1,12 @@
+pairs with labels: 252
+damage boxes: 390; side at 640 px letterbox: median 29, p10 20, p90 43
+Rotate 20 deg, largest_box: box area x1.66 (median), IoU(box, object) <= 0.60
+Rotate 20 deg, ellipse    : box area x1.01 (median), IoU(box, object) <= 0.99
+images with contrast: 202
+  R: healthy - damage = median -25.2 gray levels, p25 -39.1, p75 -12.7
+  G: healthy - damage = median -29.1 gray levels, p25 -43.1, p75 -13.0
+  B: healthy - damage = median +1.2 gray levels, p25 -3.2, p75 +6.7
+GaussNoise std range 0.02-0.08 of 255 = 5.1-20.4 gray levels per pixel
+HueSaturationValue(hue_shift_limit=15): max hue shift +30 deg
+ColorJitter(hue=0.05): max hue shift +18 deg
+sampler: instances {0: 252, 1: 390}, class weights {0: 1.27, 1: 0.82}, distinct per-image weights [1.27]
