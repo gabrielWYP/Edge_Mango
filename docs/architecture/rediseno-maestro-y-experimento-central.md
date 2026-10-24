@@ -20,6 +20,10 @@ pero cambia dos cosas:
 
    H1 es la condición previa de H2 y usa los mismos modelos, así que no agrega entrenamientos.
 
+**Por confirmar antes de la primera evaluación en test:** la ventana temprana `T <= 4 h`, el ROPE
+±0.02 y el umbral 0.95 (sección 7), la definición de lotes del dataset nuevo (6.1) y la propagación
+de etiquetas hacia atrás (6.2). El trabajo técnico previo a la corrida está en la sección 9.
+
 ---
 
 ## 1. Por qué se reemplaza el maestro de 46.6M
@@ -243,9 +247,11 @@ p exacto de sign-flip junto con su piso.
 - **El maestro de dos streams** queda documentado en
   [`maestro-arquitectura-tecnica.md`](maestro-arquitectura-tecnica.md) como el maestro explorado y
   descartado, con las razones medidas de la sección 1.2.
-- **La ablación de la atención (brazos A/B/C)** está implementada en la rama
-  `feat/fusion-ablation-flags`. Pasa a ser **opcional**: solo aporta si se decide conservar el
-  maestro de dos streams como comparación.
+- **La ablación de la atención** está implementada en la rama `feat/fusion-ablation-flags`, con
+  su pre-registro borrador en `docs/findings/2026-10-23-attention-ablation/PREREGISTRATION.md`.
+  Compara tres brazos del maestro de dos streams: A (completo), B (sin atención cross-modal) y C
+  (sin atención ni NIR). Pasa a ser **opcional**: solo aporta si se decide conservar el maestro de
+  dos streams como comparación.
 - **Las secciones 5.3.2 y 5.3.3 de la tesis** deben reescribirse para el nuevo maestro y las
   hipótesis H1/H2.
 
