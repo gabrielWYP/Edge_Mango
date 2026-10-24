@@ -6,20 +6,22 @@
 | **Configuración de referencia** | [`configs/experiment/twostream.yaml`](../../configs/experiment/twostream.yaml) (`head_strides: [8, 16, 32]`) |
 | **Código** | [`src/models/master/`](../../src/models/master/) |
 | **Verificado contra** | `main` en `649eebb` (2026-10-23). Conteo de parámetros, shapes y cómputo medidos ejecutando el modelo en CPU, entrada 640×640. |
+| **Rutas de código** | `loop.py:218` significa `src/training/loop.py`, línea 218. Los archivos `backbone.py`, `fusion.py`, `neck.py`, `head.py`, `master_model.py` y `distill_projections.py` están en `src/models/master/`; el resto, en `src/training/` |
 | **Documento hermano** | [`src/models/master/README.md`](../../src/models/master/README.md) (vista de usuario de ambos modos de fusión) |
-| **Estado** | Maestro explorado. La propuesta vigente lo reemplaza por un maestro chico de la misma arquitectura que el estudiante: ver [`rediseno-maestro-y-experimento-central.md`](rediseno-maestro-y-experimento-central.md) |
+| **Estado** | **Explorado.** Documenta el maestro de dos streams de 46.6M parámetros. La propuesta vigente lo reemplaza por un maestro pequeño con la arquitectura del estudiante (M2): ver [`rediseno-maestro-y-experimento-central.md`](rediseno-maestro-y-experimento-central.md) |
 
-Este documento describe, bloque por bloque, la arquitectura del maestro que propone la tesis
+Este documento describe, bloque por bloque, el maestro de dos streams de la tesis actual
 (sección 5.3.2, Figura 5.8): qué entra y qué sale de cada parte, qué decisión técnica se tomó y
 por qué, y qué limitaciones están medidas. Cada afirmación lleva su referencia de código o de
 reporte.
 
-> **Cuál de las dos arquitecturas se documenta.** El código soporta dos modos de fusión. El
-> maestro propuesto, y el que produjo el mejor resultado medido (AP50 de daño en test 0.398,
-> [`reports/final-run-20261014/`](../../reports/final-run-20261014/README.md)), es el de **dos
-> streams con atención cross-modal**. La fusión temprana de 4 canales
+> **Qué arquitectura se documenta.** El código soporta dos modos de fusión. Este documento
+> describe el de **dos streams con atención cross-modal**, que produjo el mejor resultado medido
+> (AP50 de daño en test 0.398,
+> [`reports/final-run-20261014/`](../../reports/final-run-20261014/README.md)). La fusión
+> temprana de 4 canales con ConvNeXt
 > ([`master_early_fusion_architecture.drawio`](master_early_fusion_architecture.drawio)) se
-> evaluó y se descartó; la sección 9 resume por qué.
+> evaluó y se descartó para este maestro; la sección 9 resume por qué y con qué reservas.
 
 ---
 
@@ -83,16 +85,16 @@ flowchart TB
 
 | Bloque | Parámetros | % | GMACs / imagen | % |
 |:--|--:|--:|--:|--:|
-| Stems (`rgb_stem` 4,896 + `nir_stem` 1,824) | 6,720 | 0.0 | (incl. en backbone) | |
-| Stages ConvNeXt compartidas | 27,813,696 | 59.6 | 72.7 (dos pasadas) | 55.8 |
+| Stems (`rgb_stem` 4,896 + `nir_stem` 1,824) | 6,720 | 0.0 | 0.2 | 0.1 |
+| Stages ConvNeXt compartidas | 27,813,696 | 59.6 | 72.5 (dos pasadas) | 55.6 |
 | `CrossModalFusion` | 9,421,920 | 20.2 | 4.2 | 3.2 |
 | `DualFPN` (2 × `SingleFPN` 2,729,984 + `fusion_convs` 395,520) | 5,855,488 | 12.6 | 43.6 | 33.4 |
 | `YOLODetectionHead` (3 niveles × 1,181,702) | 3,545,106 | 7.6 | 9.9 | 7.6 |
 | **Total** | **46,642,930** | 100 | **130.4** | 100 |
 
-GMACs medidos con `torch.utils.flop_counter.FlopCounterMode` sobre una imagen 640×640. Con
-`head_strides = [4, 8, 16, 32]` el total sube a 47,956,472 parámetros (un `DecoupledHead` y una
-`fusion_conv` más).
+GMACs medidos con `torch.utils.flop_counter.FlopCounterMode` sobre una imagen 640×640 (los
+porcentajes de GMACs suman 99.9 por redondeo). Con `head_strides = [4, 8, 16, 32]` el total sube
+a 47,956,472 parámetros: un `DecoupledHead` más (1,181,702) y una `fusion_conv` más (131,840).
 
 ---
 
@@ -103,13 +105,14 @@ trabajo ocurre en `YOLODataset` (`src/training/dataset.py`), no dentro del model
 
 | Paso | Qué hace | Código |
 |:--|:--|:--|
-| 1. Emparejado | cada `*_rgb*.jpg` se empareja con su NIR reemplazando `_rgb` por `_nir`; la etiqueta es `labels/<split>/<rgb_stem>.txt`. Los pares sin etiqueta se descartan y un `splits.json` que no coincide con las etiquetas aborta | `dataset.py:259-314` |
+| 1. Emparejado | cada `*.jpg` de `rgb_dir` se empareja con su NIR reemplazando `_rgb` por `_nir` en el nombre (sin NIR: se descarta con aviso); la etiqueta es `labels/<split>/<rgb_stem>.txt`. Los pares sin etiqueta se descartan y un `splits.json` que no coincide con las etiquetas aborta | `dataset.py:259-314` |
 | 2. Lectura | RGB con `cv2.imread` (BGR → RGB); NIR en escala de grises | `dataset.py:392-401` |
 | 3. Registro NIR → RGB | homografía 3×3 de `notebooks/matriz_homografia_aruco.npy` (validada finita y no singular). `H` mapea RGB → NIR, así que el NIR se deforma con `H⁻¹` al tamaño del RGB (`INTER_LINEAR`, borde constante 14 = `nir_mean·255`) | `nir_registration.py:27-83`, `dataset.py:408-412` |
-| 4. Letterbox a 640 | resize que preserva el aspecto y centrado en un cuadrado; relleno 114 en RGB y 14 en NIR. Las cajas pasan a cxcywh normalizado del letterbox y se recortan a [0, 1] | `dataset.py:38-73`, `dataset.py:430-431`, `dataset.py:516-557` |
-| 5. Aumentación (solo train) | ver abajo | `augmentations.py`, `dataset.py:575-607` |
-| 6. Normalización | RGB: `/255` y media/desviación de ImageNet `[0.485, 0.456, 0.406]` / `[0.229, 0.224, 0.225]`. NIR: `(x/255 − 0.0569) / 0.0546` | `dataset.py:34-35`, `dataset.py:88-90`, `dataset.py:631-633` |
-| 7. Batch | `rgb (B, 3, 640, 640)` y `nir (B, 1, 640, 640)` en float32; `bboxes` lista de `(N_i, 4)` cxcywh normalizado y `labels` lista de `(N_i,)` int64 (0 = mango, 1 = dañado) | `dataset.py:660-672` |
+| 4. Recorte al ROI (opcional) | solo con `roi_crop: true` (variantes `twostream_roi_crop*`): recorta ambas imágenes a la caja del mango más un margen, después del registro y antes del letterbox | `dataset.py:414-427` |
+| 5. Letterbox a 640 | resize que preserva el aspecto y centrado en un cuadrado; relleno 114 en RGB y 14 en NIR. Las cajas pasan a cxcywh normalizado del letterbox y se recortan a [0, 1] | `dataset.py:38-73`, `dataset.py:430-431`, `dataset.py:516-557` |
+| 6. Aumentación (solo train) | ver abajo | `augmentations.py`, `dataset.py:575-607` |
+| 7. Normalización | RGB: `/255` y media/desviación de ImageNet `[0.485, 0.456, 0.406]` / `[0.229, 0.224, 0.225]`. NIR: `(x/255 − 0.0569) / 0.0546` | `dataset.py:34-35`, `dataset.py:88-90`, `dataset.py:631-633` |
+| 8. Batch | `rgb (B, 3, 640, 640)` y `nir (B, 1, 640, 640)` en float32; `bboxes` lista de `(N_i, 4)` cxcywh normalizado y `labels` lista de `(N_i,)` int64 (0 = mango, 1 = dañado) | `dataset.py:660-672` |
 
 **Aumentación.** Las transformaciones espaciales se muestrean una vez y se aplican **idénticas**
 a RGB, NIR y cajas (`additional_targets={"nir": "image"}`): flip horizontal 0.5, flip vertical
@@ -121,6 +124,10 @@ sobrevive si conserva visibilidad ≥ 0.15 y área ≥ 2 (`augmentations.py:44-5
 **Muestreo.** El split de train usa siempre un `WeightedRandomSampler` con reemplazo: el peso de
 cada clase es la frecuencia inversa `total / (nc · count_c)` y el de cada imagen, el mayor peso
 entre las clases que contiene (1.0 si no tiene cajas) (`dataset.py:687-719`, `train.py:237-245`).
+**En este corpus no tiene efecto:** todas las imágenes contienen un mango y el mango es la clase
+con menos instancias (188 frente a 288 de daño en train), así que todas reciben el mismo peso
+(1.27) y el muestreo es uniforme ([auditoría de aumentación](../findings/2026-10-22-augmentation/README.md),
+mecanismo 1; conteos reproducidos desde `data/mango_dataset_v3.zip`).
 
 **Decisiones y razones.**
 
@@ -131,12 +138,15 @@ entre las clases que contiene (1.0 si no tiene cajas) (`dataset.py:687-719`, `tr
   comparación controlada ([final-run](../../reports/final-run-20261014/README.md)).
 - **Aumentación espacial idéntica y fotométrica solo en RGB.** Lo espacial debe preservar el
   alineamiento píxel a píxel del que dependen la atención y la fusión por nivel. Lo fotométrico
-  simula la variación de iluminación de la cámara RGB que verá el estudiante en campo; en el NIR
-  la intensidad es la señal física del daño, así que no se perturba.
+  se limita al RGB para conservar la distribución de reflectancia medida del NIR
+  (`augmentations.py:61-63`). El efecto de cada transformación sobre el AP no se ha medido, y
+  perturbar solo una modalidad confunde las ablaciones de modalidad
+  ([auditoría](../findings/2026-10-22-augmentation/README.md), sección 3).
 - **Normalización propia del NIR** (media 0.0569, desviación 0.0546): el NIR del rig es muy oscuro;
   normalizarlo con las estadísticas de ImageNet lo dejaría lejos de media cero.
-- **Muestreador ponderado por la clase más rara.** El daño es la clase minoritaria y la que
-  importa; sobremuestrear imágenes con daño complementa `class_weights` en la pérdida.
+- **Muestreador ponderado por la clase más rara.** Pretendía sobremuestrear la clase minoritaria,
+  pero aquí no tiene efecto (ver arriba). Quien da más peso al daño es `class_weights` en la
+  pérdida (5.2).
 
 ---
 
@@ -198,8 +208,8 @@ de checkpoints.
   (`backbone.py:421-426`).
 - **Salida:** dos listas `[S1, S2, S3, S4]`, una por modalidad, con canales `[96, 192, 384, 768]`
   y strides `[4, 8, 16, 32]`.
-- **Parámetros:** 27,813,696 (una sola copia). **Cómputo:** 72.7 GMACs por imagen, porque cada
-  imagen atraviesa las stages dos veces.
+- **Parámetros:** 27,813,696 (una sola copia). **Cómputo:** 72.5 GMACs por imagen (72.7 con los
+  stems), porque cada imagen atraviesa las stages dos veces.
 
 **Decisiones y razones.**
 
@@ -214,7 +224,7 @@ de checkpoints.
   **mismo espacio de features**: es lo que hace comparables las queries RGB y las keys NIR en la
   atención (4.3). El precio es cómputo: dos pasadas por imagen.
 - **Entrenamiento end-to-end con learning rate discriminativo.** Ver sección 5. `freeze_backbone(n)`
-  sigue disponible para ablations y congela stems y stages de forma simétrica; la asimetría
+  sigue disponible para ablaciones y congela stems y stages de forma simétrica; la asimetría
   previa (stem RGB siempre congelado, stem NIR siempre entrenable) se eliminó porque era el
   defecto E6/Q10 detrás de un maestro que rendía menos que su propio estudiante
   (`master_model.py:333-359`).
@@ -261,9 +271,10 @@ F_i    = x                                              # si no (stage 4 a 640 p
   preguntando y NIR respondiendo, la salida queda anclada al stream RGB y se interpreta como "lo
   que el RGB debería saber de NIR en esta posición", que es exactamente lo que se quiere
   destilar (`fusion.py:18-22`). El valor transportado es contenido NIR puro.
-- **Fusión en las 4 escalas.** El daño temprano es pequeño (mediana ≈30 px de lado) y su indicio
-  NIR es textural; fusionar desde la stage 1 permite que la información NIR llegue tanto a los
-  niveles finos como a los semánticos.
+- **Fusión en las 4 escalas.** El daño es pequeño (mediana ≈30 px de lado corto a 640 px,
+  [`reports/damage-map-audit/h7-mechanism.md`](../../reports/damage-map-audit/h7-mechanism.md)) y
+  su indicio NIR es textural; fusionar desde la stage 1 permite que la información NIR llegue
+  tanto a los niveles finos como a los semánticos.
 - **Pooling a una grilla de 20×20 tokens.** Sin pooling, la stage 1 tendría 25,600 tokens y una
   matriz de atención de 25,600² por cabeza: inviable en memoria. Promediar a 400 tokens fija el
   costo de la atención en todas las stages (patrón usado en CMX y TokenFusion,
@@ -279,8 +290,10 @@ F_i    = x                                              # si no (stage 4 a 640 p
   sumada solo a Q y K, sin parámetros ni buffers: el `state_dict` es idéntico con o sin ella
   (`fusion.py:24-35`, `fusion.py:43-67`). Motivo: ver la primera limitación.
 
-**Limitaciones medidas** ([`reports/fusion-gradient-collapse/diagnosis.md`](../../reports/fusion-gradient-collapse/diagnosis.md),
-un checkpoint, una semilla, 4-8 imágenes de val):
+**Limitaciones medidas** ([`reports/fusion-gradient-collapse/diagnosis.md`](../../reports/fusion-gradient-collapse/diagnosis.md)).
+Se midieron sobre `checkpoints/mastermodel_mango/best_model.pt`, el checkpoint de dos streams
+previo al rediseño (NIR sin registrar), con una semilla y 4-8 imágenes de val. No se repitieron
+sobre la corrida final con NIR registrado.
 
 - **La atención colapsa a casi uniforme.** Entropía normalizada 0.9989 / 0.9974 / 0.9840 /
   0.8872 por stage. Con pesos casi uniformes cada query recibe aproximadamente el mismo promedio
@@ -297,12 +310,12 @@ un checkpoint, una semilla, 4-8 imágenes de val):
 - **Resolución de la atención frente al tamaño del daño.** Un token cubre 32×32 px y el daño
   mediano mide ≈30 px: la atención no puede localizar nada por debajo de un token.
 - **La stage 1 no recibe gradiente con `head_strides = [8, 16, 32]`.** `F1` solo alimenta el
-  nivel P2 de la FPN, que este pirámide descarta (4.4). Ver 4.4.
+  nivel P2 de la FPN, que esta pirámide descarta (4.4).
 
 ### 4.4 Neck — `DualFPN` (dos `SingleFPN` + fusión por nivel)
 
-**Responsabilidad.** Construir una pirámide de features multiescala por modalidad y fusionarlas
-nivel a nivel en una única pirámide de 256 canales para el head.
+**Responsabilidad.** Construir una pirámide de features multiescala por modalidad (FPN, Lin et
+al., 2017) y fusionarlas nivel a nivel en una única pirámide de 256 canales para el head.
 
 - **Entrada:** `[F1..F4]` (de 4.3) y `[S1..S4]` NIR (sin cambios).
 - **Salida:** pirámide de los niveles nombrados por `head_strides`, de fino a grueso, 256 canales
@@ -326,7 +339,7 @@ nivel a nivel en una única pirámide de 256 canales para el head.
   de la atención da al head una segunda vía de NIR, **alineada píxel a píxel**: la concatenación
   por nivel. Dado el colapso medido de la atención (4.3), esta es la única ruta por la que el NIR
   llega al head con información espacial (inferencia a partir de la arquitectura y del
-  diagnóstico; no hay una ablation que la aísle).
+  diagnóstico; no hay una ablación que la aísle).
 - **Fusión con `concat + Conv 1×1`.** Es la fusión aprendible más barata: deja que el modelo
   pondere RGB contra NIR por canal y por nivel, con 131,840 parámetros por nivel.
 - **Selección por stride.** Un `zip` posicional entre una pirámide de 4 niveles y una lista de 3
@@ -468,7 +481,7 @@ aspecto, y da gradiente aun sin solapamiento. Los pesos 7.5 / 0.5 son los de YOL
 | Batch | `effective_batch = 8` constante experimental; batch físico del perfil de máquina y `grad_accum_steps = 8 / batch_físico` derivado (GTX 1660S: 2 × 4; RTX 3080: 4 × 2; RTX A5000: 8 × 1) | `machine.py:80-103` |
 | Clipping | norma máxima 10, una vez por paso efectivo | `loop.py:632-651` |
 | Precisión | `fp32` en todos los perfiles; `fp16` (autocast + GradScaler) y `bf16` (solo autocast) disponibles | `precision.py:51-72` |
-| Épocas / paciencia | 100 / 20 | `twostream.yaml:56-61` |
+| Épocas / paciencia | 100 / 20; la corrida final y el LOLO usaron `patience=1000` (sin parada temprana) | `twostream.yaml:56-61`, [final-run](../../reports/final-run-20261014/README.md) |
 | Selección del checkpoint | `selection_metric`, default `map50`; las corridas reportadas usan `damage_ap50` | `config.py:268` |
 | Guardas | lotes con NaN/Inf se saltan y se cuentan; OOM tolerado solo en la época 1; una época sin pasos de optimizador es fatal | `loop.py:674-743` |
 | EMA de pesos | opcional (`ema: false` por default); con `ema: true` valida, selecciona y guarda los pesos EMA | `ema.py`, `loop.py:168-172` |
@@ -498,8 +511,11 @@ punto de operación de precisión/recall/F1.
 ### 5.5 Coste de entrenamiento medido
 
 - GTX 1660 SUPER (6.44 GB), fp32: ≈2.10 GB de VRAM por muestra + 0.22 GB; batch 2 usa 4.42 GB y
-  batch 4 ya no entra. El throughput es plano entre batch 1 y 2 (2.32 frente a 2.25 img/s): la
-  tarjeta está saturada con batch 1 (fusion-redesign `design.md` §4).
+  batch 4 ya no entra (8.64 GB, el driver de WSL derrama a RAM del host). El throughput es plano
+  entre batch 1 y 2 (2.32 frente a 2.25 img/s): la tarjeta está saturada con batch 1
+  ([`openspec/changes/fusion-redesign/design.md`](../../openspec/changes/fusion-redesign/design.md)
+  §4). Se midió con lotes sintéticos **antes de W5** (los stems del head se calculaban dos
+  veces); el modelo actual guarda menos activaciones y no se ha vuelto a medir.
 - RTX 3080: 34.3 s por época con 188 imágenes de train; 100 épocas ≈ 57 min
   ([final-run](../../reports/final-run-20261014/README.md)).
 - Optimizador: parámetros + gradientes + 2 momentos de Adam = 16 B/parámetro ≈ 0.75 GB. Las
@@ -527,8 +543,8 @@ estricto, `eval()`, `requires_grad = False`, y se guarda como atributo simple, n
 nunca entra en los grupos del optimizador ni en el `state_dict` del estudiante. Se vuelve a poner
 en `eval()` en cada época.
 
-**Forward** (`kd_trainer.py:222-262`): el maestro corre bajo `torch.no_grad()` con el mismo par
-RGB+NIR; el estudiante corre en paralelo sobre el RGB.
+**Forward** (`kd_trainer.py:222-262`): el maestro corre bajo `torch.no_grad()` con el par RGB+NIR
+del batch; después, el estudiante corre sobre el mismo RGB.
 
 | Grupo | Feature del maestro | Selección | Canales maestro ← estudiante | Peso |
 |:--|:--|:--|:--|--:|
@@ -596,9 +612,9 @@ Todas comparten el mismo código; solo cambia el YAML de experimento.
 | Config | Qué cambia respecto de `twostream.yaml` | Estado |
 |:--|:--|:--|
 | [`twostream.yaml`](../../configs/experiment/twostream.yaml) | referencia: `head_strides [8, 16, 32]`, BatchNorm en el neck, sin EMA | entrenado (corrida final 2026-10-14) |
-| [`twostream_p2.yaml`](../../configs/experiment/twostream_p2.yaml) | `head_strides [4, 8, 16, 32]`, `assigner_level_ranges [32, 64, 128]` | definido |
+| [`twostream_p2.yaml`](../../configs/experiment/twostream_p2.yaml) | `head_strides [4, 8, 16, 32]`, `assigner_level_ranges [32, 64, 128]` | definido, sin entrenar (no hay reportes) |
 | [`twostream_p2_posenc.yaml`](../../configs/experiment/twostream_p2_posenc.yaml) | lo anterior + `fusion_pos_encoding: true` | definido, sin entrenar |
-| [`twostream_roi_crop.yaml`](../../configs/experiment/twostream_roi_crop.yaml) | recorte del ROI del mango antes del letterbox | entrenado en LOLO de 5 folds |
+| [`twostream_roi_crop.yaml`](../../configs/experiment/twostream_roi_crop.yaml) | recorte del ROI del mango antes del letterbox (`roi_crop: true`, margen 0.10, jitter 0.5) y `selection_metric: damage_ap50` | entrenado en LOLO de 5 folds |
 | [`twostream_roi_crop_stable.yaml`](../../configs/experiment/twostream_roi_crop_stable.yaml) | ROI crop + `neck_norm: group` + EMA de pesos (`ema_decay 0.99`, `ema_tau 50`) | implementado, sin entrenar |
 
 ---
@@ -608,23 +624,31 @@ Todas comparten el mismo código; solo cambia el YAML de experimento.
 `fusion_mode="early"` apila RGB y NIR en un tensor de 4 canales antes de un único stem
 (inflado mean-preserving de los pesos ImageNet), un único stream de ConvNeXt y una sola FPN con
 P2 reconectado. Tiene 35,276,920 parámetros (−11.4M) y es el default del constructor, pero no
-es el maestro propuesto.
+es el maestro de dos streams que describe este documento.
 
-| Modelo (etiquetas limpias, 2026-09-06) | AP50 daño val | AP50 daño test |
+| Modelo (semilla 42, evaluado con etiquetas limpias, 2026-09-06) | AP50 daño val | AP50 daño test |
 |:--|--:|--:|
-| dos streams, cross-attention | **0.1282** | **0.0417** |
-| early fusion V1 (`[4, 8, 16, 32]`) | 0.0000 | 0.0000 |
-| early fusion H-E (`[8, 16, 32]`) | 0.0000 | 0.0000 |
+| dos streams, cross-attention (entrenado con etiquetas limpias) | **0.1282** | **0.0417** |
+| early fusion V1 (`[4, 8, 16, 32]`, etiquetas limpias) | 0.0000 | 0.0000 |
+| early fusion H-E (`[8, 16, 32]`, etiquetas sucias) | 0.0000 | 0.0000 |
+| early fusion V1 (`[4, 8, 16, 32]`, etiquetas sucias) | 0.0038 | 0.0034 |
 
-Fuente: [`reports/session-2026-09-06/experiments.md`](../../reports/session-2026-09-06/experiments.md).
-Todas las configuraciones de fusión temprana dan AP50 y recall de daño exactamente 0 en val y en
-test, mientras el mAP@0.5 agregado **subía** (0.4567 → 0.5019 en val) porque la clase mango
-estaba cerca de 1.0. Es una semilla y splits de 18-20 imágenes, pero el resultado es cualitativo
-(cero contra no cero) y se replicó en dos splits. Por eso el camino de dos streams se restauró
-como modo seleccionable en vez de revertir el rediseño.
+Fuente: [`reports/session-2026-09-06/experiments.md`](../../reports/session-2026-09-06/experiments.md)
+(sección 3). Ninguna configuración de fusión temprana pasa de AP50 de daño 0.004. V1 con
+etiquetas sucias conserva recall 0.52 en val, pero con 2,117 falsos positivos. Mientras tanto, el
+mAP@0.5 agregado en val **subió** de 0.4567 (dos streams anterior, etiquetas sucias) a 0.5019
+(V1 con etiquetas sucias) porque la clase mango estaba cerca de 1.0. Es una semilla y splits de
+18-20 imágenes, pero el resultado es cualitativo (casi nada contra algo) y se replicó en dos
+splits. Por eso el camino de dos streams se restauró como modo seleccionable en vez de revertir el
+rediseño.
+
+**Reserva.** Todos esos modelos se entrenaron con NIR sin registrar (anterior a #24). La fusión
+temprana a nivel de píxel es la más sensible a ese desalineamiento, así que el resultado no
+descarta la fusión temprana con NIR registrado. El rediseño la retoma para el maestro pequeño
+([`rediseno-maestro-y-experimento-central.md`](rediseno-maestro-y-experimento-central.md), sección 5).
 
 > El diagrama [`master_early_fusion_architecture.drawio`](master_early_fusion_architecture.drawio)
-> documenta esta alternativa, no el maestro propuesto.
+> documenta esta alternativa, no el maestro de dos streams.
 
 ---
 
@@ -634,18 +658,19 @@ como modo seleccionable en vez de revertir el rediseño.
 |:--|:--|:--|
 | AP50 de daño, test, NIR registrado | **0.398** (val 0.737) | semilla 42, split 188/23/25 con fuga de sesión ([final-run](../../reports/final-run-20261014/README.md)) |
 | AP50 de daño, test, NIR sin registrar | 0.177 ± 0.102 | 3 semillas ([twostream-v3-3seeds](../../reports/twostream-v3-3seeds/README.md)) |
-| AP50 de daño, test, LOLO 5 folds, ROI crop | 0.058 ± 0.046 | semilla 42, sin fuga entre lotes ([findings 2026-10-18](../findings/2026-10-18/README.md)) |
+| AP50 de daño, test, LOLO 5 folds, ROI crop | 0.058 ± 0.046 (media ± desviación entre lotes) | semilla 42, sin fuga entre lotes, ROI oráculo ([findings 2026-10-18](../findings/2026-10-18/README.md)) |
 
 Lectura honesta de la evidencia:
 
 1. **El 0.398 es una cota optimista.** Una semilla, y el split tiene fuga de sesión (13 de 25
    imágenes de test están a menos de 60 s de una de entrenamiento). Bajo validación por lotes
-   (LOLO) la misma arquitectura cae a 0.058 ± 0.046.
+   (LOLO) la misma arquitectura cae a 0.058 ± 0.046. La comparación está confundida: cambian a
+   la vez el recorte, el split y el tamaño de batch (findings 2026-10-18).
 2. **El entrenamiento es inestable, no sobreajustado.** En LOLO, 3 de 5 folds seleccionaron una
    época donde la clase mango había colapsado. La variante `twostream_roi_crop_stable.yaml`
    (GroupNorm + EMA) ataca esto y aún no se ha entrenado.
 3. **El aporte del NIR registrado no está demostrado a nivel de píxel** (AUC de un proxy por
-   píxel: RGB 0.709, RGB+NIR 0.693). El proxy ignora features espaciales; falta la ablation de NIR.
+   píxel: RGB 0.709, RGB+NIR 0.693). El proxy ignora features espaciales; falta la ablación de NIR.
 4. **El suelo de ruido es alto.** Con 37-43 cajas de daño por split, una imagen mueve el AP
    varias centésimas; ninguna diferencia de una sola semilla es publicable sin las tres semillas
    pre-registradas (42, 1337, 2024).
@@ -663,13 +688,13 @@ Lectura honesta de la evidencia:
 | Congelamiento del backbone (§5.3.2) | ConvNeXt-Tiny "se mantuvo congelado" en la fase 1 como extractor estático | `schedule: end_to_end`: nada congelado, stages a `lr · 0.1` (`twostream.yaml:55`). `two_phase` existe pero no es el que se usó en la corrida final | Actualizar el texto o declarar qué corrida usó `two_phase` |
 | KD de clasificación (§5.3.3 b) | KL sobre las distribuciones de la rama `cls_stem`, con soft labels | MSE entre features de `cls_stem`; no hay KL, ni logits, ni temperatura en uso | Corregir el texto o implementar KD de logits |
 | KD de regresión (§5.3.3 c) | destilación sobre la DFL de la cabeza YOLOv8 | El head no tiene DFL: regresa 4 valores cxcywh por celda; la KD de regresión es MSE sobre `reg_stem` | Corregir el texto |
-| Descripción general del maestro (párrafo "Modelo Maestro" del flujo metodológico) | "procesa la fusión temprana de los canales RGB y NIR" en un tensor de 4 canales | El maestro propuesto es de dos streams con atención cross-modal; la fusión temprana se descartó (sección 9). La propia tesis dice en otro punto que **no** se apilan 4 canales | Unificar el texto con §5.3.2 |
+| Descripción general del maestro (párrafo "Modelo Maestro" del flujo metodológico) | "procesa la fusión temprana de los canales RGB y NIR" en un tensor de 4 canales | El maestro de dos streams usa atención cross-modal; la fusión temprana se descartó para él (sección 9). La propia tesis dice en otro punto que **no** se apilan 4 canales | Unificar el texto con §5.3.2 |
 | Calibración de la homografía ("Alineación Espacial Computacional", antes de §5.3.2) | tablero checkerboard | El archivo usado es `notebooks/matriz_homografia_aruco.npy` (marcadores ArUco por su nombre) | Confirmar el método y alinear el texto |
 | Batch en la GTX 1660S (Fase 1) | batch size 4 | perfil `gtx1660s.yaml`: batch físico 2 × acumulación 4 = efectivo 8; batch 4 no entra en 6 GB | Actualizar |
 
 ### 11.2 Diagrama `master_early_fusion_architecture.drawio` frente al código
 
-- Describe la variante `early` (35.3M), **no** el maestro propuesto. La Figura 5.8 de la tesis
+- Describe la variante `early` (35.3M), **no** el maestro de dos streams. La Figura 5.8 de la tesis
   sí corresponde a la arquitectura de dos streams.
 - Su bloque de KD dibuja `ProjectionLayers` proyectando **maestro → estudiante** con
   `Conv 1×1 + BatchNorm2d`. El código proyecta **estudiante → maestro** y sin BatchNorm por
@@ -682,13 +707,14 @@ No cambian la arquitectura, pero afectan cómo se entrena o se mide. Ninguno se 
 documento.
 
 1. **El warmup no aplica en la época 1.** Construir `CosineAnnealingWarmRestarts` después de
-   `LambdaLR` reinicia el LR al valor base. Reproducido con PyTorch 2.13: el LR efectivo de las
-   épocas 1-6 es `1e-3, 4e-4, 6e-4, 8e-4, 1e-3, 1e-3`. La primera época corre a LR completo,
-   justo cuando el head está recién inicializado (`loop.py:334-354`).
+   `LambdaLR` reinicia el LR al valor base. Reproducido con PyTorch 2.9.1 (el `.venv` del repo): el
+   LR efectivo de las épocas 1-6 (grupo con `lr = 1e-3`) es `1e-3, 4e-4, 6e-4, 8e-4, 1e-3, 1e-3`.
+   La primera época corre a LR completo, justo cuando el head está recién inicializado
+   (`loop.py:334-354`).
 2. **Rotación y perspectiva rellenan el borde con 0**, no con 114 (RGB) ni 14 (NIR), así que la
    aumentación introduce bordes que no existen en el letterbox (`augmentations.py:49-50`).
-3. **`exp` se acota a [−9, 9] en la pérdida pero no en el decode** (`loss.py:568` frente a
-   `decode.py:116`).
+3. **`exp` se acota a [−9, 9] en la pérdida pero no en el decode** (`loss.py:568-569` frente a
+   `decode.py:116-117`).
 4. **`dx`, `dy` no se escalan por stride**: todos los niveles regresan desplazamientos en píxeles
    absolutos, así que la escala del target crece con el tamaño de las cajas asignadas a cada
    nivel en lugar de normalizarse por la celda (`loss.py:566-572`).
