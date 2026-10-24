@@ -1,7 +1,7 @@
 # Guía de captura del lote 1 (mangos 1-25)
 
-Lista de pasos para el operador del primer lote. El manual completo del programa está en
-[`capture/README.md`](../../capture/README.md); aquí solo va lo necesario para el día de captura.
+Procedimiento completo del operador para el primer lote, paso a paso y con los comandos. El manual del
+programa está en [`capture/README.md`](../../capture/README.md).
 
 | | |
 | --- | --- |
@@ -12,111 +12,165 @@ Lista de pasos para el operador del primer lote. El manual completo del programa
 | Disco | ~1,4 MB por cara (RGB ~0,3 MB, NIR ~1,1 MB): ~1,2 GB en total (la Pi tiene ~37 GB libres) |
 | Duración | ~14,5 h con un operador (ejemplo: 06:30-21:00) |
 
-## Por qué este flujo es el de menor overhead
+## Resumen
 
-La duración del día la fija el protocolo, no la cámara: la última ronda vence 12 h después del último
-impacto. Por eso no conviene bajar la resolución para ganar segundos (la toma de un par con su QC tarda 5-8 s,
-medido en la Pi el 2026-10-23, y la RGB a resolución completa conserva el detalle fino; ver
-[PR #43](https://github.com/gabrielWYP/Edge_Mango/pull/43)). El overhead que sí importa es el del
-operador, y el programa lo elimina:
+| Paso | Qué haces | Comando | Duración |
+| --- | --- | --- | --- |
+| 1 | Comprar los 25 mangos | — | la víspera |
+| 2 | Marcarlos | — | ~10 min |
+| 3 | Ordenarlos en la placa | — | ~5 min |
+| 4 | Arranque y calibración | `captura.py jornada` | ~15 min |
+| 5 | Fotos sanas de las 4 caras | `captura.py sanas` | ~40 min |
+| 6 | Golpear y fotografiar (+0 h), mango por mango | `captura.py impactos` | ~75 min |
+| 7 | Rondas +2 h … +12 h | `captura.py ronda` | 6 × ~75 min, con ~45 min libres entre rondas |
+| 8 | Respaldo y cierre | `rsync`, `captura.py estado` | ~10 min |
 
-| Antes (`captura_dual.py`, 2026-10-18) | Ahora (`captura_v3`) |
+Teclas en todo el programa: **Enter** = seguir · **s** = omitir la cara · **q** = salir. Después de salir
+(o de un corte), vuelve a correr el mismo comando: el avance se guarda después de cada cara y solo se pierde
+la cara en curso.
+
+## Antes del día de captura
+
+### Alimentación de las luces
+
+El script enciende y apaga las luces con los relés, y eso funciona. Lo que falla es la **alimentación**: tras un
+rato sin uso, la luz deja de encender aunque el relé conmute, y reintentar no la recupera. Medido en la Pi el
+2026-10-24 (brillo medio de una toma RGB con la caja cerrada):
+
+| Momento | Brillo medio |
 | --- | --- |
-| Un comando escrito a mano por cara, con 10 opciones | Un Enter por cara |
-| Hora de impacto tecleada a mano (con errores de tipeo) | Hora de cada cara registrada al soltar la bola |
-| El operador calcula cuándo toca cada mango | El programa calcula los vencimientos y hace la cuenta regresiva |
-| Sin control de calidad | QC contra la bandeja vacía en cada cara (detecta luz apagada) |
-| Una caída pierde el contexto | Estado atómico: se reanuda con el mismo comando |
+| Al empezar | 129,9 (encendida) |
+| Tras 90 s sin uso | 10,0 (apagada: solo la luz ambiente de la caja) |
+| Tras 180 s sin uso | 128,8 |
+| Tras 60, 90 y 120 s sin uso, con reintento inmediato y otro a los 2 s | 10,0 en los 9 intentos |
 
-## La víspera
+En el ensayo del 2026-10-23 pasó lo mismo con la RGB y la NIR a la vez, después de ~1 min de espera. Las luces se
+alimentan de una batería USB que se duerme sin carga. Entre mangos de una ronda hay más de un minuto de espera,
+así que esto pasaría casi en cada mango.
 
-1. **Luces a una fuente de pared de 5 V** en lugar de la batería USB. La batería se duerme a los ~30 s sin
-   carga y entre mangos siempre pasa más que eso; con la batería, hay que presionar su botón antes de cada
-   mango o el QC rechaza la cara con `luz apagada?`. En el ensayo del 2026-10-23 bastó una espera de ~1 min
-   entre rondas para que pasara.
-2. **tmux en la Pi** (`sudo apt install tmux`). Una sesión de 14 h por SSH no puede depender de la Wi-Fi.
-   Si no se instala, corre el programa desde una terminal en el escritorio de la Pi.
-3. **Mangos:** numéralos del 1 al 25 y marca las caras 1-4 con un marcador fino cerca del pedúnculo, fuera
-   de la zona que se fotografía, para que cada cara sea la misma en todas las rondas. Déjalos toda la noche
-   en el cuarto de captura, en una bandeja numerada y en orden.
-4. **Montaje:** reflector difuso del lado izquierdo (el lado en sombra; sin él, el tercio izquierdo del mango
-   queda en V ≈ 40 contra ~90 del derecho). Espuma, tubo de PVC de 50 cm, bola de 66 g, tarjeta gris y
-   tablero ArUco a mano.
-5. **Desplegar el código** desde el repositorio. `core.autocrlf=false` es obligatorio: con `true` (la
-   configuración global de esta máquina), `git archive` convierte los archivos a CRLF.
+- **Solución:** alimenta las luces con un cargador de pared de 5 V (≥ 2 A) en lugar de la batería. Las luces
+  siguen dentro de la caja; solo cambia de dónde viene el cable.
+- **Si sigues con la batería:** presiona su botón antes de cada mango. Si el QC muestra `luz apagada?`,
+  despiértala y presiona Enter para repetir la cara.
 
-   ```bash
-   git -c core.autocrlf=false archive HEAD capture | ssh mangopi 'tar -x -C ~/captura_v3 --strip-components=1'
-   ssh mangopi 'python3 ~/captura_v3/captura.py jornada --help | tail -15'
-   ```
+### Opcional
 
-   La ayuda debe decir que los intervalos por defecto son `0,2,4,6,8,10,12` y el slot 3 min.
-6. **Ensayo con reloj acelerado** (~5 min, 1 "hora" = 1 min). Despierta las luces antes de cada paso:
+- **tmux** (`sudo apt install tmux`): conserva la sesión si se corta el SSH. No es imprescindible, porque el
+  estado se reanuda con el mismo comando. Si operas desde el escritorio de la Pi, no hace falta.
+- **Ensayo con reloj acelerado** (~5 min, 1 "hora" = 1 min) en una carpeta aparte, para no tocar la
+  configuración real:
 
-   ```bash
-   cd ~/captura_v3
-   python3 captura.py --auto jornada --id ENSAYO --lote ensayo --mangos 1-2 --caras 1,2 \
-       --intervalos 0,1,2 --unidad-min 1 --slot-min 0.5 --tolerancia-min 0.5 --no-subir --semilla 1
-   python3 captura.py --auto sanas && python3 captura.py --auto impactos && python3 captura.py --auto ronda
-   python3 captura.py estado
-   rm -rf ~/capturas/ENSAYO
-   ```
+  ```bash
+  cd ~/captura_v3
+  python3 captura.py --auto --base ~/capturas_ensayo jornada --id ENSAYO --lote ensayo --mangos 1-2 --caras 1,2 \
+      --intervalos 0,1,2 --unidad-min 1 --slot-min 0.5 --tolerancia-min 0.5 --no-subir --semilla 1
+  python3 captura.py --auto --base ~/capturas_ensayo sanas
+  python3 captura.py --auto --base ~/capturas_ensayo impactos
+  python3 captura.py --auto --base ~/capturas_ensayo ronda
+  rm -rf ~/capturas_ensayo
+  ```
+
+- **Redesplegar el código**, solo si cambió en el repositorio (la versión de PR #47 ya está en la Pi).
+  `core.autocrlf=false` es obligatorio: con `true` (la configuración global de esta máquina), `git archive`
+  convierte los archivos a CRLF.
+
+  ```bash
+  git -c core.autocrlf=false archive HEAD capture | ssh mangopi 'tar -x -C ~/captura_v3 --strip-components=1'
+  ```
 
 ## El día de captura
 
-### 1. Arranque (06:30, ~20 min)
+### 1. Comprar los 25 mangos
+
+De madurez parecida y sin golpes ni manchas. Déjalos varias horas (idealmente la noche anterior) en el cuarto de
+captura para que tomen su temperatura.
+
+### 2. Marcarlos
+
+- El **número** (1-25) va en un post-it **sobre la placa**, junto a cada mango, no pegado al mango: pegado
+  saldría en las fotos y se puede caer.
+- En cada mango, un **punto pequeño** con marcador fino cerca del pedúnculo, fuera de la zona que se
+  fotografía. Marca la **cara 1**.
+- Las caras 2, 3 y 4 se obtienen rotando 90° **siempre en el mismo sentido**. Así cada cara es la misma en
+  todas las fotos del día.
+
+### 3. Ordenarlos en la placa
+
+Separados y en orden del 1 al 25. Ten a mano la espuma, el tubo de PVC de 50 cm, la bola de 66 g, la tarjeta
+gris y el tablero ArUco.
+
+### 4. Arranque y calibración (~15 min)
 
 ```bash
 ssh mangopi
-tmux new -A -s lote1
-rpicam-hello --list-cameras        # debe listar imx219; si no, reasienta la cinta CSI
-timedatectl | head -5              # "System clock synchronized: yes"
-vcgencmd get_throttled             # throttled=0x0
 ```
-
-Si el montaje se movió, enfoca a mano los dos lentes (`captura.py enfoque --camara rgb` con luz blanca y
-`--camara nir` con luz NIR; Ctrl-C para terminar).
-
-Crea la jornada y sigue sus indicaciones (tarjeta gris → barrido de balance de blancos, bandeja vacía,
-tablero ArUco, autoverificación de exposición):
 
 ```bash
-python3 ~/captura_v3/captura.py jornada --no-subir --id lote1-AAAAMMDD --lote "lote 1" --mangos 1-25 --temperatura-c 24.5
+rpicam-hello --list-cameras
 ```
 
-`--no-subir` porque la Pi no tiene configurada la URL de OCI: los archivos se respaldan con `rsync` (paso 5).
+Debe listar `imx219`. Si no aparece, reasienta la cinta CSI de la NoIR.
 
-### 2. Sanas (07:00-07:40)
+Si el montaje se movió desde la última vez, enfoca a mano los dos lentes (Ctrl-C para terminar):
+
+```bash
+python3 ~/captura_v3/captura.py enfoque --camara rgb
+python3 ~/captura_v3/captura.py enfoque --camara nir
+```
+
+Crea la jornada. Usa la fecha real en el ID y la temperatura del cuarto:
+
+```bash
+python3 ~/captura_v3/captura.py jornada --no-subir --id lote1-AAAAMMDD --lote "lote 1" --mangos 1-25 --temperatura-c 24
+```
+
+El programa pide, en orden:
+
+1. la **tarjeta gris** (calibra el balance de blancos);
+2. la **bandeja vacía** (la referencia del control de calidad);
+3. el **tablero ArUco** (para la homografía RGB-NIR).
+
+Al final verifica que la cámara respete la exposición manual. `--no-subir` es porque la Pi no tiene
+configurada la URL de OCI: los archivos se respaldan con `rsync` (paso 8).
+
+### 5. Fotos sanas de las 4 caras (~40 min)
 
 ```bash
 python3 ~/captura_v3/captura.py sanas
 ```
 
-Por cada cara: colócala hacia la cámara y presiona Enter (~20 s por cara con la manipulación).
+En cada `Mango N · cara C → coloca y presiona Enter`, pon esa cara hacia la cámara y presiona Enter
+(~20 s por cara con la manipulación).
 
-### 3. Impactos y fotos +0 h (07:45-09:00)
+### 6. Golpear y fotografiar, mango por mango (~75 min)
 
 ```bash
 python3 ~/captura_v3/captura.py impactos
 ```
 
-Por cada mango, en orden:
+Para cada mango, en orden:
 
-1. El programa muestra las 4 zonas sorteadas (`centro`, `superior`, `inferior`, `izquierda` o `derecha`).
-2. Para cada cara: apoya el mango en la espuma con esa cara arriba, alinea el tubo sobre la zona, suelta la
-   bola y presiona Enter **al soltarla**. Atrapa la bola tras el rebote para que no golpee dos veces.
-3. Apenas termina el cuarto impacto, el programa pide las 4 fotos +0 h del mismo mango.
+1. El programa muestra la zona sorteada de cada cara (`centro`, `superior`, `inferior`, `izquierda` o
+   `derecha`).
+2. Golpea las 4 caras. En cada una: apoya el mango en la espuma con esa cara arriba, alinea el tubo sobre la
+   zona, suelta la bola y presiona Enter **al soltarla**. Atrapa la bola tras el rebote para que no golpee dos
+   veces.
+3. Apenas terminas el cuarto golpe, el programa pide las 4 fotos +0 h del mismo mango. Tómalas rotándolo.
 
-Mantén el ritmo de un mango cada 3 min: el programa muestra el desfase, y las rondas lo heredan.
+Mantén el ritmo de un mango cada ~3 min. El programa muestra el desfase, y las rondas lo heredan.
 
-### 4. Rondas (+2 h a +12 h)
+### 7. Rondas, hasta +12 h
 
 ```bash
 python3 ~/captura_v3/captura.py ronda
 ```
 
-Un solo comando cubre las 6 rondas: muestra qué mango vence, hace la cuenta regresiva si es temprano y pide
-las 4 caras. Cada mango se fotografía a *k* horas de **su** impacto (tolerancia ±10 min).
+No hay que esperar "desde el primero" ni calcular nada. Cada mango vence exactamente a las 2, 4, … 12 h de
+**su propio** golpe (tolerancia ±10 min). Como los golpeaste en orden y a ritmo parejo, las rondas siguen ese
+mismo orden, y el programa dice qué mango toca y cuándo, con cuenta regresiva. Un solo comando cubre las 6
+rondas.
+
+Ejemplo, con los golpes de 07:45 a 09:00:
 
 | Ronda | Primer mango vence | Última foto (aprox.) |
 | --- | --- | --- |
@@ -127,35 +181,34 @@ las 4 caras. Cada mango se fotografía a *k* horas de **su** impacto (tolerancia
 | +10 h | 17:45 | 19:00 |
 | +12 h | 19:45 | 21:00 |
 
-Entre rondas quedan ~45 min libres.
+### 8. Respaldo y cierre
 
-### 5. Respaldo en cada descanso
-
-Desde WSL, en la raíz del repositorio (la carpeta `data/cache/` no se versiona):
+En cada descanso entre rondas, desde WSL y en la raíz del repositorio (la carpeta `data/cache/` no se
+versiona):
 
 ```bash
 rsync -av mangopi:capturas/lote1-AAAAMMDD/ data/cache/incoming/AAAAMMDD/lote1-AAAAMMDD/
 ```
 
-Hazlo solo durante la cuenta regresiva, no mientras se captura (en la Zero 2 W el cifrado de SSH compite por
-CPU con la cámara).
+Hazlo solo durante la cuenta regresiva, no mientras se captura: en la Zero 2 W el cifrado de SSH compite por
+CPU con la cámara.
 
-### 6. Cierre
+Al terminar la ronda +12 h:
 
 ```bash
-python3 ~/captura_v3/captura.py estado          # todo en ✓
-ls ~/capturas/lote1-AAAAMMDD/news/meta | wc -l   # 800 si no se omitió ninguna cara
+python3 ~/captura_v3/captura.py estado
 ```
 
-Haz el último `rsync` y anota la temperatura final del cuarto.
+Todo debe estar en ✓ (800 pares si no se omitió ninguna cara). Haz el último `rsync` y anota la temperatura
+final del cuarto.
 
 ## Si algo falla
 
 | Síntoma | Qué hacer |
 | --- | --- |
-| `luz apagada?` | Despierta la batería (o revisa la fuente) y presiona Enter para repetir la cara. |
+| `luz apagada?` | La alimentación de las luces se durmió: despierta la batería (o revisa el cargador) y presiona Enter para repetir la cara. |
 | `la NoIR quedó trabada` | `sudo reboot` y vuelve a correr el mismo comando; el estado se conserva. |
-| Se cortó el SSH | `ssh mangopi` y `tmux attach -t lote1`. Sin tmux: vuelve a correr el mismo comando (solo se pierde la cara en curso). |
+| Se cortó el SSH | `ssh mangopi` y vuelve a correr el mismo comando (con tmux: `tmux attach`). |
 | Una ronda salió tarde | Captúrala igual (queda marcada fuera de tolerancia) o omítela con `s`. |
 | `la cámara RGB no está respetando la exposición manual` | Desconecta y reconecta la cámara (o reinicia la Pi) y repite `jornada`. |
 | La NIR trae una fila oscura parcial | Es el contacto CSI marginal y el QC no lo detecta: revisa las NIR al respaldarlas y anota las caras afectadas. |
