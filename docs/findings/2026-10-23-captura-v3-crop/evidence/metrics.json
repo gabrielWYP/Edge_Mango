@@ -1,0 +1,418 @@
+{
+ "par": {
+  "rgb_wh": [
+   3264,
+   2448
+  ],
+  "nir_wh": [
+   3280,
+   2464
+  ],
+  "mango_bbox_wh": [
+   1083,
+   766
+  ],
+  "crop_wh": [
+   1300,
+   919
+  ],
+  "scale_to_640": 0.492,
+  "input_wh": [
+   640,
+   452
+  ],
+  "pixels_kept_pct": 24.2,
+  "modalities": {
+   "rgb": {
+    "texture_std": 3.44,
+    "pixel_noise_share_pct": 7.6,
+    "effective_long_side_px": 913,
+    "sweep": {
+     "1600": {
+      "linear": {
+       "texture_lost_pct": 1.2,
+       "psnr": 56.53,
+       "ssim": 0.9994
+      },
+      "area": {
+       "texture_lost_pct": 1.2,
+       "psnr": 56.7,
+       "ssim": 0.9995
+      }
+     },
+     "1280": {
+      "linear": {
+       "texture_lost_pct": 1.6,
+       "psnr": 55.4,
+       "ssim": 0.999
+      },
+      "area": {
+       "texture_lost_pct": 1.6,
+       "psnr": 55.36,
+       "ssim": 0.999
+      }
+     },
+     "960": {
+      "linear": {
+       "texture_lost_pct": 3.9,
+       "psnr": 51.49,
+       "ssim": 0.9978
+      },
+      "area": {
+       "texture_lost_pct": 4.2,
+       "psnr": 51.16,
+       "ssim": 0.9977
+      }
+     },
+     "800": {
+      "linear": {
+       "texture_lost_pct": 6.2,
+       "psnr": 49.45,
+       "ssim": 0.9968
+      },
+      "area": {
+       "texture_lost_pct": 6.6,
+       "psnr": 49.2,
+       "ssim": 0.9967
+      }
+     },
+     "640": {
+      "linear": {
+       "texture_lost_pct": 9.6,
+       "psnr": 47.57,
+       "ssim": 0.9954
+      },
+      "area": {
+       "texture_lost_pct": 9.9,
+       "psnr": 47.45,
+       "ssim": 0.9954
+      }
+     },
+     "480": {
+      "linear": {
+       "texture_lost_pct": 16.9,
+       "psnr": 45.13,
+       "ssim": 0.9931
+      },
+      "area": {
+       "texture_lost_pct": 15.6,
+       "psnr": 45.46,
+       "ssim": 0.9932
+      }
+     },
+     "320": {
+      "linear": {
+       "texture_lost_pct": 33.4,
+       "psnr": 42.16,
+       "ssim": 0.9887
+      },
+      "area": {
+       "texture_lost_pct": 27.4,
+       "psnr": 43.01,
+       "ssim": 0.9891
+      }
+     }
+    }
+   },
+   "nir": {
+    "texture_std": 0.97,
+    "pixel_noise_share_pct": 26.8,
+    "effective_long_side_px": 816,
+    "sweep": {
+     "1600": {
+      "linear": {
+       "texture_lost_pct": 2.7,
+       "psnr": 64.05,
+       "ssim": 0.9996
+      },
+      "area": {
+       "texture_lost_pct": 2.4,
+       "psnr": 64.65,
+       "ssim": 0.9996
+      }
+     },
+     "1280": {
+      "linear": {
+       "texture_lost_pct": 4.7,
+       "psnr": 61.69,
+       "ssim": 0.9993
+      },
+      "area": {
+       "texture_lost_pct": 4.7,
+       "psnr": 61.65,
+       "ssim": 0.9993
+      }
+     },
+     "960": {
+      "linear": {
+       "texture_lost_pct": 8.8,
+       "psnr": 58.91,
+       "ssim": 0.9986
+      },
+      "area": {
+       "texture_lost_pct": 9.6,
+       "psnr": 58.57,
+       "ssim": 0.9985
+      }
+     },
+     "800": {
+      "linear": {
+       "texture_lost_pct": 12.9,
+       "psnr": 57.27,
+       "ssim": 0.998
+      },
+      "area": {
+       "texture_lost_pct": 14.0,
+       "psnr": 56.9,
+       "ssim": 0.9978
+      }
+     },
+     "640": {
+      "linear": {
+       "texture_lost_pct": 20.6,
+       "psnr": 55.24,
+       "ssim": 0.9968
+      },
+      "area": {
+       "texture_lost_pct": 21.9,
+       "psnr": 54.97,
+       "ssim": 0.9966
+      }
+     },
+     "480": {
+      "linear": {
+       "texture_lost_pct": 38.1,
+       "psnr": 52.56,
+       "ssim": 0.9944
+      },
+      "area": {
+       "texture_lost_pct": 36.3,
+       "psnr": 52.76,
+       "ssim": 0.9944
+      }
+     },
+     "320": {
+      "linear": {
+       "texture_lost_pct": 75.2,
+       "psnr": 49.61,
+       "ssim": 0.9905
+      },
+      "area": {
+       "texture_lost_pct": 58.3,
+       "psnr": 50.71,
+       "ssim": 0.9914
+      }
+     }
+    }
+   }
+  }
+ },
+ "toma": {
+  "rgb_wh": [
+   3264,
+   2448
+  ],
+  "nir_wh": [
+   3280,
+   2464
+  ],
+  "mango_bbox_wh": [
+   1030,
+   800
+  ],
+  "crop_wh": [
+   1236,
+   960
+  ],
+  "scale_to_640": 0.518,
+  "input_wh": [
+   640,
+   497
+  ],
+  "pixels_kept_pct": 26.8,
+  "modalities": {
+   "rgb": {
+    "texture_std": 4.46,
+    "pixel_noise_share_pct": 4.8,
+    "effective_long_side_px": 795,
+    "sweep": {
+     "1600": {
+      "linear": {
+       "texture_lost_pct": 0.5,
+       "psnr": 58.23,
+       "ssim": 0.9992
+      },
+      "area": {
+       "texture_lost_pct": 0.5,
+       "psnr": 57.78,
+       "ssim": 0.9991
+      }
+     },
+     "1280": {
+      "linear": {
+       "texture_lost_pct": 0.9,
+       "psnr": 55.79,
+       "ssim": 0.9985
+      },
+      "area": {
+       "texture_lost_pct": 0.9,
+       "psnr": 55.82,
+       "ssim": 0.9985
+      }
+     },
+     "960": {
+      "linear": {
+       "texture_lost_pct": 1.9,
+       "psnr": 52.44,
+       "ssim": 0.9969
+      },
+      "area": {
+       "texture_lost_pct": 2.0,
+       "psnr": 52.22,
+       "ssim": 0.9967
+      }
+     },
+     "800": {
+      "linear": {
+       "texture_lost_pct": 2.7,
+       "psnr": 50.84,
+       "ssim": 0.9954
+      },
+      "area": {
+       "texture_lost_pct": 2.8,
+       "psnr": 50.6,
+       "ssim": 0.9951
+      }
+     },
+     "640": {
+      "linear": {
+       "texture_lost_pct": 4.3,
+       "psnr": 48.86,
+       "ssim": 0.9932
+      },
+      "area": {
+       "texture_lost_pct": 4.4,
+       "psnr": 48.69,
+       "ssim": 0.9928
+      }
+     },
+     "480": {
+      "linear": {
+       "texture_lost_pct": 7.8,
+       "psnr": 46.24,
+       "ssim": 0.9887
+      },
+      "area": {
+       "texture_lost_pct": 7.8,
+       "psnr": 46.23,
+       "ssim": 0.9881
+      }
+     },
+     "320": {
+      "linear": {
+       "texture_lost_pct": 17.3,
+       "psnr": 42.76,
+       "ssim": 0.9771
+      },
+      "area": {
+       "texture_lost_pct": 16.1,
+       "psnr": 43.08,
+       "ssim": 0.9762
+      }
+     }
+    }
+   },
+   "nir": {
+    "texture_std": 1.96,
+    "pixel_noise_share_pct": 10.5,
+    "effective_long_side_px": 800,
+    "sweep": {
+     "1600": {
+      "linear": {
+       "texture_lost_pct": 0.9,
+       "psnr": 62.78,
+       "ssim": 0.9995
+      },
+      "area": {
+       "texture_lost_pct": 0.9,
+       "psnr": 62.6,
+       "ssim": 0.9995
+      }
+     },
+     "1280": {
+      "linear": {
+       "texture_lost_pct": 1.4,
+       "psnr": 60.72,
+       "ssim": 0.9992
+      },
+      "area": {
+       "texture_lost_pct": 1.4,
+       "psnr": 60.77,
+       "ssim": 0.9992
+      }
+     },
+     "960": {
+      "linear": {
+       "texture_lost_pct": 2.7,
+       "psnr": 57.97,
+       "ssim": 0.9984
+      },
+      "area": {
+       "texture_lost_pct": 3.0,
+       "psnr": 57.55,
+       "ssim": 0.9983
+      }
+     },
+     "800": {
+      "linear": {
+       "texture_lost_pct": 4.1,
+       "psnr": 56.19,
+       "ssim": 0.9976
+      },
+      "area": {
+       "texture_lost_pct": 4.7,
+       "psnr": 55.58,
+       "ssim": 0.9973
+      }
+     },
+     "640": {
+      "linear": {
+       "texture_lost_pct": 6.9,
+       "psnr": 53.9,
+       "ssim": 0.996
+      },
+      "area": {
+       "texture_lost_pct": 8.0,
+       "psnr": 53.27,
+       "ssim": 0.9954
+      }
+     },
+     "480": {
+      "linear": {
+       "texture_lost_pct": 14.7,
+       "psnr": 50.64,
+       "ssim": 0.992
+      },
+      "area": {
+       "texture_lost_pct": 15.3,
+       "psnr": 50.45,
+       "ssim": 0.9915
+      }
+     },
+     "320": {
+      "linear": {
+       "texture_lost_pct": 36.3,
+       "psnr": 46.7,
+       "ssim": 0.9833
+      },
+      "area": {
+       "texture_lost_pct": 31.1,
+       "psnr": 47.36,
+       "ssim": 0.9841
+      }
+     }
+    }
+   }
+  }
+ }
+}
