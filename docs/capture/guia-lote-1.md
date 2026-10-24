@@ -42,10 +42,11 @@ operador, y el programa lo elimina:
 4. **Montaje:** reflector difuso del lado izquierdo (el lado en sombra; sin él, el tercio izquierdo del mango
    queda en V ≈ 40 contra ~90 del derecho). Espuma, tubo de PVC de 50 cm, bola de 66 g, tarjeta gris y
    tablero ArUco a mano.
-5. **Desplegar el código** desde el repositorio (con `git archive`, que respeta los finales de línea LF):
+5. **Desplegar el código** desde el repositorio. `core.autocrlf=false` es obligatorio: con `true` (la
+   configuración global de esta máquina), `git archive` convierte los archivos a CRLF.
 
    ```bash
-   git archive HEAD capture | ssh mangopi 'tar -x -C ~/captura_v3 --strip-components=1'
+   git -c core.autocrlf=false archive HEAD capture | ssh mangopi 'tar -x -C ~/captura_v3 --strip-components=1'
    ssh mangopi 'python3 ~/captura_v3/captura.py jornada --help | tail -15'
    ```
 

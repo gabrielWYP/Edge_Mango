@@ -62,11 +62,12 @@ Para verificarlo:
 ssh mangopi 'python3 -c "import numpy, PIL, requests, gpiozero; print(\"ok\")"; which ffmpeg v4l2-ctl rpicam-still'
 ```
 
-Copiar los módulos a una carpeta propia (sin tocar los scripts existentes del home):
+Copiar los módulos a una carpeta propia (sin tocar los scripts existentes del home) desde lo commiteado.
+`core.autocrlf=false` es obligatorio: con `true`, tanto la copia de trabajo como `git archive` traen CRLF.
 
 ```bash
 ssh mangopi 'mkdir -p ~/captura_v3'
-scp capture/*.py mangopi:captura_v3/
+git -c core.autocrlf=false archive HEAD capture | ssh mangopi 'tar -x -C ~/captura_v3 --strip-components=1'
 ssh mangopi 'python3 ~/captura_v3/captura.py --help'
 ```
 
