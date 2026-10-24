@@ -126,6 +126,14 @@ class Jornada:
     slot_min = property(lambda self: self.datos["slot_min"])
     tolerancia_min = property(lambda self: self.datos["tolerancia_min"])
 
+    def tiene_ronda_cero(self):
+        """True si la jornada incluye la ronda +0 h (foto justo tras el impacto, tomada en `impactos`).
+
+        Las jornadas creadas con el protocolo anterior (rondas desde +2 h) devuelven False y siguen
+        funcionando igual: `impactos` solo registra horas, sin camaras.
+        """
+        return 0 in self.intervalos_h
+
     def zona(self, mango, cara):
         return self.datos["zonas"][str(mango)][str(cara)]
 
@@ -250,9 +258,19 @@ class Jornada:
             self.datos["omitidas"].append(clave)
         self.guardar()
 
+    def ronda_omitida(self, mango, ronda_h):
+        return f"{mango}:{_k(ronda_h)}" in self.datos["omitidas"]
+
+    def vencimiento(self, mango, ronda_h):
+        """Instante en que vence la ronda del mango (su impacto mas temprano + ronda_h), o None sin impactos."""
+        referencia = protocolo.referencia_mango(self.impactos_iso().get(mango))
+        if referencia is None:
+            return None
+        return protocolo.vencimiento(referencia, ronda_h, self.unidad_min)
+
     def estado_ronda(self, mango, ronda_h):
         """'omitida' | 'fuera_de_tolerancia' | 'completa' | 'parcial' | 'pendiente'."""
-        if f"{mango}:{_k(ronda_h)}" in self.datos["omitidas"]:
+        if self.ronda_omitida(mango, ronda_h):
             return "omitida"
         hechas = self._caras_ronda(mango, ronda_h)
         if any(not protocolo.en_tolerancia(r["desviacion_min"], self.tolerancia_min)
@@ -265,7 +283,7 @@ class Jornada:
     def hechos(self):
         """Pares (mango, ronda_h) que ya no hay que visitar: completos u omitidos."""
         return {(m, r) for m in self.mangos for r in self.intervalos_h
-                if f"{m}:{_k(r)}" in self.datos["omitidas"] or self.ronda_completa(m, r)}
+                if self.ronda_omitida(m, r) or self.ronda_completa(m, r)}
 
     def calendario(self):
         return protocolo.calendario(self.impactos_iso(), self.intervalos_h, self.unidad_min)

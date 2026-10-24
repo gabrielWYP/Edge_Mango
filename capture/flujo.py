@@ -130,7 +130,7 @@ def prechequeo_noir_captura(ctx):
 
 
 def exigir_jornada_verificada(j):
-    """sanas y ronda solo corren si `jornada` termino la calibracion y la autoverificacion de exposicion."""
+    """sanas, ronda e impactos con +0 h solo corren si `jornada` termino la calibracion y la autoverificacion."""
     ver = j.autoverificacion_exposicion()
     if not ver or not ver["ok"]:
         motivo = ("falló" if ver else "no se completó")
@@ -528,7 +528,7 @@ def cmd_jornada(ctx, args):
             raise ErrorPreparacion(f"ID de jornada invalido: {args.id!r} (use letras, numeros, '-', '_' o '.').")
         try:
             mangos = protocolo.parse_rango_mangos(args.mangos)
-            intervalos = protocolo.parse_intervalos(args.intervalos)
+            intervalos = protocolo.parse_intervalos(args.intervalos, permitir_cero=True)
             caras = protocolo.parse_caras(args.caras)
         except ValueError as e:
             raise ErrorPreparacion(str(e)) from None
@@ -611,30 +611,105 @@ def cmd_sanas(ctx, args):
 
 # --- impactos ----------------------------------------------------------------------------------------------
 def cmd_impactos(ctx, args):
+    """Registra la hora de cada impacto y, si la jornada incluye la ronda +0 h, toma esas fotos.
+
+    Sin +0 h (jornadas del protocolo anterior) solo registra horas: no usa camaras ni sesion.
+    Con +0 h trabaja mango por mango: sus impactos y, en cuanto sus caras estan golpeadas, sus fotos
+    +0 h. Asi la foto sale a segundos del golpe y no ~1 h despues, al final de la tanda.
+    """
     j = abrir_jornada(ctx, getattr(args, "id", None))
+    if j.tiene_ronda_cero():
+        _impactos_con_fotos(ctx, j)
+        return
     ui = ctx.ui
     pendientes = j.pendientes_impactos()
     if not pendientes:
         ui.decir("Ya están registrados todos los impactos. Siguiente paso: captura.py ronda")
         return
-    slot = j.slot_min
     try:
         for mango, caras in agrupar_por_mango(pendientes):
-            indice = j.mangos.index(mango)
-            zonas = ", ".join(f"cara {c}: {j.zona(mango, c)}" for c in j.caras)
-            ui.decir("")
-            ui.decir(f"Mango {mango} ({indice + 1} de {len(j.mangos)}) · zonas sorteadas → {zonas}")
-            for cara in caras:
-                if ui.esperar(f"Cara {cara} · zona {j.zona(mango, cara)} → "
-                              "presiona Enter AL SOLTAR la bola") == "q":
-                    raise Salir
-                ahora = ctx.reloj()
-                j.marcar_impacto(mango, cara, ahora.isoformat(timespec="milliseconds"))
-                if len(j.caras_impactadas(mango)) == 1:      # primera cara del mango: revisar el ritmo
-                    _mostrar_ritmo(ctx, j, mango, indice, slot)
+            _registrar_impactos(ctx, j, mango, caras)
         ui.decir("Impactos completos. Siguiente paso: captura.py ronda")
     except Salir:
         ui.decir(MENSAJE_SALIR)
+
+
+def _registrar_impactos(ctx, j, mango, caras):
+    """Muestra las zonas del mango y registra la hora de cada cara pendiente (q lanza Salir)."""
+    ui = ctx.ui
+    indice = j.mangos.index(mango)
+    zonas = ", ".join(f"cara {c}: {j.zona(mango, c)}" for c in j.caras)
+    ui.decir("")
+    ui.decir(f"Mango {mango} ({indice + 1} de {len(j.mangos)}) · zonas sorteadas → {zonas}")
+    for cara in caras:
+        if ui.esperar(f"Cara {cara} · zona {j.zona(mango, cara)} → "
+                      "presiona Enter AL SOLTAR la bola") == "q":
+            raise Salir
+        ahora = ctx.reloj()
+        j.marcar_impacto(mango, cara, ahora.isoformat(timespec="milliseconds"))
+        if len(j.caras_impactadas(mango)) == 1:      # primera cara del mango: revisar el ritmo
+            _mostrar_ritmo(ctx, j, mango, indice, j.slot_min)
+
+
+def _fotos_cero_pendientes(j, mango):
+    """True si el mango tiene caras golpeadas sin su foto +0 h y la ronda no se omitio."""
+    return not j.ronda_omitida(mango, 0) and bool(j.caras_pendientes_ronda(mango, 0))
+
+
+def _impactos_con_fotos(ctx, j):
+    """`impactos` de una jornada con ronda +0 h: mismas condiciones que `ronda` y todo dentro de una sesion."""
+    exigir_jornada_verificada(j)
+    prechequeo_dispositivos(ctx)
+    prechequeo_camaras(ctx)
+    ui = ctx.ui
+    if not j.pendientes_impactos() and not any(_fotos_cero_pendientes(j, m) for m in j.mangos):
+        ui.decir("Ya están registrados los impactos y las fotos +0 h. " + _siguiente_paso_tras_impactos(ctx, j))
+        return
+
+    def tanda(ses):
+        for mango in j.mangos:
+            caras = [c for c in j.caras if not j.impacto_hecho(mango, c)]
+            if not caras and not _fotos_cero_pendientes(j, mango):
+                continue                                    # mango listo (o su +0 h se omitio): sigue el siguiente
+            if caras:
+                _registrar_impactos(ctx, j, mango, caras)
+            else:                                           # reanudacion: impactos hechos, faltan fotos
+                ui.decir("")
+                ui.decir(f"Mango {mango} ({j.mangos.index(mango) + 1} de {len(j.mangos)}) · "
+                         f"impactos completos; faltan las fotos {vista.etiqueta_ronda(0)}")
+            _fotos_ronda_cero(ctx, j, ses, mango)
+        faltan = [m for m in j.mangos if _fotos_cero_pendientes(j, m)]
+        if faltan:
+            ui.aviso(f"Quedan fotos {vista.etiqueta_ronda(0)} sin tomar (mangos {', '.join(map(str, faltan))}): "
+                     "repite `captura.py impactos` para tomarlas; `captura.py ronda` también las ofrece, "
+                     "ya fuera de tolerancia.")
+            ui.decir(_siguiente_paso_tras_impactos(ctx, j))
+        else:
+            ui.decir(f"Impactos y fotos {vista.etiqueta_ronda(0)} completos. " + _siguiente_paso_tras_impactos(ctx, j))
+
+    _con_sesion(ctx, j, tanda)
+
+
+def _fotos_ronda_cero(ctx, j, ses, mango):
+    """Fotos +0 h de las caras golpeadas del mango. Si su ventana ya paso (reanudacion), ofrece capturar u omitir."""
+    if not _fotos_cero_pendientes(j, mango):
+        return
+    if protocolo.clasificar_ventana(ctx.reloj(), j.vencimiento(mango, 0), j.tolerancia_min) == "tarde":
+        if not _ofrecer_ronda_atrasada(ctx, j, mango, 0):
+            return
+    _capturar_caras_ronda(ctx, j, ses, mango, 0, rotulo=f" · {vista.etiqueta_ronda(0)}")
+
+
+def _siguiente_paso_tras_impactos(ctx, j):
+    """Texto del siguiente paso: la primera ronda posterior al +0 h y cuando vence (segun el calendario)."""
+    posteriores = [r for r in j.intervalos_h if r > 0]
+    if not posteriores:
+        return "Siguiente paso: captura.py subir"
+    primera = next((it for it in j.calendario() if it.ronda_h == min(posteriores)), None)
+    if primera is None:
+        return "Siguiente paso: captura.py ronda"
+    return ("Siguiente paso: captura.py ronda · primera ronda: "
+            + vista.descripcion_item(primera, ctx.reloj(), j.tolerancia_min))
 
 
 def _mostrar_ritmo(ctx, j, mango, indice, slot):
@@ -703,28 +778,41 @@ def cmd_ronda(ctx, args):
                 ui.aviso("Presiona el botón de la batería USB si estuvo inactiva: se duerme sola y las luces "
                          "no encienden (el QC lo detecta como 'luz apagada?').")
             elif ventana == "tarde":
-                ui.aviso(f"Mango {item.mango} ronda {vista.etiqueta_ronda(item.ronda_h)} está FUERA de "
-                         f"tolerancia (atrasado): las fotos saldrán marcadas fuera de tolerancia.")
-                resp = ui.esperar("Enter = capturar igual · s = omitir esta ronda del mango · q = salir")
-                if resp == "q":
-                    raise Salir
-                if resp == "s":
-                    j.omitir_ronda(item.mango, item.ronda_h)
+                if not _ofrecer_ronda_atrasada(ctx, j, item.mango, item.ronda_h):
                     continue
             else:
                 if ui.esperar("Enter = empezar · q = salir") == "q":
                     raise Salir
-            for cara in j.caras_pendientes_ronda(item.mango, item.ronda_h):
-                if ui.esperar(f"Mango {item.mango} · cara {cara} → coloca y presiona Enter") == "q":
-                    raise Salir
-                res = ses.capturar_cara(item.mango, cara, "post_impacto", ronda_h=item.ronda_h,
-                                        impacto_fn=_impacto_fn(j, item.mango, cara, item.ronda_h))
-                if res is not None:
-                    imp = res["impacto"]
-                    j.marcar_ronda(item.mango, item.ronda_h, cara, res["ts"], imp["horas_desde_impacto"],
-                                   imp["desviacion_min"], res["alertas"])
+            _capturar_caras_ronda(ctx, j, ses, item.mango, item.ronda_h)
 
     _con_sesion(ctx, j, rondas)
+
+
+def _ofrecer_ronda_atrasada(ctx, j, mango, ronda_h):
+    """Avisa que la ventana de la ronda ya paso. True = capturar igual; False = omitida (s); q lanza Salir."""
+    ui = ctx.ui
+    ui.aviso(f"Mango {mango} ronda {vista.etiqueta_ronda(ronda_h)} está FUERA de "
+             f"tolerancia (atrasado): las fotos saldrán marcadas fuera de tolerancia.")
+    resp = ui.esperar("Enter = capturar igual · s = omitir esta ronda del mango · q = salir")
+    if resp == "q":
+        raise Salir
+    if resp == "s":
+        j.omitir_ronda(mango, ronda_h)
+        return False
+    return True
+
+
+def _capturar_caras_ronda(ctx, j, ses, mango, ronda_h, rotulo=""):
+    """Captura las caras pendientes de la ronda del mango y las marca en el estado (`ronda` e `impactos`)."""
+    for cara in j.caras_pendientes_ronda(mango, ronda_h):
+        if ctx.ui.esperar(f"Mango {mango}{rotulo} · cara {cara} → coloca y presiona Enter") == "q":
+            raise Salir
+        res = ses.capturar_cara(mango, cara, "post_impacto", ronda_h=ronda_h,
+                                impacto_fn=_impacto_fn(j, mango, cara, ronda_h))
+        if res is not None:
+            imp = res["impacto"]
+            j.marcar_ronda(mango, ronda_h, cara, res["ts"], imp["horas_desde_impacto"],
+                           imp["desviacion_min"], res["alertas"])
 
 
 # --- estado ---------------------------------------------------------------------------------------------------

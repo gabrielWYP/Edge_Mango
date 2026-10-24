@@ -1,31 +1,37 @@
 # Captura dual RGB/NIR con protocolo de golpes (Raspberry Pi)
 
-`captura.py` guía una jornada completa de captura: fotos sanas, impactos y rondas cronometradas a
-+2, +4, +6, +8, +10 y +12 h, con el menor trabajo manual posible. El operador coloca y retira cada
-mango a mano (no hay motor); el programa se encarga de las luces, las dos cámaras, el control de
-calidad (QC), los metadatos, la subida a OCI y de decir cuándo toca cada mango.
+`captura.py` guía una jornada completa de captura: fotos sanas, impactos (con la foto +0 h de cada mango justo
+después de golpearlo) y rondas cronometradas a +2, +4, +6, +8, +10 y +12 h, con el menor trabajo manual posible.
+El operador coloca y retira cada mango a mano (no hay motor); el programa se encarga de las luces, las dos
+cámaras, el control de calidad (QC), los metadatos, la subida a OCI y de decir cuándo toca cada mango.
 
 Reemplaza a `docs/findings/2026-10-18/capture/captura_dual.py` (una foto por ejecución). Los nombres de
 archivo no cambian, porque el pipeline empareja por la expresión `(\w+)_(rgb|nir)_(\d+)\.jpg`.
 
 ## Protocolo
 
-- **125 mangos** son la unidad de agrupación (GroupKFold). Cada uno se fotografía en **4 caras** en
-  **7 momentos**: `sano` (antes del impacto) y después del impacto a +2, +4, +6, +8, +10 y +12 h.
-  Total: 500 pares sanos y 3000 pares con daño (RGB + NIR).
-- Se trabaja en **jornadas** de unos 31 mangos. En una jornada el operador hace tres tandas, siempre
-  en el mismo orden y al mismo ritmo (un mango cada 2,5 min):
+- **125 mangos**, en **5 lotes de 25**, son la unidad de agrupación (GroupKFold). Cada uno se fotografía en
+  **4 caras** y en **8 momentos**: `sano` (antes del impacto) y **7 momentos con daño**: justo después del
+  impacto (t = 0) y a +2, +4, +6, +8, +10 y +12 h.
+  Total: 500 pares sanos y 3500 pares con daño (RGB + NIR), es decir, 4000 pares.
+- Se trabaja en **jornadas**: un lote de 25 mangos por jornada. En una jornada el operador hace tres tandas,
+  siempre en el mismo orden y al mismo ritmo (un mango cada 3 min):
   1. fotos sanas de todos los mangos;
-  2. impacto en las 4 caras de cada mango;
-  3. una ronda de fotos por cada intervalo.
+  2. impacto en las 4 caras de cada mango y, en cuanto está golpeado, su foto **+0 h** (cada mango son
+     4 impactos + 4 pares RGB/NIR de ~5-8 s con su QC, así que la tanda dura lo mismo que una ronda);
+  3. una ronda de fotos por cada intervalo restante (+2 … +12 h).
 
-  Así cada mango se fotografía a *k* horas de **su** impacto (tolerancia ±10 min).
+  Así cada mango se fotografía a *k* horas de **su** impacto (tolerancia ±10 min). La foto +0 h no puede
+  esperar a una ronda aparte: al terminar la tanda de impactos habría pasado cerca de una hora y saldría
+  fuera de tolerancia.
 - **Impacto:** bola de acero de 66 g soltada desde 50 cm por un tubo de PVC sobre la fruta apoyada en
   espuma (energía ≈ 0,324 J).
 - **Zona de impacto:** para evitar el sesgo de que el daño siempre quede al centro, la zona de cada cara
   se sortea entre `centro`, `superior`, `inferior`, `izquierda` y `derecha`. La semilla queda guardada en
   `jornada.json` y las zonas son reproducibles.
-- Los intervalos son configurables (`--intervalos`), por ejemplo para agregar +0 h más adelante.
+- Los intervalos son configurables (`--intervalos`; por defecto `0,2,4,6,8,10,12`). Una jornada creada sin el
+  0 (el protocolo anterior, rondas desde +2 h) sigue funcionando igual: `impactos` solo registra horas y no usa
+  las cámaras.
 
 ## Archivos
 
@@ -162,8 +168,8 @@ Verificado en la Pi: tras el ciclo, 1,2 ms dio media 22, 4,5 ms dio 62, y 0,5 co
 **Autoverificación en `jornada`:** al terminar la calibración, con la luz blanca encendida, se toman dos cuadros rápidos
 (1600x1200) a E y a E/3 y se exige que el brillo medio a E sea al menos 1,5 veces el de E/3. Si no, se aborta con
 `la cámara RGB no está respetando la exposición manual: desconectá y reconectá la alimentación o reiniciá la Pi`, se
-invalida la calibración (se hizo con una exposición que no era la pedida) y `sanas`/`ronda` se niegan a correr hasta
-repetir `jornada`. La razón queda en `jornada.json` (`autoverificacion_exposicion`).
+invalida la calibración (se hizo con una exposición que no era la pedida) y `sanas`, `ronda` e `impactos` (si la
+jornada incluye la ronda +0 h) se niegan a correr hasta repetir `jornada`. La razón queda en `jornada.json` (`autoverificacion_exposicion`).
 
 `backlight_compensation=0` y `power_line_frequency=0` son obligatorios: de fábrica `backlight_compensation=1` es un realce
 adaptativo de brillo que anula la exposición fija. Se fijan en cada sesión y un valor distinto al leerlo de vuelta es un error.
@@ -194,7 +200,7 @@ batería USB despierta (ver "Batería USB").
 ### 1. Jornada
 
 ```bash
-python3 ~/captura_v3/captura.py jornada --id 2026-10-22 --lote "Kent A" --mangos 1-32 --temperatura-c 24.5
+python3 ~/captura_v3/captura.py jornada --id 2026-10-22 --lote "Kent A" --mangos 1-25 --temperatura-c 24.5
 ```
 
 Antes de nada avisa si otro proceso usa las cámaras (`fuser`), verifica ambas cámaras (`rpicam-hello --list-cameras`,
@@ -232,7 +238,24 @@ python3 ~/captura_v3/captura.py impactos
 
 Para cada mango muestra las 4 zonas sorteadas y para cada cara pide
 `Cara N · zona <zona> → presiona Enter AL SOLTAR la bola`; registra la hora exacta de **cada cara**. Muestra el
-ritmo objetivo (un mango cada 2,5 min) y avisa si te desfasas más de la mitad de la tolerancia.
+ritmo objetivo (un mango cada 3 min) y avisa si te desfasas más de la mitad de la tolerancia.
+
+Con la ronda +0 h en la jornada (el valor por defecto), en cuanto las 4 caras del mango están golpeadas el
+programa lo fotografía de inmediato, antes de pasar al mango siguiente:
+`Mango 7 · +0 h · cara 1 → coloca y presiona Enter` (RGB y NIR, con QC y metadatos, igual que en `sanas`).
+Por eso `impactos` ahora **necesita las cámaras**: hace las mismas comprobaciones que `ronda`
+(autoverificación de exposición hecha en `jornada`, NoIR presente, aviso de procesos ajenos), apaga las luces al
+salir y sube lo capturado. Si la jornada no tiene el 0 en `--intervalos`, nada de esto ocurre.
+
+- **Reanudar:** vuelve a ejecutar `impactos`. Primero se piden los impactos que faltan; un mango con los
+  impactos completos y fotos +0 h pendientes se fotografía antes de seguir con el siguiente. Si su ventana +0 h ya
+  pasó (más de la tolerancia desde su primer impacto) avisa y ofrece
+  `Enter = capturar igual · s = omitir esta ronda del mango · q = salir`; lo capturado tarde queda marcado fuera de
+  tolerancia, y lo omitido no se vuelve a pedir.
+- Una cara omitida con `s` tras un error de QC queda pendiente: `impactos` la vuelve a ofrecer, y `ronda`
+  también (ya atrasada). `ronda` nunca repite las caras +0 h que `impactos` ya tomó.
+- `q` sale en cualquier momento; el avance queda guardado.
+- Al terminar indica el siguiente paso y cuándo vence la primera ronda +2 h.
 
 ### 4. Rondas
 
@@ -247,21 +270,24 @@ Calcula qué (mango, ronda) vence primero a partir de las horas de impacto y lo 
 - Si ya pasó la ventana: avisa del atraso, permite capturar igual (queda marcada fuera de tolerancia) u omitir (`s`).
 - Captura las 4 caras y guarda, por cara, las horas reales desde **ese** impacto y la desviación en minutos.
 - Continúa con el siguiente vencimiento hasta que salgas con `q` o no quede nada pendiente.
+- La ronda +0 h ya la tomó `impactos`; solo aparece aquí si esa tanda se interrumpió y quedaron caras sin foto.
 
-### Horario de ejemplo (32 mangos, 2,5 min por mango)
+### Horario de ejemplo (25 mangos, 3 min por mango)
 
 | Tanda | Horario |
 | --- | --- |
-| Sanas | 07:00 - 08:20 |
-| Impactos | 08:30 - 09:50 |
-| Ronda +2 h | 10:30 (hasta 11:50) |
-| Ronda +4 h | 12:30 |
-| Ronda +6 h | 14:30 |
-| Ronda +8 h | 16:30 |
-| Ronda +10 h | 18:30 |
-| Ronda +12 h | 20:30 (hasta 21:50) |
+| Sanas | 07:00 - 07:40 |
+| Impactos + fotos +0 h | 07:45 - 09:00 |
+| Ronda +2 h | 09:45 (hasta 11:00) |
+| Ronda +4 h | 11:45 |
+| Ronda +6 h | 13:45 |
+| Ronda +8 h | 15:45 |
+| Ronda +10 h | 17:45 |
+| Ronda +12 h | 19:45 (hasta 21:00) |
 
-Cada ronda dura ~80 min y los vencimientos están separados 2 h: quedan ~40 min de descanso entre rondas.
+Las sanas no dependen del ritmo (~20 s por cara con la manipulación). La tanda de impactos con sus fotos +0 h y
+cada ronda duran ~75 min (25 mangos × 3 min) y los vencimientos están separados 2 h: quedan ~45 min de descanso
+entre rondas. La lista de pasos del lote 1 está en [`docs/capture/guia-lote-1.md`](../docs/capture/guia-lote-1.md).
 
 ### Estado y subida
 
@@ -271,6 +297,7 @@ python3 ~/captura_v3/captura.py subir     # sube lo pendiente con reintentos
 ```
 
 `estado` marca ✓ hecho, ⏳ hora de vencimiento, ✗ perdido o fuera de tolerancia, `·` parcial (caras hechas/total).
+La ronda +0 h es una columna más (`+0 h`), a continuación de `imp`.
 
 La subida corre sola en un hilo mientras capturas, desde la cola persistente `pendientes.jsonl`, así que la captura
 nunca espera a la red. Con `--no-subir` no se encola nada; `captura.py subir` encuentra en disco lo que falte.
@@ -372,7 +399,7 @@ El timestamp es único por cara (si el segundo ya se usó, avanza al siguiente l
 | `timestamp`, `fecha_local` | Segundos Unix y hora local con zona. |
 | `jornada` | `{id, lote, temperatura_c}`. |
 | `mango_id`, `cara` | Mango (1..125) y cara (1..4). |
-| `fase`, `ronda_h` | `"sano"` o `"post_impacto"`; ronda nominal en horas (`null` en sano). |
+| `fase`, `ronda_h` | `"sano"` o `"post_impacto"`; ronda nominal en horas (`null` en sano; `0` = foto justo después del impacto). |
 | `impacto` | `null` en sano. Si no: `{zona, hora_iso, horas_desde_impacto, masa_bola_g, altura_cm, energia_j, desviacion_min, en_tolerancia}`, con la hora **de esa cara** y las horas medidas al empezar su captura. |
 | `rgb` | `{device_by_id, resolucion, metodo, comando, tablas_huffman_en_origen, comando_mjpeg2jpeg, controles (volcado completo), controles_pedidos, controles_aplicados, controles_fallidos, diferencias, config}`. |
 | `nir` | `{comando, rpicam_metadata (ExposureTime, AnalogueGain, SensorTemperature, Lux, ...), config, raw_dng}`. |
@@ -423,5 +450,8 @@ python3 captura.py --auto ronda                                                #
 python3 captura.py estado
 rm -rf ~/capturas/PRUEBA_20261021                                              # al terminar
 ```
+
+Para ensayar también la foto +0 h agrega el 0 a los intervalos (`--intervalos 0,1,2`): `impactos` pasa a usar las
+cámaras y esas fotos saldrán marcadas fuera de la tolerancia reducida del ensayo (es informativo).
 
 Si el QC informa `luz apagada?` en esta prueba es la batería dormida: es una detección válida, no un error del programa.

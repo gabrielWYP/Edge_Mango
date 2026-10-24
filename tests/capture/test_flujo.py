@@ -467,6 +467,369 @@ def test_impactos_reanuda_con_las_caras_que_faltan(tmp_path):
     assert e.Jornada.cargar(ctx0.base / "J01").pendientes_impactos() == []
 
 
+# --- impactos con la ronda +0 h (las fotos justo despues del golpe) -------------------------------------------------
+
+def jornada_cero(tmp_path, **kw):
+    """Jornada calibrada con las rondas +0 h y +1 h, con las sanas ya tomadas."""
+    datos = dict(intervalos="0,1")
+    datos.update(kw)
+    ctx, reloj, salida = jornada_lista(tmp_path, **datos)
+    flujo.cmd_sanas(ctx, args())
+    return ctx, reloj, salida
+
+
+def post_impacto(raiz, ronda_h):
+    return [m for m in map(leer_meta, metas(raiz)) if m["fase"] == "post_impacto" and m["ronda_h"] == ronda_h]
+
+
+def acciones(salida):
+    """Los avisos al operador de `impactos` (soltar la bola / colocar el mango), en orden."""
+    return [linea for linea in salida if "AL SOLTAR" in linea or "coloca y presiona Enter" in linea]
+
+
+def test_jornada_acepta_el_intervalo_cero(tmp_path):
+    ctx, _, salida = jornada_lista(tmp_path, intervalos="0,2")
+    assert e.Jornada.cargar(ctx.base / "J01").intervalos_h == [0, 2]
+    assert any("intervalos [0, 2] h" in linea for linea in salida)
+
+
+def test_impactos_con_ronda_cero_fotografia_cada_mango_justo_despues_de_sus_impactos(tmp_path, monkeypatch):
+    ctx, reloj, _ = jornada_cero(tmp_path)
+    eventos = []
+    marcar_impacto, marcar_ronda = e.Jornada.marcar_impacto, e.Jornada.marcar_ronda
+
+    def impacto(self, mango, cara, hora_iso):
+        eventos.append(("impacto", mango, cara))
+        return marcar_impacto(self, mango, cara, hora_iso)
+
+    def ronda(self, mango, ronda_h, cara, *a, **k):
+        eventos.append(("foto", mango, ronda_h, cara))
+        return marcar_ronda(self, mango, ronda_h, cara, *a, **k)
+
+    monkeypatch.setattr(e.Jornada, "marcar_impacto", impacto)
+    monkeypatch.setattr(e.Jornada, "marcar_ronda", ronda)
+    reloj.paso = timedelta(seconds=2)
+    flujo.cmd_impactos(ctx, args())
+    assert eventos == [("impacto", 1, 1), ("impacto", 1, 2), ("foto", 1, 0, 1), ("foto", 1, 0, 2),
+                       ("impacto", 2, 1), ("impacto", 2, 2), ("foto", 2, 0, 1), ("foto", 2, 0, 2)]
+
+
+def test_impactos_con_ronda_cero_guarda_las_fotos_del_cero_en_el_dataset_y_marca_la_ronda(tmp_path):
+    ctx, reloj, salida = jornada_cero(tmp_path)
+    reloj.paso = timedelta(seconds=2)
+    flujo.cmd_impactos(ctx, args())
+    raiz = ctx.base / "J01"
+    j = e.Jornada.cargar(raiz)
+    assert j.pendientes_impactos() == []
+    assert [j.estado_ronda(m, 0) for m in j.mangos] == ["completa", "completa"]
+    assert (1, 0) in j.hechos() and (2, 0) in j.hechos() and (1, 1) not in j.hechos()
+    ceros = post_impacto(raiz, 0)
+    assert sorted((m["mango_id"], m["cara"]) for m in ceros) == [(1, 1), (1, 2), (2, 1), (2, 2)]
+    assert len(metas(raiz)) == 4 + 4                                       # 4 sanas + 4 fotos +0 h
+    for m in ceros:
+        imp = m["impacto"]
+        assert imp["en_tolerancia"] is True and 0 <= imp["horas_desde_impacto"] < 0.5 / 60
+        assert imp["zona"] == j.zona(m["mango_id"], m["cara"])
+        assert imp["hora_iso"] == j.datos["impactos"][str(m["mango_id"])][str(m["cara"])]["hora_iso"]
+        assert m["calidad"]["rgb"]["estado"] == "ok" and m["calidad"]["nir"]["estado"] == "ok"
+    texto = "\n".join(salida)
+    for mango in (1, 2):
+        for cara in (1, 2):
+            assert f"Mango {mango} · +0 h · cara {cara} → coloca y presiona Enter" in texto
+    assert ctx.hw.luces.encendidas == set()
+
+
+def test_impactos_con_ronda_cero_mantiene_los_mismos_avisos_de_impacto_y_el_ritmo(tmp_path):
+    ctx, _, salida = jornada_cero(tmp_path)
+    flujo.cmd_impactos(ctx, args())
+    j = e.Jornada.cargar(ctx.base / "J01")
+    texto = "\n".join(salida)
+    for m in j.mangos:
+        assert f"Mango {m} ({m} de 2) · zonas sorteadas → " in texto
+        for c in j.caras:
+            assert f"Cara {c} · zona {j.zona(m, c)} → presiona Enter AL SOLTAR la bola" in texto
+    assert "Ritmo:" in texto and "un mango cada 0.5 min" in texto
+
+
+def test_impactos_con_ronda_cero_toma_los_pares_con_luz_blanca_y_luego_nir(tmp_path):
+    ctx, _, _ = jornada_cero(tmp_path)
+    ctx.hw.luces.historial.clear()
+    flujo.cmd_impactos(ctx, args())
+    assert ctx.hw.luces.historial == [("on", "rgb"), ("off", "rgb"), ("on", "nir"), ("off", "nir")] * 4
+
+
+def test_impactos_con_ronda_cero_reanuda_en_las_fotos_a_medias_de_un_mango(tmp_path):
+    ctx0, reloj, _ = jornada_cero(tmp_path)
+    ctx1, _, salida1 = contexto(tmp_path, entradas=["", "", "", "q"], auto=False, reloj=reloj)
+    flujo.cmd_impactos(ctx1, args())                   # impactos del mango 1, foto de la cara 1 y sale en la cara 2
+    raiz = ctx0.base / "J01"
+    j = e.Jornada.cargar(raiz)
+    assert j.pendientes_impactos() == [(2, 1), (2, 2)]
+    assert j.caras_pendientes_ronda(1, 0) == [2] and j.n_caras_hechas_ronda(1, 0) == 1
+    assert flujo.MENSAJE_SALIR in salida1 and ctx1.hw.luces.encendidas == set()
+    ctx2, _, salida2 = contexto(tmp_path, reloj=reloj)
+    flujo.cmd_impactos(ctx2, args())
+    assert [a.split(" → ")[0] for a in acciones(salida2)] == [
+        "Mango 1 · +0 h · cara 2",                      # primero lo que quedó a medias, sin repetir la cara 1
+        f"Cara 1 · zona {j.zona(2, 1)}", f"Cara 2 · zona {j.zona(2, 2)}",
+        "Mango 2 · +0 h · cara 1", "Mango 2 · +0 h · cara 2"]
+    assert sorted((m["mango_id"], m["cara"]) for m in post_impacto(raiz, 0)) == [(1, 1), (1, 2), (2, 1), (2, 2)]
+    assert e.Jornada.cargar(raiz).pendientes_impactos() == []
+
+
+def test_impactos_con_ronda_cero_reanuda_en_los_impactos_a_medias_y_fotografia_al_completarlos(tmp_path):
+    ctx0, reloj, _ = jornada_cero(tmp_path)
+    ctx1, _, _ = contexto(tmp_path, entradas=["", "q"], auto=False, reloj=reloj)
+    flujo.cmd_impactos(ctx1, args())                   # solo la cara 1 del mango 1
+    raiz = ctx0.base / "J01"
+    assert e.Jornada.cargar(raiz).pendientes_impactos() == [(1, 2), (2, 1), (2, 2)]
+    assert post_impacto(raiz, 0) == []                 # no se fotografía hasta que las 4 caras del mango están golpeadas
+    ctx2, _, salida2 = contexto(tmp_path, reloj=reloj)
+    flujo.cmd_impactos(ctx2, args())
+    j = e.Jornada.cargar(raiz)
+    assert [a.split(" → ")[0].split(" · zona")[0] for a in acciones(salida2)] == [
+        "Cara 2", "Mango 1 · +0 h · cara 1", "Mango 1 · +0 h · cara 2",
+        "Cara 1", "Cara 2", "Mango 2 · +0 h · cara 1", "Mango 2 · +0 h · cara 2"]
+    assert j.hechos() >= {(1, 0), (2, 0)}
+
+
+def test_impactos_con_ronda_cero_al_reanudar_con_la_ventana_vencida_ofrece_capturar_o_omitir(tmp_path):
+    ctx0, reloj, _ = jornada_cero(tmp_path)
+    ctx1, _, _ = contexto(tmp_path, entradas=["", "", "q"], auto=False, reloj=reloj)
+    flujo.cmd_impactos(ctx1, args())                   # impactos del mango 1 y sale ante la primera foto
+    raiz = ctx0.base / "J01"
+    assert e.Jornada.cargar(raiz).n_caras_hechas_ronda(1, 0) == 0
+    reloj.avanzar(minutes=30)                          # la ventana +0 h (±0,5 min) del mango 1 ya pasó
+    ctx2, _, salida2 = contexto(tmp_path, entradas=["s", "", "", "", ""], auto=False, reloj=reloj)
+    flujo.cmd_impactos(ctx2, args())
+    j = e.Jornada.cargar(raiz)
+    assert "Enter = capturar igual · s = omitir esta ronda del mango · q = salir" in "\n".join(ctx2.prompts)
+    assert any(linea.startswith("⚠") and "Mango 1 ronda +0 h" in linea and "FUERA de tolerancia" in linea
+               for linea in salida2)
+    assert j.estado_ronda(1, 0) == "omitida" and j.n_caras_hechas_ronda(1, 0) == 0
+    assert j.estado_ronda(2, 0) == "completa"                # el mango 2 sí se fotografía, dentro de su ventana
+    assert j.pendientes_impactos() == [] and (1, 0) in j.hechos()
+    assert [m["mango_id"] for m in post_impacto(raiz, 0)] == [2, 2]
+
+
+def test_impactos_con_ronda_cero_al_reanudar_tarde_puede_capturar_igual_y_queda_fuera_de_tolerancia(tmp_path):
+    ctx0, reloj, _ = jornada_cero(tmp_path)
+    ctx1, _, _ = contexto(tmp_path, entradas=["", "", "q"], auto=False, reloj=reloj)
+    flujo.cmd_impactos(ctx1, args())
+    reloj.avanzar(minutes=30)
+    ctx2, _, _ = contexto(tmp_path, auto=False, entrada=lambda texto: "", reloj=reloj)
+    flujo.cmd_impactos(ctx2, args())
+    raiz = ctx0.base / "J01"
+    j = e.Jornada.cargar(raiz)
+    assert j.estado_ronda(1, 0) == "fuera_de_tolerancia" and j.ronda_completa(1, 0)
+    mango1 = [m for m in post_impacto(raiz, 0) if m["mango_id"] == 1]
+    assert len(mango1) == 2 and all(m["impacto"]["en_tolerancia"] is False for m in mango1)
+    assert any("fuera de tolerancia" in a for a in mango1[0]["calidad"]["alertas"])
+    assert j.estado_ronda(2, 0) == "completa"
+
+
+def test_impactos_con_ronda_cero_q_ante_la_ventana_vencida_sale_sin_tocar_nada(tmp_path):
+    ctx0, reloj, _ = jornada_cero(tmp_path)
+    ctx1, _, _ = contexto(tmp_path, entradas=["", "", "q"], auto=False, reloj=reloj)
+    flujo.cmd_impactos(ctx1, args())
+    reloj.avanzar(minutes=30)
+    ctx2, _, salida2 = contexto(tmp_path, entradas=["q"], auto=False, reloj=reloj)
+    flujo.cmd_impactos(ctx2, args())
+    j = e.Jornada.cargar(ctx0.base / "J01")
+    assert flujo.MENSAJE_SALIR in salida2 and j.estado_ronda(1, 0) == "pendiente"
+    assert j.pendientes_impactos() == [(2, 1), (2, 2)] and ctx2.hw.luces.encendidas == set()
+
+
+def test_impactos_con_ronda_cero_omitir_una_cara_con_error_la_deja_pendiente_para_reanudar(tmp_path):
+    ctx0, reloj, _ = jornada_cero(tmp_path)
+
+    def entrada(texto):
+        if "reintentar" in texto.lower():
+            ctx.hw.luces.banco_dormido = False         # el operador omite la cara y despierta la batería
+            return "s"
+        return ""
+
+    ctx, _, salida = contexto(tmp_path, auto=False, entrada=entrada, reloj=reloj)
+    ctx.hw.luces.banco_dormido = True
+    flujo.cmd_impactos(ctx, args())
+    raiz = ctx0.base / "J01"
+    j = e.Jornada.cargar(raiz)
+    assert "luz apagada?" in "\n".join(salida)
+    assert j.caras_pendientes_ronda(1, 0) == [1] and j.pendientes_impactos() == []
+    assert j.estado_ronda(2, 0) == "completa" and (1, 0) not in j.hechos()
+    ctx2, _, salida2 = contexto(tmp_path, reloj=reloj)
+    flujo.cmd_impactos(ctx2, args())                   # la cara omitida se ofrece de nuevo
+    assert [a.split(" → ")[0] for a in acciones(salida2)] == ["Mango 1 · +0 h · cara 1"]
+    assert e.Jornada.cargar(raiz).ronda_completa(1, 0)
+
+
+def test_impactos_con_ronda_cero_termina_diciendo_el_siguiente_paso_y_cuando_vence_la_primera_ronda(tmp_path):
+    ctx, _, salida = jornada_cero(tmp_path, intervalos="0,2", unidad_min=60, slot_min=3, tolerancia_min=10)
+    flujo.cmd_impactos(ctx, args())
+    j = e.Jornada.cargar(ctx.base / "J01")
+    primera = next(item for item in j.calendario() if item.ronda_h == 2)
+    assert primera.vence.strftime("%H:%M") == "10:30"
+    ultima = [linea for linea in salida if "Siguiente paso: captura.py ronda" in linea]
+    assert len(ultima) == 1
+    assert "+0 h" in ultima[0] and "Mango 1 · ronda +2 h · vence 10:30" in ultima[0]
+    assert salida[-1] == ultima[0]
+
+
+def test_impactos_con_ronda_cero_ya_completo_no_captura_de_nuevo_y_dice_el_siguiente_paso(tmp_path):
+    ctx, _, salida = jornada_cero(tmp_path)
+    flujo.cmd_impactos(ctx, args())
+    raiz = ctx.base / "J01"
+    antes, tomas = len(metas(raiz)), ctx.hw.nir.tomas
+    del salida[:]
+    flujo.cmd_impactos(ctx, args())
+    assert len(metas(raiz)) == antes and ctx.hw.nir.tomas == tomas
+    texto = "\n".join(salida)
+    assert "Ya están" in texto and "Siguiente paso: captura.py ronda" in texto and "ronda +1 h" in texto
+
+
+def test_impactos_con_solo_la_ronda_cero_remite_a_subir(tmp_path):
+    ctx, _, salida = jornada_cero(tmp_path, intervalos="0")
+    flujo.cmd_impactos(ctx, args())
+    assert salida[-1].endswith("Siguiente paso: captura.py subir")
+    assert e.Jornada.cargar(ctx.base / "J01").siguiente_pendiente() is None
+
+
+def test_impactos_con_ronda_cero_se_niega_si_la_autoverificacion_fallo(tmp_path):
+    ctx, _, _ = contexto(tmp_path)
+    ctx.hw.rgb.ignora_exposicion = True
+    with pytest.raises(flujo.ErrorPreparacion):
+        flujo.cmd_jornada(ctx, args_jornada(intervalos="0,1"))
+    with pytest.raises(flujo.ErrorPreparacion) as exc:
+        flujo.cmd_impactos(ctx, args())
+    assert "autoverificación" in str(exc.value) and "jornada" in str(exc.value)
+    assert len(e.Jornada.cargar(ctx.base / "J01").pendientes_impactos()) == 4          # no registró nada
+
+
+def test_impactos_con_ronda_cero_aborta_sin_camara_nir_antes_de_registrar_impactos(tmp_path):
+    ctx, _, _ = jornada_cero(tmp_path)
+    ctx.hw.nir.presente_simulada = False
+    with pytest.raises(flujo.ErrorPreparacion) as exc:
+        flujo.cmd_impactos(ctx, args())
+    assert "NIR" in str(exc.value) and "cable" in str(exc.value)
+    assert len(e.Jornada.cargar(ctx.base / "J01").pendientes_impactos()) == 4
+
+
+def test_impactos_con_ronda_cero_avisa_si_otro_proceso_usa_las_camaras(tmp_path):
+    ctx0, reloj, _ = jornada_cero(tmp_path)
+    ctx, _, salida = contexto(tmp_path, reloj=reloj)
+    ctx.hw.salud.ocupantes_simulados = [{"pid": 9, "nombre": "pipewire"}]
+    flujo.cmd_impactos(ctx, args())
+    assert any("pipewire" in linea and linea.startswith("⚠") for linea in salida)
+
+
+def test_impactos_con_ronda_cero_conserva_lo_hecho_y_apaga_las_luces_si_la_noir_se_traba(tmp_path):
+    ctx, _, _ = jornada_cero(tmp_path)
+    ctx.hw.nir.trabada_simulada = True
+    with pytest.raises(hw.NIRTrabada):
+        flujo.cmd_impactos(ctx, args())
+    j = e.Jornada.cargar(ctx.base / "J01")
+    assert j.caras_impactadas(1) == [1, 2] and j.caras_pendientes_ronda(1, 0) == [1, 2]
+    assert j.pendientes_impactos() == [(2, 1), (2, 2)]
+    assert ctx.hw.luces.encendidas == set()
+
+
+def test_impactos_con_ronda_cero_sube_las_fotos_del_cero_y_cierra_la_cola(tmp_path):
+    put = PutSimulado()
+    ctx, _, _ = contexto(tmp_path, subir=True, put=put, par=subida.ParUrl(SECRETO))
+    flujo.cmd_jornada(ctx, args_jornada(no_subir=False, intervalos="0,1"))
+    flujo.cmd_sanas(ctx, args())
+    antes = len(put.llamadas)
+    flujo.cmd_impactos(ctx, args())
+    nuevos = [u[len(SECRETO):] for u, _ in put.llamadas[antes:]]
+    assert [len([d for d in nuevos if d.startswith(f"news/{carpeta}/")]) for carpeta in ("rgb", "nir", "meta")] == [4, 4, 4]
+    assert subida.ColaSubida(ctx.base / "J01" / "pendientes.jsonl").pendientes() == []
+
+
+def test_impactos_sin_ronda_cero_no_usa_camaras_ni_pide_la_verificacion(tmp_path):
+    ctx, _, salida = jornada_lista(tmp_path)                   # intervalos 1,2: el protocolo anterior
+    j = e.Jornada.cargar(ctx.base / "J01")
+    j.datos.pop("autoverificacion_exposicion")                 # una jornada vieja puede no tenerla
+    j.guardar()
+    ctx.hw.nir.presente_simulada = False
+    ctx.hw.salud.ocupantes_simulados = [{"pid": 9, "nombre": "pipewire"}]
+    antes = (len(ctx.hw.rgb.historial), ctx.hw.nir.tomas, list(ctx.hw.luces.historial))
+    del salida[:]
+    flujo.cmd_impactos(ctx, args())
+    assert (len(ctx.hw.rgb.historial), ctx.hw.nir.tomas, ctx.hw.luces.historial) == antes
+    raiz = ctx.base / "J01"
+    assert e.Jornada.cargar(raiz).pendientes_impactos() == [] and metas(raiz) == []
+    texto = "\n".join(salida)
+    assert "Otro proceso" not in texto and "Impactos completos. Siguiente paso: captura.py ronda" in texto
+    assert all("+0 h" not in linea for linea in salida)
+
+
+def test_impactos_sin_ronda_cero_q_sigue_saliendo_con_el_mismo_mensaje(tmp_path):
+    ctx0, reloj, _ = jornada_lista(tmp_path)
+    ctx, _, salida = contexto(tmp_path, entradas=["", "q"], auto=False, reloj=reloj)
+    flujo.cmd_impactos(ctx, args())
+    assert flujo.MENSAJE_SALIR in salida
+    assert e.Jornada.cargar(ctx0.base / "J01").pendientes_impactos() == [(1, 2), (2, 1), (2, 2)]
+
+
+def test_ronda_no_repite_las_caras_del_cero_que_ya_tomo_impactos(tmp_path):
+    ctx, reloj, salida = jornada_cero(tmp_path)
+    reloj.paso = timedelta(seconds=2)
+    flujo.cmd_impactos(ctx, args())
+    reloj.paso = timedelta(0)
+    del salida[:]
+    flujo.cmd_ronda(ctx, args())
+    raiz = ctx.base / "J01"
+    posts = [(m["mango_id"], m["cara"], m["ronda_h"]) for m in map(leer_meta, metas(raiz))
+             if m["fase"] == "post_impacto"]
+    assert len(posts) == len(set(posts)) == 8
+    assert sorted(r for _, _, r in posts) == [0, 0, 0, 0, 1, 1, 1, 1]
+    assert e.Jornada.cargar(raiz).hechos() == {(1, 0), (2, 0), (1, 1), (2, 1)}
+    texto = "\n".join(salida)
+    assert "ronda +0 h" not in texto and "+0 h · cara" not in texto and "ronda +1 h" in texto
+
+
+def test_ronda_ofrece_el_cero_pendiente_si_impactos_se_interrumpio_y_solo_las_caras_que_faltan(tmp_path):
+    ctx0, reloj, _ = jornada_cero(tmp_path)
+    ctx1, _, _ = contexto(tmp_path, entradas=["", "", "", "q"], auto=False, reloj=reloj)
+    flujo.cmd_impactos(ctx1, args())                   # el mango 1 queda con la cara 1 del +0 h hecha
+    reloj.avanzar(minutes=30)
+    ctx2, _, salida2 = contexto(tmp_path, entradas=["", "", "q"], auto=False, reloj=reloj)
+    flujo.cmd_ronda(ctx2, args())                      # +0 h del mango 1 atrasado: captura igual; luego sale en +1 h
+    raiz = ctx0.base / "J01"
+    j = e.Jornada.cargar(raiz)
+    assert "ronda +0 h" in "\n".join(salida2) and "FUERA de tolerancia" in "\n".join(salida2)
+    assert j.ronda_completa(1, 0)
+    assert sorted(m["cara"] for m in post_impacto(raiz, 0) if m["mango_id"] == 1) == [1, 2]     # la cara 1 no se repitió
+    assert j.estado_ronda(1, 0) == "fuera_de_tolerancia"
+
+
+def test_impactos_con_ronda_cero_tras_un_cero_parcial_de_ronda_solo_fotografia_las_caras_nuevas(tmp_path):
+    ctx0, reloj, _ = jornada_cero(tmp_path)
+    ctx1, _, _ = contexto(tmp_path, entradas=["", "q"], auto=False, reloj=reloj)
+    flujo.cmd_impactos(ctx1, args())                   # solo la cara 1 del mango 1 golpeada
+    ctx2, _, _ = contexto(tmp_path, entradas=["", "", "q"], auto=False, reloj=reloj)
+    flujo.cmd_ronda(ctx2, args())                      # ronda toma el +0 h de esa cara y sale ante el +1 h
+    raiz = ctx0.base / "J01"
+    assert e.Jornada.cargar(raiz).ronda_completa(1, 0)             # "completa" solo respecto de las caras golpeadas
+    ctx3, _, salida3 = contexto(tmp_path, reloj=reloj)
+    flujo.cmd_impactos(ctx3, args())
+    assert [a.split(" → ")[0].split(" · zona")[0] for a in acciones(salida3)] == [
+        "Cara 2", "Mango 1 · +0 h · cara 2", "Cara 1", "Cara 2", "Mango 2 · +0 h · cara 1", "Mango 2 · +0 h · cara 2"]
+    assert sorted((m["mango_id"], m["cara"]) for m in post_impacto(raiz, 0)) == [(1, 1), (1, 2), (2, 1), (2, 2)]
+
+
+def test_estado_rotula_la_ronda_cero_y_la_marca_hecha_tras_los_impactos(tmp_path):
+    ctx, reloj, salida = jornada_cero(tmp_path)
+    flujo.cmd_impactos(ctx, args())
+    del salida[:]
+    flujo.cmd_estado(ctx, args())
+    cabecera = next(linea for linea in salida if linea.startswith("Mango"))
+    assert cabecera.split() == ["Mango", "sano", "imp", "+0", "h", "+1", "h"]
+    fila = next(linea for linea in salida if linea.split()[:1] == ["1"])
+    assert fila.split() == ["1", "✓", "✓", "✓", "⏳08:31"]
+    assert "Siguiente: Mango 1 · ronda +1 h" in "\n".join(salida)
+
+
 # --- rondas ---------------------------------------------------------------------------------------------
 
 def jornada_con_impactos(tmp_path, **kw):

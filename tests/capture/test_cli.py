@@ -17,8 +17,8 @@ SECRETO = "https://objectstorage.sa-test.oraclecloud.com/p/SECRETO123/n/ns/b/buc
 def test_jornada_con_sus_opciones_y_defectos_del_protocolo():
     a = captura.parse_args(["jornada", "--id", "J01", "--lote", "lote-A", "--mangos", "1-32"])
     assert a.comando == "jornada" and a.id == "J01" and a.lote == "lote-A" and a.mangos == "1-32"
-    assert a.intervalos == "2,4,6,8,10,12"
-    assert a.slot_min == 2.5 and a.tolerancia_min == 10
+    assert a.intervalos == "0,2,4,6,8,10,12"
+    assert a.slot_min == 3.0 and a.tolerancia_min == 10
     assert a.temperatura_c is None and a.no_subir is False and a.auto is False
     assert a.caras == "1-4" and a.unidad_min == 60
 
@@ -29,6 +29,20 @@ def test_jornada_acepta_todas_las_opciones_de_la_especificacion():
                             "--tolerancia-min", "5", "--no-subir"])
     assert a.temperatura_c == 24.5 and a.intervalos == "1,2" and a.slot_min == 3
     assert a.tolerancia_min == 5 and a.no_subir is True
+
+
+def test_la_ayuda_de_jornada_nombra_los_defectos_con_la_ronda_cero_y_el_slot_de_3_min(capsys):
+    with pytest.raises(SystemExit):
+        captura.parse_args(["jornada", "--help"])
+    ayuda = " ".join(capsys.readouterr().out.split())
+    assert "por defecto 0,2,4,6,8,10,12" in ayuda and "0 = foto justo tras el impacto" in ayuda
+    assert "por defecto 3)" in ayuda and "2.5" not in ayuda
+
+
+def test_la_ayuda_de_impactos_dice_que_toma_las_fotos_de_la_ronda_cero(capsys):
+    with pytest.raises(SystemExit):
+        captura.parse_args(["impactos", "--help"])
+    assert "+0 h" in " ".join(capsys.readouterr().out.split())
 
 
 def test_opciones_de_prueba_ocultas_unidad_min_caras_y_semilla():
@@ -145,6 +159,85 @@ def test_recorrido_completo_jornada_sanas_impactos_ronda_estado(tmp_path):
     metas = list((tmp_path / "capturas" / "J01" / "news" / "meta").glob("*.json"))
     assert len(metas) == 4 + 8
     assert json.loads(metas[0].read_text())["schema"] == "3.0"
+
+
+JORNADA_CERO = ["jornada", "--id", "J01", "--lote", "lote-A", "--mangos", "1-2", "--caras", "1,2",
+                "--intervalos", "0,1", "--unidad-min", "1", "--slot-min", "0.5", "--tolerancia-min", "0.5",
+                "--semilla", "3", "--no-subir"]
+
+
+def metas_de(tmp_path):
+    return [json.loads(p.read_text()) for p in (tmp_path / "capturas" / "J01" / "news" / "meta").glob("*.json")]
+
+
+def test_jornada_acepta_el_cero_en_los_intervalos(tmp_path):
+    env = Entorno(tmp_path)
+    assert env.correr(*JORNADA_CERO) == 0
+    assert e.Jornada.cargar(tmp_path / "capturas" / "J01").intervalos_h == [0, 1]
+
+
+def test_jornada_con_los_intervalos_por_defecto_incluye_el_cero(tmp_path):
+    env = Entorno(tmp_path)
+    i = JORNADA_CERO.index("--intervalos")
+    assert env.correr(*JORNADA_CERO[:i], *JORNADA_CERO[i + 2:]) == 0                  # sin --intervalos 0,1
+    assert e.Jornada.cargar(tmp_path / "capturas" / "J01").intervalos_h == [0, 2, 4, 6, 8, 10, 12]
+
+
+def test_recorrido_con_ronda_cero_impactos_toma_las_fotos_y_ronda_no_las_repite(tmp_path):
+    env = Entorno(tmp_path)
+    assert env.correr(*JORNADA_CERO) == 0
+    assert env.correr("sanas") == 0
+    assert env.correr("impactos") == 0
+    ceros = [m for m in metas_de(tmp_path) if m["fase"] == "post_impacto"]
+    assert sorted((m["mango_id"], m["cara"], m["ronda_h"]) for m in ceros) == [
+        (1, 1, 0), (1, 2, 0), (2, 1, 0), (2, 2, 0)]
+    assert env.correr("ronda") == 0
+    posts = [(m["mango_id"], m["cara"], m["ronda_h"]) for m in metas_de(tmp_path) if m["fase"] == "post_impacto"]
+    assert len(posts) == len(set(posts)) == 8 and {r for _, _, r in posts} == {0, 1}      # el +0 h no se repite
+    assert e.Jornada.cargar(tmp_path / "capturas" / "J01").hechos() == {(1, 0), (2, 0), (1, 1), (2, 1)}
+    assert env.correr("estado") == 0 and any("+0 h" in linea for linea in env.salida)
+
+
+def test_impactos_con_ronda_cero_sale_con_codigo_2_si_la_autoverificacion_no_se_hizo(tmp_path):
+    env = Entorno(tmp_path)
+    assert env.correr(*JORNADA_CERO) == 0
+    j = e.Jornada.cargar(tmp_path / "capturas" / "J01")
+    j.datos.pop("autoverificacion_exposicion")
+    j.guardar()
+    assert env.correr("impactos") == 2
+    assert any("autoverificación" in linea for linea in env.salida)
+
+
+def test_impactos_con_ronda_cero_construye_el_hardware_real_y_sin_ronda_cero_no(tmp_path, monkeypatch):
+    import hardware
+    construidos = []
+
+    def fabrica(config):
+        construidos.append(config)
+        return hardware.HardwareSimulado(config)
+
+    monkeypatch.setattr(hardware, "Hardware", fabrica)
+    env = Entorno(tmp_path)
+    assert captura.main(["--base", env.base, "--simular", "--auto", *JORNADA_CERO], entorno=env.dic()) == 0
+    assert captura.main(["--base", env.base, "--simular", "--auto", "sanas"], entorno=env.dic()) == 0
+    assert construidos == []
+    assert captura.main(["--base", env.base, "--auto", "impactos"], entorno=env.dic()) == 0
+    assert len(construidos) == 1                                            # con +0 h necesita cámaras y luces
+    assert len([m for m in metas_de(tmp_path) if m["fase"] == "post_impacto"]) == 4
+
+
+def test_impactos_sin_ronda_cero_no_construye_el_hardware(tmp_path, monkeypatch):
+    import hardware
+    env = Entorno(tmp_path)
+    assert env.correr(*JORNADA) == 0
+    assert env.correr("sanas") == 0
+
+    def no_debe_construirse(config):
+        raise AssertionError("impactos sin ronda +0 h no usa cámaras ni luces")
+
+    monkeypatch.setattr(hardware, "Hardware", no_debe_construirse)
+    assert captura.main(["--base", env.base, "--auto", "impactos"], entorno=env.dic()) == 0
+    assert e.Jornada.cargar(tmp_path / "capturas" / "J01").pendientes_impactos() == []
 
 
 def test_la_configuracion_de_camaras_se_crea_en_la_primera_ejecucion(tmp_path):

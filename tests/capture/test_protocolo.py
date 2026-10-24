@@ -19,8 +19,8 @@ def test_energia_de_la_bola_de_66_g_a_50_cm():
 
 
 def test_defectos_del_protocolo():
-    assert list(p.INTERVALOS_DEFECTO_H) == [2, 4, 6, 8, 10, 12]
-    assert p.SLOT_MIN_DEFECTO == 2.5
+    assert list(p.INTERVALOS_DEFECTO_H) == [0, 2, 4, 6, 8, 10, 12]      # +0 h es la foto justo tras el impacto
+    assert p.SLOT_MIN_DEFECTO == 3.0        # un mango = 4 impactos + 4 pares RGB/NIR de ~8-11 s
     assert p.TOLERANCIA_MIN_DEFECTO == 10
     assert p.MASA_BOLA_G == 66
     assert p.ALTURA_CM == 50
@@ -57,6 +57,22 @@ def test_intervalos_invalidos(texto):
 
 def test_intervalo_cero_se_puede_agregar_despues_con_permitir_cero():
     assert p.parse_intervalos("0,2", permitir_cero=True) == [0, 2]
+
+
+def test_los_intervalos_por_defecto_se_aceptan_con_el_cero_y_se_rechazan_sin_permitirlo():
+    texto = ",".join(str(h) for h in p.INTERVALOS_DEFECTO_H)
+    assert p.parse_intervalos(texto, permitir_cero=True) == list(p.INTERVALOS_DEFECTO_H)
+    with pytest.raises(ValueError):
+        p.parse_intervalos(texto)
+
+
+def test_el_ejemplo_del_mensaje_de_error_incluye_el_cero_solo_si_se_permite():
+    with pytest.raises(ValueError) as con_cero:
+        p.parse_intervalos("x", permitir_cero=True)
+    with pytest.raises(ValueError) as sin_cero:
+        p.parse_intervalos("x")
+    assert "0,2,4,6,8,10,12" in str(con_cero.value)
+    assert "0,2,4" not in str(sin_cero.value) and "2,4,6,8,10,12" in str(sin_cero.value)
 
 
 def test_parse_caras():
@@ -173,6 +189,19 @@ def test_calendario_ejemplo_de_32_mangos_a_2_5_min():
     # las rondas siguientes quedan 2 h despues (10:30, 12:30, 14:30, ..., 20:30)
     inicios = [min(it.vence for it in cal if it.ronda_h == r) for r in (2, 4, 6, 8, 10, 12)]
     assert [x.strftime("%H:%M") for x in inicios] == ["10:30", "12:30", "14:30", "16:30", "18:30", "20:30"]
+
+
+def test_calendario_ejemplo_de_25_mangos_a_3_min_con_la_ronda_cero():
+    cal = p.calendario(impactos_de(25, slot_min=3), p.INTERVALOS_DEFECTO_H, unidad_min=60)
+    assert len(cal) == 25 * 7
+    # la ronda +0 h vence en el propio impacto de cada mango: el primero a las 08:30
+    ceros = [it for it in cal if it.ronda_h == 0]
+    assert ceros[0].vence == hora(8, 30) and ceros[-1].vence == hora(8, 30) + timedelta(minutes=3 * 24)
+    # cada tanda dura 25 x 3 = 75 min y las rondas arrancan cada 2 h: quedan 45 min de descanso
+    inicios = [min(it.vence for it in cal if it.ronda_h == r) for r in p.INTERVALOS_DEFECTO_H]
+    assert [x.strftime("%H:%M") for x in inicios] == ["08:30", "10:30", "12:30", "14:30", "16:30", "18:30", "20:30"]
+    fines = [max(it.vence for it in cal if it.ronda_h == r) for r in p.INTERVALOS_DEFECTO_H]
+    assert fines[0] == hora(9, 42) and (inicios[1] - fines[0]) == timedelta(minutes=48)
 
 
 def test_calendario_esta_ordenado_por_vencimiento():

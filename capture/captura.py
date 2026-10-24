@@ -5,7 +5,7 @@ Reemplaza a `captura_dual.py` (una foto por ejecucion) por un flujo guiado por j
 
   captura.py jornada --id J01 --lote L1 --mangos 1-32   # verifica camaras y reloj, calibra
   captura.py sanas                                      # fotos antes del impacto, en orden
-  captura.py impactos                                   # registra la hora de cada impacto
+  captura.py impactos                                   # hora de cada impacto y fotos +0 h (justo tras el golpe)
   captura.py ronda                                      # fotos a +2, +4, ... +12 h del impacto
   captura.py estado                                     # tabla de avance y proximo vencimiento
   captura.py subir                                      # sube a OCI lo que falte
@@ -26,12 +26,14 @@ from pathlib import Path
 import camaras
 import configuracion
 import consola
+import estado as est
 import flujo
 import hardware
 import protocolo
 import subida
 
 COMANDOS_CON_HARDWARE = {"jornada", "sanas", "ronda", "enfoque", "descarte"}
+# `impactos` solo usa camaras y luces si la jornada incluye la ronda +0 h (ver `_impactos_toma_fotos`).
 CODIGO_PREPARACION, CODIGO_QC, CODIGO_NOIR_TRABADA, CODIGO_CTRL_C = 2, 3, 4, 130
 
 
@@ -68,10 +70,12 @@ def construir_parser():
     j.add_argument("--lote", required=True, help="texto del lote de mangos")
     j.add_argument("--mangos", required=True, help="IDs de mango, por ejemplo 1-32 o 1-5,8")
     j.add_argument("--temperatura-c", type=float, help="temperatura ambiente (se guarda en los metadatos)")
-    j.add_argument("--intervalos", default=",".join(str(h) for h in protocolo.INTERVALOS_DEFECTO_H),
-                   help="horas despues del impacto de cada ronda (por defecto 2,4,6,8,10,12)")
+    intervalos_defecto = ",".join(str(h) for h in protocolo.INTERVALOS_DEFECTO_H)
+    j.add_argument("--intervalos", default=intervalos_defecto,
+                   help=f"horas despues del impacto de cada ronda (por defecto {intervalos_defecto}; "
+                        "0 = foto justo tras el impacto, se toma en `impactos`)")
     j.add_argument("--slot-min", type=float, default=protocolo.SLOT_MIN_DEFECTO,
-                   help="minutos por mango en cada tanda (por defecto 2.5)")
+                   help=f"minutos por mango en cada tanda (por defecto {protocolo.SLOT_MIN_DEFECTO:g})")
     j.add_argument("--tolerancia-min", type=float, default=protocolo.TOLERANCIA_MIN_DEFECTO,
                    help="tolerancia de cada ronda en minutos (por defecto 10)")
     j.add_argument("--caras", default="1-4", help="caras a fotografiar (por defecto 1-4)")
@@ -81,7 +85,8 @@ def construir_parser():
     j.add_argument("--ignorar-ntp", action="store_true", help="seguir aunque el reloj no este sincronizado")
 
     con_id(nuevo("sanas", "fotos de cada cara antes del impacto, en orden (reanuda donde quedo)"))
-    con_id(nuevo("impactos", "registra la hora de cada impacto y muestra las zonas sorteadas"))
+    con_id(nuevo("impactos", "registra la hora de cada impacto, muestra las zonas sorteadas y toma las "
+                              "fotos +0 h (si la jornada las incluye)"))
     r = nuevo("ronda", "fotos de la siguiente ronda que vence, hasta salir con q")
     con_id(r)
     r.add_argument("--forzar", action="store_true", help="capturar aunque falte mas que la tolerancia")
@@ -107,6 +112,18 @@ COMANDOS = {
 }
 
 
+def _impactos_toma_fotos(args, base):
+    """True si `impactos` debe abrir camaras y luces: la jornada incluye la ronda +0 h.
+
+    Si la jornada no existe o no se puede leer devuelve False: `impactos` informa el problema solo.
+    """
+    try:
+        id_jornada = getattr(args, "id", None) or est.leer_activa(base)
+        return bool(id_jornada) and est.Jornada.cargar(base / id_jornada).tiene_ronda_cero()
+    except (est.JornadaNoEncontrada, OSError, ValueError, KeyError):
+        return False
+
+
 def _reloj_local():
     return datetime.now(timezone.utc).astimezone()
 
@@ -129,12 +146,13 @@ def main(argv=None, entorno=None):
     try:
         base = Path(args.base).expanduser()
         config = configuracion.cargar_config(base)
-        if args.comando in COMANDOS_CON_HARDWARE:
+        impactos_con_fotos = args.comando == "impactos" and _impactos_toma_fotos(args, base)
+        if args.comando in COMANDOS_CON_HARDWARE or impactos_con_fotos:
             hw = hardware.HardwareSimulado(config) if args.simular else hardware.Hardware(config)
             if entorno.get("preparar_hw"):
                 entorno["preparar_hw"](hw)
         par = None
-        if args.comando in ("subir", "jornada", "sanas", "ronda") and not (
+        if (args.comando in ("subir", "jornada", "sanas", "ronda") or impactos_con_fotos) and not (
                 args.no_subir and args.comando != "subir"):
             try:
                 par, avisos = subida.cargar_par_url(env=entorno.get("env"),

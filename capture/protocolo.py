@@ -4,9 +4,11 @@ Este modulo no toca hardware ni disco, para poder probarlo en cualquier maquina.
 
 Conceptos:
   * mango: unidad de agrupacion (GroupKFold). Se fotografia en 4 caras.
-  * momento: "sano" (antes del impacto) o una ronda posterior al impacto (+2 h, +4 h...).
-  * jornada: un dia de captura (~31 mangos). El operador hace tandas completas:
-    sanas -> impactos -> una ronda por intervalo, siempre en el mismo orden y ritmo.
+  * momento: "sano" (antes del impacto) o una ronda posterior al impacto (+0 h, +2 h, +4 h...).
+    La ronda +0 h es la foto justo despues del golpe: se toma durante `impactos`, mango por mango.
+  * jornada: un dia de captura (~25 mangos). El operador hace tandas completas:
+    sanas -> impactos (con las fotos +0 h) -> una ronda por cada intervalo restante, siempre en el
+    mismo orden y ritmo.
   * unidad_min: minutos que dura una "hora" del protocolo. Es 60 en produccion;
     la prueba en la Pi lo baja a 1 para simular horas con minutos.
 """
@@ -17,8 +19,9 @@ from datetime import datetime, timedelta
 # --- constantes del protocolo (acordadas con el asesor) ---------------------
 ZONAS = ("centro", "superior", "inferior", "izquierda", "derecha")
 CARAS_DEFECTO = (1, 2, 3, 4)
-INTERVALOS_DEFECTO_H = (2, 4, 6, 8, 10, 12)
-SLOT_MIN_DEFECTO = 2.5
+INTERVALOS_DEFECTO_H = (0, 2, 4, 6, 8, 10, 12)
+# Un mango en la tanda de impactos = 4 impactos + 4 pares RGB/NIR (~8-11 s cada uno): ~3 min.
+SLOT_MIN_DEFECTO = 3.0
 TOLERANCIA_MIN_DEFECTO = 10
 UNIDAD_MIN_DEFECTO = 60
 MASA_BOLA_G = 66.0
@@ -58,7 +61,10 @@ def parse_rango_mangos(texto):
 
 
 def parse_intervalos(texto, permitir_cero=False):
-    """'2,4,6' -> [2, 4, 6] (horas del protocolo, ordenadas y sin repetidos)."""
+    """'2,4,6' -> [2, 4, 6] (horas del protocolo, ordenadas y sin repetidos).
+
+    El 0 (foto justo despues del impacto) solo se acepta con `permitir_cero=True`.
+    """
     valores = set()
     try:
         for trozo in texto.split(","):
@@ -67,7 +73,8 @@ def parse_intervalos(texto, permitir_cero=False):
                 raise ValueError
             valores.add(int(v) if v == int(v) else v)
     except (ValueError, AttributeError):
-        raise ValueError(f"Intervalos invalidos: {texto!r} (ejemplo: 2,4,6,8,10,12).") from None
+        ejemplo = "0,2,4,6,8,10,12" if permitir_cero else "2,4,6,8,10,12"
+        raise ValueError(f"Intervalos invalidos: {texto!r} (ejemplo: {ejemplo}).") from None
     return sorted(valores)
 
 

@@ -53,7 +53,7 @@ def test_crear_guarda_jornada_json_con_los_datos_del_protocolo(tmp_path):
     d = json.loads((tmp_path / "J01" / "jornada.json").read_text())
     assert d["id"] == "J01" and d["lote"] == "lote-A" and d["temperatura_c"] == 24.5
     assert d["mangos"] == [1, 2, 3] and d["intervalos_h"] == [2, 4]
-    assert d["slot_min"] == 2.5 and d["tolerancia_min"] == 10 and d["unidad_min"] == 60
+    assert d["slot_min"] == 3.0 and d["tolerancia_min"] == 10 and d["unidad_min"] == 60
     assert d["semilla"] == 11
     assert d["impacto"] == {"masa_bola_g": 66.0, "altura_cm": 50.0, "energia_j": 0.324}
     assert set(d["zonas"]["1"]) == {"1", "2", "3", "4"}
@@ -168,6 +168,36 @@ def test_una_ronda_fuera_de_tolerancia_queda_marcada(tmp_path):
     j.marcar_impacto(1, 1, hora(8, 30).isoformat())
     j.marcar_ronda(1, 2, 1, ts=1, horas=2.3, desviacion_min=18.0, alertas=[])
     assert j.estado_ronda(1, 2) == "fuera_de_tolerancia"
+
+
+# --- ronda +0 h (la foto justo despues del impacto, tomada durante `impactos`) -------------------
+
+def test_tiene_ronda_cero_solo_si_el_cero_esta_entre_los_intervalos(tmp_path):
+    assert crear(tmp_path, intervalos_h=[0, 2, 4]).tiene_ronda_cero()
+    assert not crear(tmp_path, id="J02", intervalos_h=[2, 4]).tiene_ronda_cero()    # jornadas del protocolo viejo
+
+
+def test_la_ronda_cero_vence_en_el_propio_impacto_y_usa_la_clave_0(tmp_path):
+    j = crear(tmp_path, mangos=[1], caras=[1, 2], intervalos_h=[0, 2])
+    j.marcar_impacto(1, 1, hora(8, 30).isoformat())
+    j.marcar_impacto(1, 2, hora(8, 31).isoformat())
+    assert j.vencimiento(1, 0) == hora(8, 30) and j.vencimiento(1, 2) == hora(10, 30)
+    assert j.vencimiento(2, 0) is None                        # un mango sin impactos no tiene vencimientos
+    j.marcar_ronda(1, 0, 1, ts=1, horas=0.01, desviacion_min=0.6, alertas=[])
+    assert list(e.Jornada.cargar(tmp_path / "J01").datos["rondas"]["1"]) == ["0"]
+    assert j.caras_pendientes_ronda(1, 0) == [2]
+    j.marcar_ronda(1, 0, 2, ts=2, horas=0.02, desviacion_min=1.0, alertas=[])
+    assert j.ronda_completa(1, 0) and j.estado_ronda(1, 0) == "completa" and (1, 0) in j.hechos()
+    assert j.siguiente_pendiente().ronda_h == 2
+
+
+def test_ronda_omitida_distingue_lo_omitido_de_lo_completo(tmp_path):
+    j = crear(tmp_path, mangos=[1], caras=[1], intervalos_h=[0, 2])
+    j.marcar_impacto(1, 1, hora(8, 30).isoformat())
+    assert not j.ronda_omitida(1, 0)
+    j.omitir_ronda(1, 0)
+    assert j.ronda_omitida(1, 0) and not j.ronda_omitida(1, 2)
+    assert j.estado_ronda(1, 0) == "omitida" and (1, 0) in j.hechos()
 
 
 def test_ultimo_timestamp_se_persiste(tmp_path):

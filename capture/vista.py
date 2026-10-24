@@ -71,7 +71,7 @@ def tabla_estado(jornada, ahora, cola=None):
     d = jornada.datos
     tol = jornada.tolerancia_min
     cab = (f"Jornada {d['id']} · lote {d['lote']} · {len(jornada.mangos)} mangos · "
-           f"slot {d['slot_min']} min · tolerancia ±{tol:g} min")
+           f"slot {d['slot_min']:g} min · tolerancia ±{tol:g} min")
     lineas = [cab]
     if jornada.unidad_min != protocolo.UNIDAD_MIN_DEFECTO:
         lineas.append(f"** PRUEBA: 1 'hora' del protocolo = {jornada.unidad_min:g} min **")
