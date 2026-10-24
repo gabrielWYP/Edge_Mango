@@ -1,0 +1,102 @@
+# Experiment config: two-stream, attention ablation arm C (RGB-only skeleton).
+#
+# configs/experiment/twostream.yaml with no cross-attention and no NIR stream
+# (fusion_attention: false, use_nir: false): no nir_stem, no NIR pass through
+# the shared stages, no NIR FPN; DualFPN keeps one Conv1x1 -> norm -> ReLU ->
+# Dropout2d block per level over the RGB pyramid alone. The NIR tensor is
+# still loaded and passed, and ignored by the model. Kept line-for-line
+# comparable with twostream.yaml (arm A) and twostream_no_attention.yaml
+# (arm B) — only this header, output_dir and the ablation flags differ — so
+# B vs C isolates the NIR stream. See src/training/fusion_modes.py.
+#
+# Checkpoints written here carry arch_version=1 and are NOT loadable by the
+# early-fusion path (and vice versa); evaluate them with this same config.
+#
+# WHAT is measured — byte-identical on every machine (fusion-redesign D-H).
+# HOW it runs (device/batch_size/num_workers/pin_memory/precision) lives in
+# a separate configs/machines/*.yaml profile, applied on top of this file:
+#
+#   python -m src.training.train \
+#       --config configs/experiment/twostream.yaml \
+#       --machine configs/machines/gtx1660s.yaml \
+#       --model master --override seed=42
+#
+# Do not add device/batch_size/num_workers/pin_memory/precision here — those
+# are machine-profile keys; a machine profile that tried to override them
+# would silently change what is being measured (D-H whitelist enforcement
+# lives in src/training/machine.py, on the machine-profile side).
+
+# Data paths
+rgb_dir: "data/cache/mango/rgb"
+nir_dir: "data/cache/mango/nir"
+# Register NIR to the RGB frame at load time (labels are in the RGB frame).
+# Runs before 2026-10 trained on unregistered NIR; null = explicit ablation only.
+nir_homography_path: "notebooks/matriz_homografia_aruco.npy"
+labels_dir: "data/annotations/yolo/labels"
+output_dir: "checkpoints/twostream_rgb_only"
+split_manifest: "data/annotations/yolo/splits.json"
+
+model_type: master
+backbone_variant: "tiny"
+num_classes: 2
+
+# Image
+image_size: 640
+letterbox_value: 114
+
+# Architecture (fusion-redesign W1-W5). These match TrainingConfig's
+# defaults exactly — spelled out here so the experiment file is the
+# self-documenting single source of truth, not an implicit default.
+fusion_mode: cross_attention         # two-stream + cross-attention; see configs/experiment/fusion.yaml
+fusion_attention: false              # attention ablation arm C: no CrossModalFusion ...
+use_nir: false                       # ... and no NIR stream (nir_stem, NIR pass, fpn_nir); nir is ignored
+in_channels: 4                       # unused by this mode: the stems are fixed at 3ch RGB / 1ch NIR
+head_strides: [8, 16, 32]            # fixed by DualFPN (P2 is dropped before fusion)
+assigner_level_ranges: [64, 128]     # must be len(head_strides) - 1, enforced at load
+
+# Training schedule (fusion-redesign D-4): end-to-end from epoch 0,
+# pretrained backbone stages at backbone_lr_mult * lr.
+schedule: end_to_end
+epochs: 100
+lr: 0.001
+backbone_lr_mult: 0.1
+weight_decay: 0.0005
+warmup_epochs: 5
+patience: 20
+
+# The experimental constant (Q7, fusion-redesign) — fixed before V1 and
+# immutable afterwards. Physical batch_size is a machine-profile memory
+# knob; grad_accum_steps is always derived, never set directly.
+effective_batch: 8
+
+# Loss
+box_weight: 7.5
+cls_weight: 0.5
+class_weights: [0.5, 1.5]
+
+# Logging
+log_interval: 5
+save_interval: 10
+
+# Gradient clipping
+grad_clip: 10.0
+
+# NIR normalization stats
+nir_mean: 0.0569
+nir_std: 0.0546
+
+# Reproducibility — overridden per-rung via --override seed=<S> for the
+# validation ladder's 3-seed rungs (42, 1337, 2024).
+seed: 42
+
+# Decode (src/training/decode.py::decode_detections) — carried unchanged
+# from training_mango.yaml so the mango guardrail comparison stays valid.
+conf_threshold: 0.25
+nms_iou_threshold: 0.5
+nms_enabled: true
+decode_per_class: true
+max_detections: 300
+
+# Task-Aligned Assigner (src/training/loss.py)
+assigner_center_radius: 0.0
+assigner_collect_stats: false

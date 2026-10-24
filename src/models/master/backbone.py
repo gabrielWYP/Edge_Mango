@@ -314,10 +314,16 @@ class DualConvNeXtBackbone(nn.Module):
             (RGB verbatim, NIR channel-averaged).
         variant (str): Backbone variant — "tiny" (28M params) or "small" (50M params).
             Both produce identical stage channels [96, 192, 384, 768].
+        use_nir (bool): Build the NIR stream (default True). False is the
+            RGB-only arm of the attention ablation
+            (`src/training/fusion_modes.py`): no `nir_stem` (`self.nir_stem`
+            is None and adds no state_dict key), no NIR pass through the
+            shared stages, and `nir` is accepted but ignored by `forward`.
 
     Returns (forward):
         rgb_features: list of 4 tensors [S1, S2, S3, S4]
-        nir_features: list of 4 tensors [S1, S2, S3, S4]
+        nir_features: list of 4 tensors [S1, S2, S3, S4], or None when
+            `use_nir=False`
 
         Channel dims: [96, 192, 384, 768]
         Spatial dims (for 640x640 input): [160x160, 80x80, 40x40, 20x20]
@@ -326,7 +332,7 @@ class DualConvNeXtBackbone(nn.Module):
     # Both Tiny and Small have identical stage channel dimensions
     STAGE_CHANNELS = [96, 192, 384, 768]
 
-    def __init__(self, pretrained: bool = True, variant: str = "tiny"):
+    def __init__(self, pretrained: bool = True, variant: str = "tiny", use_nir: bool = True):
         super().__init__()
 
         if variant not in SUPPORTED_VARIANTS:
@@ -335,10 +341,13 @@ class DualConvNeXtBackbone(nn.Module):
             )
 
         self.variant = variant
+        self.use_nir = use_nir
 
         # --- Stems (different per modality) ---
         self.rgb_stem = _build_stem(in_channels=3)
-        self.nir_stem = _build_stem(in_channels=1)  # NIR is grayscale
+        # NIR is grayscale. A plain None attribute when absent: registers no
+        # submodule, so the RGB-only arm has no `backbone.nir_stem.*` key.
+        self.nir_stem = _build_stem(in_channels=1) if use_nir else None
 
         # --- Shared stages ---
         if variant == "tiny":
@@ -348,8 +357,9 @@ class DualConvNeXtBackbone(nn.Module):
 
         if pretrained:
             self._load_pretrained_rgb_stem()
-            self._load_pretrained_nir_stem()
-        else:
+            if use_nir:
+                self._load_pretrained_nir_stem()
+        elif use_nir:
             self._init_nir_stem()
 
     # ------------------------------------------------------------------
@@ -370,24 +380,29 @@ class DualConvNeXtBackbone(nn.Module):
 
     @property
     def stem_modules(self) -> dict[str, nn.Module]:
-        """The two modality-specific stems, keyed by attribute name."""
-        return {"rgb_stem": self.rgb_stem, "nir_stem": self.nir_stem}
+        """The modality-specific stems that exist, keyed by attribute name —
+        two by default, only `rgb_stem` when `use_nir=False`."""
+        stems = {"rgb_stem": self.rgb_stem}
+        if self.nir_stem is not None:
+            stems["nir_stem"] = self.nir_stem
+        return stems
 
     # ------------------------------------------------------------------
     # Forward
     # ------------------------------------------------------------------
 
     def forward(
-        self, rgb: torch.Tensor, nir: torch.Tensor
-    ) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
+        self, rgb: torch.Tensor, nir: torch.Tensor | None = None
+    ) -> tuple[list[torch.Tensor], list[torch.Tensor] | None]:
         """
         Args:
             rgb: (N, 3, H, W)
-            nir: (N, 1, H, W)  — grayscale NIR image
+            nir: (N, 1, H, W)  — grayscale NIR image. Required when
+                `use_nir=True`; ignored (may be None) when `use_nir=False`.
 
         Returns:
             rgb_features: [S1, S2, S3, S4]
-            nir_features: [S1, S2, S3, S4]
+            nir_features: [S1, S2, S3, S4], or None when `use_nir=False`
 
         Precision scoping (fusion-redesign D-I): ConvNeXt stage 4 was
         reported numerically fragile under CUDA autocast in this dual-stream
@@ -399,6 +414,11 @@ class DualConvNeXtBackbone(nn.Module):
         (see design.md) specifically needs bf16 to reach these stages rather
         than being silently forced back to fp32.
         """
+        if self.use_nir and nir is None:
+            raise ValueError(
+                "DualConvNeXtBackbone(use_nir=True) needs the NIR tensor; got "
+                "nir=None."
+            )
         device_type = rgb.device.type
         fp16_ambient = (
             torch.is_autocast_enabled(device_type)
@@ -412,8 +432,17 @@ class DualConvNeXtBackbone(nn.Module):
         with ctx:
             # Pass through modality-specific stems
             rgb_in = rgb.float() if fp16_ambient else rgb
-            nir_in = nir.float() if fp16_ambient else nir
             rgb_x = self.rgb_stem(rgb_in)   # (N, 96, H/4, W/4)
+
+            if not self.use_nir:
+                # RGB-only arm: one pass through the shared stages.
+                rgb_features = []
+                for stage in self.shared_stages:
+                    rgb_x = stage(rgb_x)
+                    rgb_features.append(rgb_x)
+                return rgb_features, None
+
+            nir_in = nir.float() if fp16_ambient else nir
             nir_x = self.nir_stem(nir_in)   # (N, 96, H/4, W/4)
 
             rgb_features, nir_features = [], []

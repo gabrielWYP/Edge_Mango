@@ -46,8 +46,11 @@ from src.training.dataset import YOLODataset, build_dataloader, collate_fn
 from src.training.fusion_modes import (
     FUSION_MODE_CROSS_ATTENTION,
     accepted_arch_versions,
+    check_fusion_ablation_compatible,
+    fusion_attention_from_checkpoint,
     fusion_mode_for_arch_version,
     fusion_pos_encoding_from_checkpoint,
+    use_nir_from_checkpoint,
 )
 from src.training.loop import Trainer
 from src.training.neck_norm import check_norm_compatible, neck_norm_from_checkpoint
@@ -312,6 +315,34 @@ def _resolve_neck_norm(checkpoint: dict | None, config: TrainingConfig) -> tuple
     return norm, groups
 
 
+def _resolve_fusion_ablation(checkpoint: dict | None, config: TrainingConfig) -> tuple[bool, bool]:
+    """Return `(fusion_attention, use_nir)` to rebuild the checkpoint's
+    MasterModel with.
+
+    The attention-ablation arms have different state_dict schemas (arm B has
+    no `fusion.*` keys, arm C also no `nir_stem`/`fpn_nir` keys and narrower
+    fusion convs), so - exactly like `_resolve_neck_norm` - the checkpoint's
+    recorded config wins over the eval config, with a warning on
+    disagreement. A recorded config without the fields predates them and was
+    trained as arm A (both True). When nothing is recorded (a raw state_dict)
+    the eval config is trusted, and `check_fusion_ablation_compatible` fails
+    loudly if the weights disagree.
+    """
+    if not (checkpoint or {}).get("config"):
+        return config.fusion_attention, config.use_nir
+    resolved = (
+        fusion_attention_from_checkpoint(checkpoint),
+        use_nir_from_checkpoint(checkpoint),
+    )
+    if resolved != (config.fusion_attention, config.use_nir):
+        logger.warning(
+            "Checkpoint records fusion_attention=%s, use_nir=%s but the config "
+            "says fusion_attention=%s, use_nir=%s; using the checkpoint's value.",
+            *resolved, config.fusion_attention, config.use_nir,
+        )
+    return resolved
+
+
 def _load_model(model_type: str, checkpoint_path: str, config: TrainingConfig, device: torch.device):
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     is_checkpoint_dict = isinstance(checkpoint, dict) and "model_state_dict" in checkpoint
@@ -324,6 +355,7 @@ def _load_model(model_type: str, checkpoint_path: str, config: TrainingConfig, d
     head_strides = None
     fusion_pos_encoding = config.fusion_pos_encoding
     neck_norm, neck_gn_groups = config.neck_norm, config.neck_gn_groups
+    fusion_attention, use_nir = config.fusion_attention, config.use_nir
     if is_checkpoint_dict:
         arch_version = checkpoint.get("arch_version")
         if model_type == "master":
@@ -339,6 +371,7 @@ def _load_model(model_type: str, checkpoint_path: str, config: TrainingConfig, d
             head_strides = _resolve_head_strides(checkpoint, config.fusion_mode)
             fusion_pos_encoding = _resolve_fusion_pos_encoding(checkpoint, config)
             neck_norm, neck_gn_groups = _resolve_neck_norm(checkpoint, config)
+            fusion_attention, use_nir = _resolve_fusion_ablation(checkpoint, config)
         # `model_state_dict` is the weights validation ran on: the EMA weights
         # for an `ema` run (see `Trainer._save_checkpoint`).
         state_dict = checkpoint["model_state_dict"]
@@ -362,6 +395,11 @@ def _load_model(model_type: str, checkpoint_path: str, config: TrainingConfig, d
             fusion_pos_encoding=fusion_pos_encoding,
             neck_norm=neck_norm,
             neck_gn_groups=neck_gn_groups,
+            fusion_attention=fusion_attention,
+            use_nir=use_nir,
+        )
+        check_fusion_ablation_compatible(
+            model, state_dict, source=f"Checkpoint at {checkpoint_path}"
         )
         check_norm_compatible(model, state_dict, source=f"Checkpoint at {checkpoint_path}")
     else:

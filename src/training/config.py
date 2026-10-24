@@ -16,6 +16,7 @@ import yaml
 from .fusion_modes import (
     DEFAULT_FUSION_MODE,
     FUSION_MODE_CROSS_ATTENTION,
+    validate_fusion_ablation,
     validate_fusion_mode,
     validate_fusion_pos_encoding,
 )
@@ -131,6 +132,21 @@ class TrainingConfig:
             caller's config. Only valid with fusion_mode="cross_attention";
             ignored for model_type="student". See
             reports/fusion-gradient-collapse/diagnosis.md.
+        fusion_attention: Build the cross-attention `CrossModalFusion`
+            (default True). False is arm B of the attention ablation: the
+            RGB stage features pass through unchanged and NIR reaches the
+            head only through the `DualFPN` concat. Drops the `fusion.*`
+            state_dict keys; loaders read it back from the checkpoint's
+            recorded config (absent -> True). Only valid with
+            fusion_mode="cross_attention"; ignored for model_type="student".
+            See `src/training/fusion_modes.py`.
+        use_nir: Build the cross-attention path's NIR stream (default True).
+            False is arm C of the attention ablation: an RGB-only two-stream
+            skeleton with no `nir_stem`, no NIR pass and no `fpn_nir`, which
+            accepts and ignores the NIR tensor. Requires
+            `fusion_attention=False`; read back from the checkpoint like
+            `fusion_attention` (absent -> True). Only valid with
+            fusion_mode="cross_attention"; ignored for model_type="student".
         head_strides: MasterModel FPN/head pyramid strides, finest-first.
             Default `[4, 8, 16, 32]` includes the reconnected P2 level
             (fusion-redesign D-3). The single source of truth for
@@ -317,6 +333,10 @@ class TrainingConfig:
     # Positional encoding on the cross-attention Q/K — opt-in, so every
     # existing config and checkpoint keeps the behaviour it has today.
     fusion_pos_encoding: bool = False
+    # Attention ablation arms (src/training/fusion_modes.py) — both on by
+    # default, so every existing config and checkpoint is arm A.
+    fusion_attention: bool = True
+    use_nir: bool = True
 
     # Training schedule (D-4, fusion-redesign) — MasterModel only.
     schedule: str = "end_to_end"
@@ -383,6 +403,9 @@ class TrainingConfig:
             )
         if self.model_type == "master":
             validate_fusion_pos_encoding(self.fusion_pos_encoding, self.fusion_mode)
+            validate_fusion_ablation(
+                self.fusion_attention, self.use_nir, self.fusion_mode, self.fusion_pos_encoding
+            )
             validate_neck_norm_for_fusion_mode(self.neck_norm, self.fusion_mode)
             validate_strides(self.head_strides, self.assigner_level_ranges)
             # `DualFPN` builds one fusion conv per emitted level, so the
