@@ -254,3 +254,73 @@ def test_invalidar_la_calibracion_borra_las_marcas_para_rehacerla(tmp_path):
     j2 = e.Jornada.cargar(tmp_path / "J01")
     assert not j2.calibracion_hecha("vacia") and not j2.calibracion_hecha("gris")
     assert j2.referencia("rgb") is None and j2.balance_blancos() is None
+
+
+# --- reinicio de etapas -----------------------------------------------------------------------
+
+def jornada_avanzada(tmp_path):
+    """Jornada con calibracion completa, una sana, un impacto y una foto de ronda."""
+    j = crear(tmp_path, intervalos_h=[0, 2])
+    j.guardar_balance_blancos(5300, puntaje=1.0, ts=1)
+    for ts, tipo in enumerate(("gris", "vacia", "aruco"), start=2):
+        j.marcar_calibracion(tipo, ts=ts)
+    j.guardar_referencia("rgb", {"borde_media": 80.0})
+    j.guardar_autoverificacion_exposicion(ok=True, razon=2.3, exposicion_alta=104, exposicion_baja=34,
+                                          media_alta=72.0, media_baja=31.0, ts=5)
+    j.marcar_sana(1, 1, ts=6, alertas=[])
+    j.marcar_impacto(1, 1, hora(8).isoformat())
+    j.marcar_ronda(1, 0, 1, ts=7, horas=0.02, desviacion_min=1.0, alertas=[])
+    j.omitir_ronda(1, 2)
+    return j
+
+
+def test_reiniciar_desde_sanas_olvida_sanas_impactos_y_rondas_y_conserva_la_calibracion(tmp_path):
+    j = jornada_avanzada(tmp_path)
+    zonas = dict(j.datos["zonas"])
+    j.reiniciar_desde("sanas", {"iso": "2026-10-24T11:30:00-05:00", "archivos": 3})
+    j2 = e.Jornada.cargar(tmp_path / "J01")
+    assert j2.datos["sanas"] == {} and j2.datos["impactos"] == {} and j2.datos["rondas"] == {}
+    assert j2.datos["omitidas"] == [] and not j2.tiene_impactos()
+    assert all(j2.calibracion_hecha(t) for t in ("gris", "vacia", "aruco"))
+    assert j2.referencia("rgb") == {"borde_media": 80.0} and j2.balance_blancos()["temperatura"] == 5300
+    assert j2.autoverificacion_exposicion()["ok"] and j2.datos["zonas"] == zonas
+    assert j2.datos["ultimo_ts"] == 7                    # los timestamps nunca se reutilizan
+    assert j2.datos["reinicios"] == [{"iso": "2026-10-24T11:30:00-05:00", "archivos": 3, "desde": "sanas"}]
+
+
+def test_reiniciar_desde_impactos_conserva_las_sanas(tmp_path):
+    j = jornada_avanzada(tmp_path)
+    j.reiniciar_desde("impactos", {})
+    j2 = e.Jornada.cargar(tmp_path / "J01")
+    assert j2.sana_hecha(1, 1) and j2.datos["impactos"] == {} and j2.datos["rondas"] == {}
+
+
+def test_reiniciar_desde_vacia_olvida_solo_la_bandeja_vacia_de_la_calibracion(tmp_path):
+    j = jornada_avanzada(tmp_path)
+    j.reiniciar_desde("vacia", {})
+    j2 = e.Jornada.cargar(tmp_path / "J01")
+    assert not j2.calibracion_hecha("vacia") and j2.referencia("rgb") is None
+    assert j2.calibracion_hecha("gris") and j2.calibracion_hecha("aruco")
+    assert j2.balance_blancos() is not None and j2.autoverificacion_exposicion()["ok"]
+    assert j2.datos["sanas"] == {} and j2.datos["impactos"] == {}
+
+
+def test_reiniciar_desde_calibracion_olvida_todo_menos_las_zonas(tmp_path):
+    j = jornada_avanzada(tmp_path)
+    j.reiniciar_desde("calibracion", {})
+    j2 = e.Jornada.cargar(tmp_path / "J01")
+    assert j2.datos["calibracion"] == {} and j2.datos["referencia"] == {}
+    assert j2.balance_blancos() is None and j2.autoverificacion_exposicion() is None
+    assert j2.datos["sanas"] == {} and j2.datos["semilla"] == 11 and j2.zona(1, 1)
+
+
+def test_los_reinicios_se_acumulan_en_el_historial(tmp_path):
+    j = jornada_avanzada(tmp_path)
+    j.reiniciar_desde("impactos", {"n": 1})
+    j.reiniciar_desde("sanas", {"n": 2})
+    assert [r["desde"] for r in e.Jornada.cargar(tmp_path / "J01").datos["reinicios"]] == ["impactos", "sanas"]
+
+
+def test_reiniciar_desde_una_etapa_desconocida_es_un_error(tmp_path):
+    with pytest.raises(ValueError):
+        crear(tmp_path).reiniciar_desde("rondas", {})

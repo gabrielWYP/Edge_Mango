@@ -38,7 +38,7 @@ archivo no cambian, porque el pipeline empareja por la expresión `(\w+)_(rgb|ni
 | Archivo | Contenido |
 | --- | --- |
 | `captura.py` | Interfaz de línea de comandos y arranque. |
-| `flujo.py` | Lógica de cada subcomando (jornada, sanas, impactos, ronda, estado, subir, enfoque). |
+| `flujo.py` | Lógica de cada subcomando (jornada, sanas, impactos, ronda, estado, subir, reiniciar, enfoque). |
 | `protocolo.py` | Calendario, tolerancias, ritmo y sorteo de zonas (lógica pura). |
 | `estado.py` | `jornada.json`: escritura atómica y reanudación. |
 | `calidad.py` | QC contra la referencia de la bandeja vacía. |
@@ -343,6 +343,33 @@ después de cada cara y la cola de subida es un registro de eventos que tolera u
 
 Si la jornada se interrumpe durante la calibración, vuelve a ejecutar `jornada` con el mismo `--id`: reanuda los
 pasos pendientes (no repite el barrido de balance ya hecho).
+
+## Repetir una etapa en la misma jornada (`reiniciar`)
+
+Si algo salió mal (se movió la hoja después de la bandeja vacía, una luz mal puesta en las sanas...), `reiniciar`
+aparta lo capturado desde una etapa y la deja pendiente, sin cambiar de `--id`:
+
+```bash
+python3 ~/captura_v3/captura.py reiniciar --desde sanas
+```
+
+| `--desde` | Se repite | Se conserva |
+| --- | --- | --- |
+| `calibracion` | Tarjeta gris, balance de blancos, bandeja vacía, ArUco, verificación de exposición, sanas, impactos y rondas | Zonas sorteadas y semilla |
+| `vacia` | Bandeja vacía (referencia del QC), sanas, impactos y rondas | Tarjeta gris, balance de blancos, ArUco y verificación |
+| `sanas` | Sanas, impactos y rondas | Toda la calibración |
+| `impactos` | Impactos (con sus fotos +0 h) y rondas | Calibración y sanas |
+
+- **No se borra nada:** los archivos van a `descartes/reinicio-<fecha>/` con su ruta (`news/...`, `calib/...`), que
+  `subir` nunca recorre. Lo que estaba en la cola de subida queda como perdido para no subirlo; lo que ya se había
+  subido sigue en OCI (la URL pre-autenticada no permite borrar) y el programa avisa cuántos archivos son.
+- Pide confirmación (`Enter = reiniciar · q = cancelar`) y registra cada reinicio en `reinicios` de `jornada.json`.
+- **Con impactos registrados se niega** salvo con `--forzar`: la fruta ya está golpeada y unas "sanas" nuevas no
+  serían sanas.
+- Después de `--desde vacia` o `--desde calibracion`, vuelve a ejecutar el mismo comando de `jornada` (mismo `--id`,
+  `--lote` y `--mangos`): retoma solo la calibración pendiente. Mientras falte la bandeja vacía, `sanas`, `impactos`
+  y `ronda` se niegan a correr.
+- Los timestamps nunca se reutilizan, así que las fotos nuevas no pisan las apartadas.
 
 ## Control de calidad (QC)
 

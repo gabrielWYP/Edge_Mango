@@ -15,6 +15,9 @@ import protocolo
 VERSION_ESTADO = 1
 NOMBRE_ESTADO = "jornada.json"
 NOMBRE_ACTIVA = "jornada_activa"
+# Etapas que `reiniciar --desde` puede repetir, en orden: cada una arrastra a las siguientes.
+# "vacia" es solo la bandeja vacia (referencia del QC); "calibracion" es toda la calibracion.
+ETAPAS = ("calibracion", "vacia", "sanas", "impactos")
 
 
 class JornadaExistente(Exception):
@@ -191,6 +194,32 @@ class Jornada:
         self.datos["calibracion"] = {}
         self.datos["referencia"] = {}
         self.datos.pop("balance_blancos", None)
+        self.guardar()
+
+    # --- reinicio de etapas ----------------------------------------------------------------------
+    def tiene_impactos(self):
+        return any(self.datos["impactos"].values())
+
+    def reiniciar_desde(self, etapa, registro):
+        """Olvida `etapa` y todas las siguientes de ETAPAS; el resto del estado (zonas, semilla) queda igual.
+
+        No toca archivos: `flujo.cmd_reiniciar` los aparta antes. `registro` (hora, carpeta, conteos) se
+        agrega a `reinicios` para que el historial de la jornada quede completo.
+        """
+        if etapa not in ETAPAS:
+            raise ValueError(f"etapa desconocida: {etapa!r} (use {', '.join(ETAPAS)})")
+        d = self.datos
+        if etapa == "calibracion":
+            d["calibracion"] = {}
+            d.pop("balance_blancos", None)
+            d.pop("autoverificacion_exposicion", None)
+        if etapa in ("calibracion", "vacia"):
+            d["calibracion"].pop("vacia", None)
+            d["referencia"] = {}
+        if etapa != "impactos":
+            d["sanas"] = {}
+        d["impactos"], d["rondas"], d["omitidas"] = {}, {}, []
+        d.setdefault("reinicios", []).append(dict(registro, desde=etapa))
         self.guardar()
 
     # --- sanas -------------------------------------------------------------------------------

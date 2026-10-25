@@ -90,6 +90,18 @@ def test_la_cola_se_persiste_y_se_recarga(tmp_path):
     assert [p["destino"] for p in c2.pendientes()] == ["news/rgb/x.jpg", "news/nir/y.jpg"]
 
 
+def test_estado_de_un_destino_sigue_sus_eventos(tmp_path):
+    c = s.ColaSubida(tmp_path / "p.jsonl")
+    assert c.estado_de("news/rgb/x.jpg") is None
+    c.encolar("/a/x.jpg", "news/rgb/x.jpg")
+    c.encolar("/a/y.jpg", "news/rgb/y.jpg")
+    assert c.estado_de("news/rgb/x.jpg") == "pendiente"
+    c.marcar_hecho("news/rgb/x.jpg")
+    c.marcar_perdido("news/rgb/y.jpg", "reinicio")
+    c2 = s.ColaSubida(tmp_path / "p.jsonl")
+    assert c2.estado_de("news/rgb/x.jpg") == "hecho" and c2.estado_de("news/rgb/y.jpg") == "perdido"
+
+
 def test_no_se_encola_dos_veces_el_mismo_destino(tmp_path):
     c = s.ColaSubida(tmp_path / "p.jsonl")
     assert c.encolar("/a/x.jpg", "news/rgb/x.jpg")

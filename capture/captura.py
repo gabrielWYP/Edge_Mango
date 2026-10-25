@@ -9,6 +9,7 @@ Reemplaza a `captura_dual.py` (una foto por ejecucion) por un flujo guiado por j
   captura.py ronda                                      # fotos a +2, +4, ... +12 h del impacto
   captura.py estado                                     # tabla de avance y proximo vencimiento
   captura.py subir                                      # sube a OCI lo que falte
+  captura.py reiniciar --desde sanas                    # aparta lo capturado desde esa etapa y la repite
   captura.py enfoque [--camara rgb|nir]                 # nitidez en vivo para enfocar a mano
 
 Opciones globales (antes o despues del subcomando): --auto (sin Enter, para pruebas) y
@@ -92,6 +93,12 @@ def construir_parser():
     r.add_argument("--forzar", action="store_true", help="capturar aunque falte mas que la tolerancia")
     con_id(nuevo("estado", "tabla de mangos x momentos, proximo vencimiento y descanso"))
     con_id(nuevo("subir", "sube a OCI los archivos pendientes, con reintentos"))
+    rs = nuevo("reiniciar", "aparta (sin borrar) lo capturado desde una etapa y la deja pendiente en la "
+                            "misma jornada")
+    con_id(rs)
+    rs.add_argument("--desde", required=True, choices=est.ETAPAS,
+                    help="etapa a repetir; arrastra a las siguientes (vacia = solo la bandeja vacia)")
+    rs.add_argument("--forzar", action="store_true", help="reiniciar aunque ya haya impactos registrados")
     e = nuevo("enfoque", "nitidez en vivo para enfocar a mano el lente (Ctrl-C para terminar)")
     e.add_argument("--camara", choices=["rgb", "nir"], default="rgb",
                    help="camara a enfocar: rgb con luz blanca, nir con luz de 850 nm")
@@ -108,7 +115,7 @@ def parse_args(argv=None):
 COMANDOS = {
     "jornada": flujo.cmd_jornada, "sanas": flujo.cmd_sanas, "impactos": flujo.cmd_impactos,
     "ronda": flujo.cmd_ronda, "estado": flujo.cmd_estado, "subir": flujo.cmd_subir,
-    "enfoque": flujo.cmd_enfoque, "descarte": flujo.cmd_descarte,
+    "reiniciar": flujo.cmd_reiniciar, "enfoque": flujo.cmd_enfoque, "descarte": flujo.cmd_descarte,
 }
 
 

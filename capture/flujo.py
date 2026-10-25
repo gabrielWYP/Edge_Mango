@@ -1,4 +1,4 @@
-"""Flujos de cada subcomando (jornada, sanas, impactos, ronda, estado, subir, enfoque, descarte).
+"""Flujos de cada subcomando (jornada, sanas, impactos, ronda, estado, subir, reiniciar, enfoque, descarte).
 
 La logica recibe un `Contexto` con todo lo externo (hardware, consola, reloj, red), de modo que
 se prueba completa con hardware simulado. `captura.py` solo arma el contexto real y despacha.
@@ -9,6 +9,7 @@ Principios:
   * Una captura con QC en ERROR ("luz apagada?") se mueve a `descartes/` y se ofrece repetirla;
     en `--auto` se aborta. Nunca entra al dataset ni se sube.
 """
+import json
 import re
 import shutil
 import time
@@ -138,6 +139,10 @@ def exigir_jornada_verificada(j):
             f"La autoverificación de la exposición manual de la jornada {j.id} {motivo}: vuelve a ejecutar "
             f"`captura.py jornada --id {j.id}` (con la alimentación de la cámara reiniciada si falló) "
             "para rehacer la calibración antes de capturar.")
+    if not j.calibracion_hecha("vacia"):     # p. ej. tras `reiniciar --desde vacia`: sin ella no hay QC
+        raise ErrorPreparacion(
+            f"Falta la bandeja vacía (referencia del QC) de la jornada {j.id}: vuelve a ejecutar "
+            f"`captura.py jornada --id {j.id}` con el mismo --lote y --mangos; retoma solo lo pendiente.")
 
 
 def prechequeo_reloj(ctx, ignorar_ntp=False):
@@ -822,6 +827,86 @@ def cmd_estado(ctx, args):
     cola = subida.ColaSubida(ruta_cola).resumen() if ruta_cola.exists() else None
     for linea in vista.tabla_estado(j, ctx.reloj(), cola):
         ctx.ui.decir(linea)
+
+
+# --- reiniciar ----------------------------------------------------------------------------------------------
+DESCRIPCION_REINICIO = {
+    "calibracion": "se repite toda la calibración (tarjeta gris, balance de blancos, bandeja vacía, ArUco y "
+                   "verificación de exposición) y se descartan las sanas, los impactos y las rondas",
+    "vacia": "se repite solo la bandeja vacía (referencia del QC) y se descartan las sanas, los impactos y las "
+             "rondas; la tarjeta gris, el balance de blancos y el ArUco se conservan",
+    "sanas": "se descartan las sanas, los impactos y las rondas; la calibración se conserva",
+    "impactos": "se descartan los impactos (con sus fotos +0 h) y las rondas; la calibración y las sanas "
+                "se conservan",
+}
+
+
+def _archivos_a_apartar(j, etapa):
+    """Archivos de `calib/` y `news/` que pertenecen a `etapa` o a una etapa posterior."""
+    raiz, archivos = j.dir, []
+    if etapa == "calibracion":
+        archivos += (raiz / "calib").glob("*")
+    elif etapa == "vacia":
+        archivos += (raiz / "calib").glob("calib-vacia-*")
+    if etapa != "impactos":
+        archivos += (raiz / "news").rglob("*")         # todo news/ es de las sanas en adelante
+    else:
+        # Solo lo posterior al impacto: por la fase del metadato y, por si una caida dejo fotos sin
+        # metadato, por los timestamps que el estado guarda de cada ronda (la +0 h incluida).
+        tss = {reg["timestamp"] for rondas in j.datos["rondas"].values()
+               for caras in rondas.values() for reg in caras.values()}
+        for meta in (raiz / "news" / "meta").glob("mango_meta_*.json"):
+            try:
+                if json.loads(meta.read_text(encoding="utf-8")).get("fase") == "post_impacto":
+                    tss.add(int(meta.stem.rsplit("_", 1)[1]))
+            except ValueError:
+                continue                                 # metadato cortado o nombre raro: se deja
+        for ts in tss:
+            r = rutas_dataset(raiz, ts)
+            archivos += [r.rgb, r.nir, r.raw, r.meta]
+    return sorted({Path(p) for p in archivos if Path(p).is_file()})
+
+
+def cmd_reiniciar(ctx, args):
+    """Aparta lo capturado desde `--desde` (sin borrar) y deja esa etapa pendiente en la misma jornada."""
+    j = abrir_jornada(ctx, getattr(args, "id", None))
+    ui, etapa = ctx.ui, args.desde
+    if j.tiene_impactos() and not getattr(args, "forzar", False):
+        raise ErrorPreparacion(
+            f"La jornada {j.id} ya tiene impactos registrados y reiniciar desde '{etapa}' los descarta, pero "
+            "la fruta ya está golpeada. Si de verdad hay que repetirlos (por ejemplo con fruta nueva), usa --forzar.")
+    archivos = _archivos_a_apartar(j, etapa)
+    carpeta = j.dir / "descartes" / f"reinicio-{ctx.reloj().strftime('%Y%m%d-%H%M%S')}"
+    relativa = carpeta.relative_to(j.dir).as_posix()
+    ui.decir(f"Reiniciar la jornada {j.id} desde '{etapa}': {DESCRIPCION_REINICIO[etapa]}.")
+    ui.decir(f"Se apartan {len(archivos)} archivos a {relativa}/ (no se borra nada y no se suben).")
+    if ui.esperar("Enter = reiniciar · q = cancelar") == "q":
+        ui.decir("Cancelado: no se tocó nada.")
+        return
+    ruta_cola = j.dir / "pendientes.jsonl"
+    cola = subida.ColaSubida(ruta_cola) if ruta_cola.exists() else None
+    ya_subidos = 0
+    for ruta in archivos:
+        destino_bucket = subida.destino_de(ruta, j.dir)
+        destino = carpeta / ruta.relative_to(j.dir)
+        destino.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(ruta), str(destino))
+        estado_cola = cola.estado_de(destino_bucket) if cola else None
+        if estado_cola == "pendiente":
+            cola.marcar_perdido(destino_bucket, "reinicio")
+        elif estado_cola == "hecho":
+            ya_subidos += 1
+    j.reiniciar_desde(etapa, {"iso": ctx.reloj().isoformat(timespec="seconds"), "carpeta": relativa,
+                              "archivos": len(archivos), "ya_subidos": ya_subidos})
+    if ya_subidos:
+        ui.aviso(f"{ya_subidos} de esos archivos ya estaban subidos a OCI y siguen allá (la URL pre-autenticada "
+                 f"no permite borrar): bórralos desde la consola si hace falta; los nombres están en {relativa}/.")
+    if etapa in ("calibracion", "vacia"):
+        siguiente = (f"vuelve a ejecutar `captura.py jornada --id {j.id}` con el mismo --lote y --mangos "
+                     "(retoma solo la calibración pendiente)")
+    else:
+        siguiente = f"captura.py {etapa}"
+    ui.decir(f"✓ Jornada {j.id} reiniciada desde '{etapa}'. Siguiente paso: {siguiente}")
 
 
 # --- subir ----------------------------------------------------------------------------------------------------
