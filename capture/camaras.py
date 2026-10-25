@@ -30,6 +30,7 @@ ORDEN_CONTROLES_RGB = [
 
 # Controles que se fijan juntos, y siempre, antes de cada captura (ver CamaraRGB.aplicar_controles).
 CICLO_EXPOSICION = ("auto_exposure", "exposure_dynamic_framerate", "exposure_time_absolute")
+CICLO_BALANCE = ("white_balance_automatic", "white_balance_temperature")
 
 BITS_THROTTLED = {
     0: "subtension_ahora", 1: "frecuencia_limitada_ahora", 2: "limitado_ahora",

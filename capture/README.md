@@ -172,6 +172,13 @@ Verificado en la Pi: tras el ciclo, 1,2 ms dio media 22, 4,5 ms dio 62, y 0,5 co
 invalida la calibración (se hizo con una exposición que no era la pedida) y `sanas`, `ronda` e `impactos` (si la
 jornada incluye la ronda +0 h) se niegan a correr hasta repetir `jornada`. La razón queda en `jornada.json` (`autoverificacion_exposicion`).
 
+**La misma trampa con el balance de blancos.** El 2026-10-24 la Arducam se desconectó y reconectó por USB varias veces
+(`usb usb1-port1: disabled by hub (EMI?)` en `journalctl -k`). Tras cada reconexión el driver le reescribe
+`white_balance_automatic=0` y la temperatura, la cámara los informa, pero sigue en balance automático: la hoja salió
+neutra (R/G ≈ 0,92) en vez de cian (≈ 0,45) en 57 caras de la ronda +4 h. Por eso, antes de cada captura y aunque lea
+manual, el programa escribe `white_balance_automatic=1`, pausa, `=0`, y la temperatura un paso (100 K) corrida y de
+vuelta, para que la escritura no se omita por repetir el valor.
+
 `backlight_compensation=0` y `power_line_frequency=0` son obligatorios: de fábrica `backlight_compensation=1` es un realce
 adaptativo de brillo que anula la exposición fija. Se fijan en cada sesión y un valor distinto al leerlo de vuelta es un error.
 
