@@ -271,6 +271,22 @@ class Jornada:
         self._guardar_ts(ts)
         self.guardar()
 
+    def apartar_foto(self, mango, cara, ronda_h, registro):
+        """Olvida la foto de una cara (sana si `ronda_h` es None) para volver a tomarla.
+
+        No toca archivos: `flujo.Sesion.repetir_ultima` los aparta antes. `registro` (hora, carpeta,
+        timestamp) se agrega a `repeticiones` en el mismo guardado. Devuelve el registro quitado.
+        """
+        if ronda_h is None:
+            quitado = self.datos["sanas"][str(mango)].pop(str(cara))
+        else:
+            quitado = self.datos["rondas"][str(mango)][_k(ronda_h)].pop(str(cara))
+        self.datos.setdefault("repeticiones", []).append(dict(
+            registro, mango=mango, cara=cara, momento="sano" if ronda_h is None else _k(ronda_h),
+            timestamp=quitado["timestamp"]))
+        self.guardar()
+        return quitado
+
     def n_caras_hechas_ronda(self, mango, ronda_h):
         return len(self._caras_ronda(mango, ronda_h))
 

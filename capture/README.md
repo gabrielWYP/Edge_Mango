@@ -236,7 +236,8 @@ python3 ~/captura_v3/captura.py sanas
 ```
 
 Para cada mango y cara: `Mango 7 · cara 2 → coloca y presiona Enter`. Captura RGB y NIR, aplica el QC y muestra una
-línea con el resultado. Marca el avance después de cada cara, así que reanuda donde quedó. `q` sale.
+línea con el resultado. Marca el avance después de cada cara, así que reanuda donde quedó. `r` repite la
+foto anterior (ver "Repetir la foto anterior") y `q` sale.
 
 ### 3. Impactos
 
@@ -350,6 +351,28 @@ después de cada cara y la cola de subida es un registro de eventos que tolera u
 
 Si la jornada se interrumpe durante la calibración, vuelve a ejecutar `jornada` con el mismo `--id`: reanuda los
 pasos pendientes (no repite el barrido de balance ya hecho).
+
+## Repetir la foto anterior (`r`)
+
+Si la foto recién tomada salió mal y se nota en el momento (la mano en la NIR, el mango sin poner o sin girar,
+otro mango, la misma cara dos veces), escribe `r` y Enter en la pregunta siguiente. Cada pregunta que viene
+después de una foto lo ofrece y dice cuál se repetiría: la cara siguiente, el próximo golpe (para la +0 h del
+mango anterior), "Enter = empezar", la cuenta regresiva de `ronda` y un "Enter = terminar" al final de cada etapa.
+
+```text
+Mango 7 · +4 h · cara 3 → coloca y presiona Enter · r = repetir la foto anterior (mango 7 · +4 h · cara 2) r
+↺ Foto de mango 7 · +4 h · cara 2 apartada a descartes/repeticion-20261025-151508/ (no se sube). Se repite ahora.
+Mango 7 · +4 h · cara 2 (repetición) → coloca y presiona Enter · q = salir (la cara queda pendiente)
+```
+
+- La foto mala no se borra: va a `descartes/repeticion-<fecha>/` con su ruta, y lo que seguía en la cola de subida
+  queda como perdido. Si ya se había subido, sigue en OCI y el programa lo avisa.
+- La nueva toma recalcula las horas desde el golpe y la desviación; si la ventana ya pasó, queda marcada fuera de
+  tolerancia como cualquier foto tardía.
+- Cada repetición queda en `repeticiones` de `jornada.json` (mango, momento, cara, timestamp apartado, carpeta).
+- `q` en la pregunta de la repetición sale y deja la cara pendiente: el mismo comando la vuelve a pedir.
+- Solo repite la última foto de la sesión en curso. Para una foto anterior o de una sesión ya cerrada, usa
+  `reiniciar` (una etapa entera) o apártala a mano antes de volver a correr `ronda`.
 
 ## Repetir una etapa en la misma jornada (`reiniciar`)
 

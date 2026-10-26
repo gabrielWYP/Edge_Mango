@@ -324,3 +324,15 @@ def test_los_reinicios_se_acumulan_en_el_historial(tmp_path):
 def test_reiniciar_desde_una_etapa_desconocida_es_un_error(tmp_path):
     with pytest.raises(ValueError):
         crear(tmp_path).reiniciar_desde("rondas", {})
+
+
+def test_apartar_foto_quita_la_cara_y_la_registra_en_repeticiones(tmp_path):
+    j = crear(tmp_path, mangos=[1], caras=[1, 2], intervalos_h=[2])
+    j.marcar_sana(1, 1, 111, [])
+    j.marcar_ronda(1, 2, 1, 222, 2.0, 0.0, [])
+    assert j.apartar_foto(1, 1, None, {"iso": "x"})["timestamp"] == 111
+    assert j.apartar_foto(1, 1, 2, {"iso": "y"})["timestamp"] == 222
+    j2 = e.Jornada.cargar(j.dir)
+    assert j2.pendientes_sanas() == [(1, 1), (1, 2)] and j2.n_caras_hechas_ronda(1, 2) == 0
+    assert [(r["momento"], r["timestamp"], r["iso"]) for r in j2.datos["repeticiones"]] == [
+        ("sano", 111, "x"), ("2", 222, "y")]
