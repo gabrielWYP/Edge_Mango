@@ -17,6 +17,9 @@ El proyecto construye un sistema de detección de daño en frutos de mango usand
 - **Training loop** YOLOv8 personalizado (TAL assigner, CIoU, Focal Loss) — sin dependencia de ultralytics
 - **Knowledge Distillation** a nivel de features (backbone, FPN, head stems), no solo logits finales
 
+> **Plan experimental de la tesis (dataset v4, desde 2026-10-25):** [`docs/tesis/plan-experimental.md`](docs/tesis/plan-experimental.md).
+> Los resultados de abajo son de v3 (286 pares) y quedan como desarrollo.
+
 ### Resultados actuales
 
 Primera cadena completa (maestro → estudiante → destilado) con el NIR registrado al plano RGB (#24),
