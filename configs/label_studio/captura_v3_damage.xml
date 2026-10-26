@@ -1,0 +1,42 @@
+<View>
+  <Header value="$header" size="4"/>
+  <Header value="$info" size="6"/>
+
+  <View style="display: flex; gap: 16px; align-items: flex-start;">
+    <View style="flex: 1; min-width: 0;">
+      <Header value="RGB" size="5"/>
+      <Image name="rgb" value="$rgb" zoom="true" zoomControl="true"
+             brightnessControl="true" contrastControl="true"/>
+      <RectangleLabels name="damage_rgb" toName="rgb">
+        <Label value="damage" background="#FF0000" hotkey="1" maxUsages="1"/>
+      </RectangleLabels>
+      <Header value="Is the damage visible in the RGB?" size="5"/>
+      <Choices name="visible_rgb" toName="rgb" choice="single-radio"
+               showInline="true" required="true"
+               requiredMessage="Answer whether the damage is visible in the RGB.">
+        <Choice value="yes"/>
+        <Choice value="no"/>
+        <Choice value="unsure"/>
+      </Choices>
+    </View>
+
+    <View style="flex: 1; min-width: 0;">
+      <Header value="NIR" size="5"/>
+      <Image name="nir" value="$nir" zoom="true" zoomControl="true"
+             brightnessControl="true" contrastControl="true"/>
+      <RectangleLabels name="damage_nir" toName="nir">
+        <Label value="damage" background="#FFAA00" hotkey="2" maxUsages="1"/>
+      </RectangleLabels>
+      <Header value="Is the damage visible in the NIR?" size="5"/>
+      <Choices name="visible_nir" toName="nir" choice="single-radio"
+               showInline="true" required="true"
+               requiredMessage="Answer whether the damage is visible in the NIR.">
+        <Choice value="yes"/>
+        <Choice value="no"/>
+        <Choice value="unsure"/>
+      </Choices>
+    </View>
+  </View>
+
+  <TextArea name="notes" toName="rgb" placeholder="Optional notes" rows="2"/>
+</View>
