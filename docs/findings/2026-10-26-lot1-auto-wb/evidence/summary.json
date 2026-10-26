@@ -1,0 +1,106 @@
+{
+ "jornada": "lote1-20261024",
+ "ronda_h": 4,
+ "n_corrected": 57,
+ "n_photos_measured": 800,
+ "threshold_rg_linear": 0.4911,
+ "outlier_gap": [
+  0.2927,
+  0.824
+ ],
+ "reference": {
+  "n": 43,
+  "rg": 0.24039,
+  "bg": 0.87976,
+  "n_deviants": 1,
+  "without_deviants": {
+   "rg": 0.24054,
+   "bg": 0.88034
+  }
+ },
+ "chroma_before": {
+  "rg": {
+   "min": 0.824,
+   "median": 0.8637,
+   "max": 1.2487
+  },
+  "bg": {
+   "min": 0.7575,
+   "median": 0.8345,
+   "max": 0.954
+  }
+ },
+ "chroma_after": {
+  "rg": {
+   "min": 0.2398,
+   "median": 0.2403,
+   "max": 0.2411
+  },
+  "bg": {
+   "min": 0.8781,
+   "median": 0.8807,
+   "max": 0.8817
+  }
+ },
+ "gains": {
+  "r": {
+   "min": 0.2141,
+   "median": 0.3507,
+   "max": 0.3775
+  },
+  "g": {
+   "min": 1.0504,
+   "median": 1.266,
+   "max": 1.3187
+  },
+  "b": {
+   "min": 1.0257,
+   "median": 1.3358,
+   "max": 1.5237
+  }
+ },
+ "clipped_fraction": {
+  "min": 0.0,
+  "median": 4e-06,
+  "max": 0.0029
+ },
+ "validation": {
+  "compare_ronda_h": 2,
+  "n": 57,
+  "median_delta_e_before": 20.671,
+  "median_delta_e_after": 6.158,
+  "median_delta_lab_before": [
+   0.24,
+   20.01,
+   1.47
+  ],
+  "median_delta_lab_after": [
+   -1.78,
+   -4.86,
+   -3.2
+  ],
+  "control_unaffected_photos": {
+   "n": 43,
+   "median_delta_e": 2.412,
+   "median_delta_lab": [
+    1.4,
+    -0.14,
+    1.62
+   ],
+   "note": "same measurement for the non-selected photos of the round vs +2 h: the floor expected from real ripening and light drift"
+  }
+ },
+ "mango_source_saturated_fraction": {
+  "min": 0.0,
+  "median": 0.0,
+  "max": 0.0225
+ },
+ "non_selected_off_colour": [
+  {
+   "timestamp": 1792886420,
+   "tag": "11-3",
+   "ronda_h": 4,
+   "why": "R/G 0.293 B/G 0.630 vs round median 0.239 / 0.873"
+  }
+ ]
+}
