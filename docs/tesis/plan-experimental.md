@@ -142,6 +142,18 @@ con la mediana por mango y el rango entre lotes.
 
 E0 no toca modelos ni el test de E1/E2, así que puede correrse apenas exista cada lote.
 
+**Implementación actual: versión centro** ([`scripts/e0_detectability.py`](../../scripts/e0_detectability.py),
+funciones en `src/evaluation/detectability.py`). Mientras no existan las cajas de 3.2, solo la zona `centro` tiene
+posición conocida en el recorte. Por eso esta versión hace lo siguiente:
+
+- **Medida.** El impacto se mide como el contraste de un disco central contra el anillo que lo rodea, y se toma su cambio respecto de la foto `sano` de la misma cara.
+- **Positivos y controles.** Las caras golpeadas en `centro` son los positivos (~1 de cada 5). Las golpeadas en otra zona son los controles: su centro no recibió el golpe.
+- **Placebo.** El control negativo es un placebo antes del impacto: el AUROC de la foto `sano`, que debe cubrir 0.5.
+- **Combinaciones logísticas.** Se calibran con permutaciones de las etiquetas de zona dentro del lote, porque el AUROC agrupado de scores leave-one-out queda bajo 0.5 aunque no haya señal. Las permutaciones reproducen el sorteo del protocolo.
+
+Cuando existan las cajas, la región de impacto pasa a ser la caja y los controles, la zona control de la sección 2.
+Resultado preliminar del lote 1: [`reports/e0-detectability/`](../../reports/e0-detectability/README.md).
+
 ### E1. Maestro: ¿aporta el NIR? (H1)
 
 **Brazos** (misma arquitectura, mismo presupuesto, mismas semillas):
