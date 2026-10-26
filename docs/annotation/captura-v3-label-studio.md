@@ -22,6 +22,7 @@ procedure is in [`docs/capture/guia-lote-1.md`](../capture/guia-lote-1.md).
 | 4 | Add a Local files source storage (do **not** sync it) | Project settings |
 | 5 | Import the tasks file | Data Manager |
 | 6 | Annotate | Label stream |
+| Optional | Show the contrast-enhanced grayscale NIR | [Enhanced NIR](#enhanced-nir-optional) |
 
 ## Setup
 
@@ -44,6 +45,7 @@ white-balance corrected, and it fails if an image is missing or outside the docu
 | --- | --- |
 | `--moments` | Hours after the impact and/or `sano`, comma separated: `12`, `12,10`, `sano` (default `12`) |
 | `--jornadas` | Lot numbers or jornada ids, e.g. `1` or `lote2-20261025` (default: both) |
+| `--nir-display` | `original` (default) or `enhanced`: show the contrast-enhanced grayscale NIR, see [Enhanced NIR](#enhanced-nir-optional) |
 | `--document-root` | Folder Label Studio serves files from; must contain `--data-root` and match step 2. Pass it explicitly; if omitted it defaults to the folder above the single `cache/` directory of `--data-root`, and the script asks for it when that is ambiguous |
 
 Rule for duplicates: when one face has two photos at the same moment, the single in-tolerance one is kept.
@@ -80,6 +82,41 @@ folder; the tasks come from the JSON.
 ### 5. Import the tasks
 
 **Data Manager** → **Import** → upload `tasks_12h.json`. You should see 200 tasks, ordered by lot, mango, face.
+
+## Enhanced NIR (optional)
+
+Bruises sit in the shadowed parts of the curved fruit, so the raw NIR can be hard to read. A contrast-enhanced
+grayscale copy of each NIR photo can be shown instead:
+
+- **What it is:** `gray = (B + R) / 2` of the NIR JPEG (the NoIR puts the signal in R and B; G is about half as
+  strong), a light Gaussian blur (sigma 1), then CLAHE (clip limit 3.0, 16×16 tiles), saved as a single-channel
+  JPEG. There is no illumination flattening on purpose: it erases the bruise, which is a broad dark patch.
+- **Same size as the original** (3280×2464), so a box drawn on it maps 1:1 onto the original NIR. In the tasks,
+  `nir_path` still names the original file and `nir_display` is `"enhanced"`.
+- **Brightness and contrast sliders still apply.**
+
+```bash
+.venv/bin/python scripts/build_nir_display.py --data-root data/cache/captura_v3 --moments 12
+.venv/bin/python scripts/build_label_studio_tasks.py \
+    --data-root data/cache/captura_v3 \
+    --document-root "$PWD/data" \
+    --moments 12 \
+    --nir-display enhanced \
+    --out data/label_studio_captura_v3/tasks_12h_nirvis.json
+```
+
+The first command writes `data/cache/captura_v3/news/nir_vis/mango_nir_<timestamp>.jpg` plus a `manifest.json`
+(method, parameters, sha256 of every source). It takes the same `--moments` and `--jornadas` as the task builder,
+skips images that already exist (`--overwrite` regenerates them) and never writes to `news/rgb`, `news/nir` or
+`news/meta`. The second fails if an enhanced image is missing. The storage from step 4 already covers
+`news/nir_vis`.
+
+**Switching a project that already has the raw-NIR tasks:**
+
+- If no task has been annotated yet, delete the 200 tasks in the Data Manager and import
+  `tasks_12h_nirvis.json`.
+- If some tasks are already annotated, do **not** delete them (that deletes the annotations): ask before
+  switching.
 
 ## Annotation protocol
 

@@ -13,7 +13,9 @@ from src.annotation.captura_v3_tasks import (
     format_summary,
     infer_document_root,
     local_files_url,
+    parse_jornadas,
     parse_moments,
+    select_captures,
     write_tasks,
 )
 from tests.annotation.synthetic import JORNADA_1, JORNADA_2, make_meta, write_dataset
@@ -568,3 +570,90 @@ class TestWriteAndSummary:
 
         assert "Dropped duplicates (0)" in summary
         assert "Missing slots (0)" in summary
+
+
+class TestSelectCaptures:
+    def test_returns_kept_dropped_and_missing_in_stable_order(self, roots) -> None:
+        doc_root, data_root = roots
+        metas = [
+            make_meta(3, mango_id=2, cara=1, ronda_h=2),
+            make_meta(1, mango_id=1, cara=1, ronda_h=2),
+            make_meta(2, mango_id=1, cara=1, ronda_h=2, en_tolerancia=False),
+            make_meta(4, mango_id=1, cara=2, ronda_h=0),
+        ]
+        write_dataset(data_root, metas)
+
+        selection = select_captures(data_root, (2,))
+
+        assert [c.timestamp for c in selection.kept] == [1, 3]
+        assert [d.timestamp for d in selection.dropped] == [2]
+        assert selection.missing == [Slot(JORNADA_1, 1, 2, 2)]
+
+
+class TestParseJornadas:
+    def test_splits_and_strips_tokens(self) -> None:
+        assert parse_jornadas(" 1, lote2-20261025 ,") == ("1", "lote2-20261025")
+
+    @pytest.mark.parametrize("text", [None, "", " , "])
+    def test_empty_means_all(self, text) -> None:
+        assert parse_jornadas(text) is None
+
+
+class TestNirDisplayOption:
+    @staticmethod
+    def add_enhanced(data_root: Path, timestamps) -> None:
+        folder = data_root / "news" / "nir_vis"
+        folder.mkdir(parents=True, exist_ok=True)
+        for ts in timestamps:
+            (folder / f"mango_nir_{ts}.jpg").write_bytes(b"vis")
+
+    def test_default_uses_the_original_nir_and_adds_no_key(self, roots) -> None:
+        data = build(roots, [make_meta(1)]).tasks[0]["data"]
+
+        assert data["nir"].endswith("/news/nir/mango_nir_1.jpg")
+        assert "nir_display" not in data
+
+    def test_explicit_original_equals_the_default(self, roots) -> None:
+        doc_root, data_root = roots
+        write_dataset(data_root, [make_meta(1), make_meta(2, cara=2)])
+
+        default = build_tasks(data_root, doc_root, (12,))
+        explicit = build_tasks(data_root, doc_root, (12,), nir_display="original")
+
+        assert explicit.tasks == default.tasks
+
+    def test_enhanced_points_at_nir_vis_and_keeps_the_original_path(self, roots) -> None:
+        doc_root, data_root = roots
+        write_dataset(
+            data_root, [make_meta(11, cara=1), make_meta(22, cara=2)], wb_timestamps=(22,)
+        )
+        self.add_enhanced(data_root, (11, 22))
+
+        result = build_tasks(data_root, doc_root, (12,), nir_display="enhanced")
+
+        assert [t["data"]["timestamp"] for t in result.tasks] == [11, 22]
+        for task in result.tasks:
+            data = task["data"]
+            ts = data["timestamp"]
+            assert data["nir"] == (
+                f"/data/local-files/?d=cache/captura_v3/news/nir_vis/mango_nir_{ts}.jpg"
+            )
+            assert data["nir_path"] == f"news/nir/mango_nir_{ts}.jpg"
+            assert data["nir_display"] == "enhanced"
+        corrected = result.tasks[1]["data"]
+        assert corrected["rgb"].endswith(f"/news/rgb_wb/mango_rgb_22.jpg")
+
+    def test_enhanced_fails_when_an_enhanced_file_is_missing(self, roots) -> None:
+        doc_root, data_root = roots
+        write_dataset(data_root, [make_meta(11, cara=1), make_meta(22, cara=2)])
+        self.add_enhanced(data_root, (11,))
+
+        with pytest.raises(FileNotFoundError, match="nir_vis"):
+            build_tasks(data_root, doc_root, (12,), nir_display="enhanced")
+
+    def test_unknown_display_is_rejected(self, roots) -> None:
+        doc_root, data_root = roots
+        write_dataset(data_root, [make_meta(1)])
+
+        with pytest.raises(ValueError, match="nir_display"):
+            build_tasks(data_root, doc_root, (12,), nir_display="sharp")

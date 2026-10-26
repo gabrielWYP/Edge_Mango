@@ -125,3 +125,51 @@ def test_ambiguous_document_root_asks_for_it_explicitly(tmp_path: Path, capsys) 
     assert main(["--data-root", str(data_root), "--out", str(out)]) == 1
     assert "--document-root" in capsys.readouterr().err
     assert not out.exists()
+
+
+def add_enhanced(data_root: Path, timestamps) -> None:
+    folder = data_root / "news" / "nir_vis"
+    folder.mkdir(parents=True, exist_ok=True)
+    for ts in timestamps:
+        (folder / f"mango_nir_{ts}.jpg").write_bytes(b"vis")
+
+
+def test_nir_display_defaults_to_original_and_stays_byte_identical(
+    dataset, tmp_path: Path
+) -> None:
+    default_out = tmp_path / "default.json"
+    explicit_out = tmp_path / "explicit.json"
+
+    assert run(dataset, default_out) == 0
+    assert run(dataset, explicit_out, "--nir-display", "original") == 0
+
+    assert default_out.read_bytes() == explicit_out.read_bytes()
+    assert "nir_display" not in default_out.read_text(encoding="utf-8")
+
+
+def test_nir_display_enhanced_switches_the_nir_url(dataset, tmp_path: Path) -> None:
+    _, data_root = dataset
+    add_enhanced(data_root, (1, 2, 5))
+    out = tmp_path / "tasks_nirvis.json"
+
+    assert run(dataset, out, "--nir-display", "enhanced") == 0
+
+    tasks = json.loads(out.read_text(encoding="utf-8"))
+    assert {t["data"]["nir_display"] for t in tasks} == {"enhanced"}
+    assert all("/news/nir_vis/" in t["data"]["nir"] for t in tasks)
+    assert all(t["data"]["nir_path"].startswith("news/nir/") for t in tasks)
+
+
+def test_nir_display_enhanced_fails_when_files_are_missing(
+    dataset, tmp_path: Path, capsys
+) -> None:
+    out = tmp_path / "tasks_nirvis.json"
+
+    assert run(dataset, out, "--nir-display", "enhanced") == 1
+    assert "nir_vis" in capsys.readouterr().err
+    assert not out.exists()
+
+
+def test_nir_display_rejects_unknown_values(dataset, tmp_path: Path) -> None:
+    with pytest.raises(SystemExit):
+        run(dataset, tmp_path / "tasks.json", "--nir-display", "sharp")

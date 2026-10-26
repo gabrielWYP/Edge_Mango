@@ -6,7 +6,9 @@ document root (``LABEL_STUDIO_LOCAL_FILES_DOCUMENT_ROOT``).
 
 Layout under ``data_root``: ``news/{rgb,nir,meta}/mango_<kind>_<timestamp>.*``
 plus an optional ``news/rgb_wb/`` folder (with ``manifest.json``) holding RGB
-photos whose white balance was corrected after capture.
+photos whose white balance was corrected after capture, and an optional
+``news/nir_vis/`` folder with contrast-enhanced grayscale NIR images (see
+``nir_display``).
 """
 
 from __future__ import annotations
@@ -21,7 +23,10 @@ from pathlib import Path
 from typing import NamedTuple
 from urllib.parse import quote
 
+from .nir_display import nir_vis_relpath
+
 LOCAL_FILES_PREFIX = "/data/local-files/?d="
+NIR_DISPLAYS = ("original", "enhanced")
 
 # Hours after the impact; None is the healthy ("sano") photo taken before it.
 Moment = int | None
@@ -70,6 +75,15 @@ class Dropped:
     slot: Slot
     timestamp: int
     kept_timestamp: int
+
+
+@dataclass
+class Selection:
+    """Captures chosen for some jornadas and moments, one per slot."""
+
+    kept: list[Capture]
+    dropped: list[Dropped]
+    missing: list[Slot]
 
 
 @dataclass
@@ -267,6 +281,32 @@ def _select_jornadas(available: list[str], requested: tuple[str, ...] | None) ->
     return selected
 
 
+def parse_jornadas(text: str | None) -> tuple[str, ...] | None:
+    """Split a comma-separated jornada selection; empty means all jornadas."""
+    tokens = tuple(token.strip() for token in (text or "").split(",") if token.strip())
+    return tokens or None
+
+
+def select_captures(
+    data_root: Path,
+    moments: tuple[Moment, ...],
+    jornadas: tuple[str, ...] | None = None,
+) -> Selection:
+    """Pick one capture per (jornada, mango, cara, moment) in a stable order."""
+    captures = load_captures(Path(data_root))
+    selected_jornadas = _select_jornadas(sorted({c.jornada for c in captures}), jornadas)
+    selected = [
+        c for c in captures if c.jornada in selected_jornadas and c.ronda_h in moments
+    ]
+    for moment in moments:
+        if not any(c.ronda_h == moment for c in selected):
+            raise ValueError(f"no captures found for moment {moment_label(moment)}")
+
+    kept, dropped = resolve_slots(selected)
+    missing = _find_missing(captures, kept, moments, selected_jornadas)
+    return Selection(sorted(kept, key=lambda c: _slot_key(c.slot)), dropped, missing)
+
+
 def _lot_label(jornada: str) -> str:
     match = re.match(r"lote(\d+)-", jornada)
     return f"Lot {match.group(1)}" if match else jornada
@@ -336,15 +376,20 @@ def build_info(capture: Capture, wb_corrected: bool) -> str:
 
 
 def _build_task(
-    capture: Capture, data_root: Path, document_root: Path, wb_corrected: bool
+    capture: Capture,
+    data_root: Path,
+    document_root: Path,
+    wb_corrected: bool,
+    nir_display: str,
 ) -> dict:
     rgb_rel = Path("news") / ("rgb_wb" if wb_corrected else "rgb")
     rgb_rel = rgb_rel / f"mango_rgb_{capture.timestamp}.jpg"
     nir_rel = Path("news") / "nir" / f"mango_nir_{capture.timestamp}.jpg"
-    return {
+    shown_nir_rel = nir_vis_relpath(capture.timestamp) if nir_display == "enhanced" else nir_rel
+    task = {
         "data": {
             "rgb": local_files_url(data_root / rgb_rel, document_root),
-            "nir": local_files_url(data_root / nir_rel, document_root),
+            "nir": local_files_url(data_root / shown_nir_rel, document_root),
             "header": build_header(capture),
             "info": build_info(capture, wb_corrected),
             "jornada": capture.jornada,
@@ -362,6 +407,9 @@ def _build_task(
             "qc_alerts": [f"{modality}: {text}" for modality, text in capture.qc_alerts],
         }
     }
+    if nir_display == "enhanced":
+        task["data"]["nir_display"] = nir_display
+    return task
 
 
 def build_tasks(
@@ -369,34 +417,37 @@ def build_tasks(
     document_root: Path,
     moments: tuple[Moment, ...],
     jornadas: tuple[str, ...] | None = None,
+    nir_display: str = "original",
 ) -> BuildResult:
-    """Build one task per (jornada, mango, cara, moment) in a stable order."""
-    data_root, document_root = Path(data_root), Path(document_root)
-    captures = load_captures(data_root)
-    selected_jornadas = _select_jornadas(sorted({c.jornada for c in captures}), jornadas)
-    selected = [
-        c for c in captures if c.jornada in selected_jornadas and c.ronda_h in moments
-    ]
-    for moment in moments:
-        if not any(c.ronda_h == moment for c in selected):
-            raise ValueError(f"no captures found for moment {moment_label(moment)}")
+    """Build one task per (jornada, mango, cara, moment) in a stable order.
 
-    kept, dropped = resolve_slots(selected)
-    missing = _find_missing(captures, kept, moments, selected_jornadas)
+    ``nir_display="enhanced"`` shows ``news/nir_vis`` images in place of the raw NIR;
+    ``nir_path`` keeps pointing at the original NIR.
+    """
+    if nir_display not in NIR_DISPLAYS:
+        raise ValueError(f"nir_display must be one of {NIR_DISPLAYS}, got {nir_display!r}")
+    data_root, document_root = Path(data_root), Path(document_root)
+    selection = select_captures(data_root, moments, jornadas)
 
     wb_timestamps = load_wb_timestamps(data_root)
     tasks = []
     counts: dict[tuple[str, Moment], int] = defaultdict(int)
-    for capture in sorted(kept, key=lambda c: _slot_key(c.slot)):
+    for capture in selection.kept:
         tasks.append(
-            _build_task(capture, data_root, document_root, capture.timestamp in wb_timestamps)
+            _build_task(
+                capture,
+                data_root,
+                document_root,
+                capture.timestamp in wb_timestamps,
+                nir_display,
+            )
         )
         counts[(capture.jornada, capture.ronda_h)] += 1
     return BuildResult(
         tasks=tasks,
         counts=dict(sorted(counts.items(), key=lambda kv: (kv[0][0], _moment_key(kv[0][1])))),
-        dropped=dropped,
-        missing=missing,
+        dropped=selection.dropped,
+        missing=selection.missing,
         wb_corrected=sum(task["data"]["wb_corrected"] for task in tasks),
     )
 

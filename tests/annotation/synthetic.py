@@ -5,6 +5,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import cv2
+import numpy as np
+
 JORNADA_1 = "lote1-20261024"
 JORNADA_2 = "lote2-20261025"
 
@@ -58,10 +61,24 @@ def make_meta(
     return meta
 
 
+def synthetic_nir(timestamp: int, height: int, width: int) -> np.ndarray:
+    """Deterministic 3-channel NIR-like image whose content depends on the timestamp."""
+    rng = np.random.default_rng(timestamp)
+    base = np.linspace(40, 200, width, dtype=np.float32)[None, :, None]
+    noise = rng.normal(0, 12, size=(height, width, 3)).astype(np.float32)
+    return np.clip(base + noise, 0, 255).astype(np.uint8)
+
+
 def write_dataset(
-    data_root: Path, metas: list[dict], wb_timestamps: tuple[int, ...] = ()
+    data_root: Path,
+    metas: list[dict],
+    wb_timestamps: tuple[int, ...] = (),
+    nir_shape: tuple[int, int] | None = None,
 ) -> Path:
-    """Write metas plus dummy images under ``data_root/news`` and return ``data_root``."""
+    """Write metas plus images under ``data_root/news`` and return ``data_root``.
+
+    Images are dummy bytes unless ``nir_shape`` (height, width) asks for real NIR JPEGs.
+    """
     news = data_root / "news"
     for sub in ("meta", "rgb", "nir"):
         (news / sub).mkdir(parents=True, exist_ok=True)
@@ -69,7 +86,11 @@ def write_dataset(
         ts = meta["timestamp"]
         (news / "meta" / f"mango_meta_{ts}.json").write_text(json.dumps(meta))
         (news / "rgb" / f"mango_rgb_{ts}.jpg").write_bytes(b"rgb")
-        (news / "nir" / f"mango_nir_{ts}.jpg").write_bytes(b"nir")
+        nir_path = news / "nir" / f"mango_nir_{ts}.jpg"
+        if nir_shape is None:
+            nir_path.write_bytes(b"nir")
+        else:
+            cv2.imwrite(str(nir_path), synthetic_nir(ts, *nir_shape))
     if wb_timestamps:
         wb_dir = news / "rgb_wb"
         wb_dir.mkdir(parents=True, exist_ok=True)
