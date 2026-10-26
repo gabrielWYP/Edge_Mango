@@ -189,6 +189,7 @@ def main():
         + (f" (decay={config.ema_decay}, tau={config.ema_tau})" if config.ema else "")
         + (
             f", neck_norm: {config.neck_norm} (groups={config.neck_gn_groups})"
+            f", fusion_attention: {config.fusion_attention}, use_nir: {config.use_nir}"
             if config.model_type == "master"
             else ""
         )
@@ -270,6 +271,8 @@ def main():
             fusion_pos_encoding=config.fusion_pos_encoding,
             neck_norm=config.neck_norm,
             neck_gn_groups=config.neck_gn_groups,
+            fusion_attention=config.fusion_attention,
+            use_nir=config.use_nir,
         )
         params = model.count_parameters()
         print(f"Model parameters: {params['total']:,} total, {params['backbone']:,} backbone")

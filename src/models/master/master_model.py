@@ -46,6 +46,13 @@ restored as a selectable mode (not a revert):
         ↓
     YOLODetectionHead (anchor-free, decoupled)
 
+Attention ablation (`fusion_mode="cross_attention"` only, both default True;
+see `src/training/fusion_modes.py`): `fusion_attention=False` drops
+`CrossModalFusion` — `F_i = rgb_i`, and NIR reaches the head only through
+the `DualFPN` concat; `use_nir=False` (requires `fusion_attention=False`)
+also drops the NIR stream — no `nir_stem`, no NIR pass, no `fpn_nir` — and
+`nir` is accepted but ignored, like the early path's `in_channels=3` arm.
+
 Distillation outputs exposed (same 4 keys in both modes):
     - distill_backbone:  early → [S1..S4] from the single stream;
                          cross_attention → [F1..F4], the cross-attention
@@ -53,6 +60,9 @@ Distillation outputs exposed (same 4 keys in both modes):
                          [96, 192, 384, 768]-channel feature set that
                          carries BOTH modalities, which is what `KDTrainer`
                          projects (`t_out["distill_backbone"][2:]`).
+                         With `fusion_attention=False` it is the RGB stage
+                         features: same shapes, but no NIR content, so the
+                         backbone KD term then distills an RGB-only target.
     - distill_fpn:       the emitted pyramid levels (per `head_strides`)
     - distill_head_cls:  [cls_stem per level] head classification features
     - distill_head_reg:  [reg_stem per level] head regression features
@@ -76,6 +86,7 @@ from src.training.fusion_modes import (
     DEFAULT_FUSION_MODE,
     FUSION_MODE_CROSS_ATTENTION,
     FUSION_MODE_EARLY,
+    validate_fusion_ablation,
     validate_fusion_mode,
 )
 from src.training.neck_norm import (
@@ -140,6 +151,19 @@ class MasterModel(nn.Module):
             (its `FPNNeck` has no norm layer). See
             `src/training/neck_norm.py`.
         neck_gn_groups (int): GroupNorm group-count cap for `neck_norm="group"`.
+        fusion_attention (bool): Build the per-stage `CrossModalFusion`
+            (default True). False is arm B of the attention ablation:
+            `self.fusion` is None, the RGB stage features go to `fpn_rgb`
+            unchanged and the NIR ones to `fpn_nir`, so NIR reaches the head
+            only through the `DualFPN` concat. Drops every `fusion.*`
+            state_dict key. `fusion_mode="cross_attention"` only.
+        use_nir (bool): Build the NIR stream (default True). False is arm C:
+            no `nir_stem`, no NIR pass, no `fpn_nir`, and `DualFPN`'s fusion
+            convs take `fpn_channels` inputs instead of `2 * fpn_channels`;
+            `nir` is then accepted but ignored. Requires
+            `fusion_attention=False`; `fusion_mode="cross_attention"` only.
+            Both flags are validated by
+            `src.training.fusion_modes.validate_fusion_ablation`.
     """
 
     # ConvNeXt stage channels (identical for Tiny and Small)
@@ -159,11 +183,17 @@ class MasterModel(nn.Module):
         fusion_pos_encoding: bool = False,
         neck_norm: str = DEFAULT_NECK_NORM,
         neck_gn_groups: int = DEFAULT_NECK_GN_GROUPS,
+        fusion_attention: bool = True,
+        use_nir: bool = True,
     ):
         super().__init__()
 
         validate_fusion_mode(fusion_mode)
         self.fusion_mode = fusion_mode
+
+        validate_fusion_ablation(fusion_attention, use_nir, fusion_mode, fusion_pos_encoding)
+        self.fusion_attention = fusion_attention
+        self.use_nir = use_nir
 
         validate_neck_norm(neck_norm, neck_gn_groups)
         validate_neck_norm_for_fusion_mode(neck_norm, fusion_mode)
@@ -205,13 +235,18 @@ class MasterModel(nn.Module):
                 )
             # --- 1. Dual backbone (shared stages, separate stems) ---
             self.backbone = DualConvNeXtBackbone(
-                pretrained=pretrained_backbone, variant=backbone_variant
+                pretrained=pretrained_backbone, variant=backbone_variant, use_nir=use_nir
             )
             # --- 2. Cross-modal attention fusion (per backbone stage) ---
-            self.fusion = CrossModalFusion(
-                stage_channels=self.STAGE_CHANNELS,
-                dropout=fusion_dropout,
-                pos_encoding=fusion_pos_encoding,
+            # A plain None attribute for the ablation arms: no `fusion.*` key.
+            self.fusion = (
+                CrossModalFusion(
+                    stage_channels=self.STAGE_CHANNELS,
+                    dropout=fusion_dropout,
+                    pos_encoding=fusion_pos_encoding,
+                )
+                if fusion_attention
+                else None
             )
             # --- 3. Dual FPN neck (two FPNs + per-level fusion) ---
             self.neck = DualFPN(
@@ -221,6 +256,7 @@ class MasterModel(nn.Module):
                 emit_strides=tuple(strides),
                 norm=neck_norm,
                 gn_groups=neck_gn_groups,
+                use_nir=use_nir,
             )
 
         # --- YOLO-style detection head (compatible with YOLO Nano student) ---
@@ -270,7 +306,8 @@ class MasterModel(nn.Module):
             rgb: (N, 3, H, W) — RGB image, normalized.
             nir: (N, 1, H, W) — NIR grayscale image, normalized. Ignored
                 when `fusion_mode="early"` and `self.in_channels == 3` (the
-                H-D RGB-only control arm), accepted anyway so call sites do
+                H-D RGB-only control arm) or when `use_nir=False` (the
+                two-stream RGB-only arm), accepted anyway so call sites do
                 not need a separate path.
 
         Returns:
@@ -298,13 +335,18 @@ class MasterModel(nn.Module):
             pyramid = self.neck(backbone_features)  # levels named by self.head_strides
         else:
             # --- Backbone (two streams, shared stages) ---
+            # nir_features is None when use_nir=False (`nir` is ignored).
             rgb_features, nir_features = self.backbone(rgb, nir)
 
             # --- Cross-modal fusion: RGB queries NIR, per stage ---
             # backbone_features: [F1..F4] — RGB enriched with NIR context.
             # Same 4-stage, [96, 192, 384, 768] shape the early path emits,
             # so `distill_backbone` means the same thing downstream.
-            backbone_features, nir_features = self.fusion(rgb_features, nir_features)
+            if self.fusion is not None:
+                backbone_features, nir_features = self.fusion(rgb_features, nir_features)
+            else:
+                # Attention ablation: F_i = rgb_i, passed through unchanged.
+                backbone_features = rgb_features
 
             # --- Dual FPN ---
             # levels named by self.head_strides
@@ -391,16 +433,19 @@ class MasterModel(nn.Module):
     def count_parameters(self) -> dict[str, int]:
         """Returns parameter counts per module.
 
-        `fusion` appears only under `fusion_mode="cross_attention"` — the
-        early path has no such submodule, so reporting a 0 for it would
-        misrepresent an absent module as an empty one.
+        `fusion` appears only when the module exists
+        (`fusion_mode="cross_attention"` with `fusion_attention=True`) — the
+        early path and the attention-ablation arms have no such submodule, so
+        reporting a 0 for it would misrepresent an absent module as an empty
+        one.
         """
         def count(module):
             return sum(p.numel() for p in module.parameters() if p.requires_grad)
 
         counts = {"backbone": count(self.backbone)}
-        if self.fusion_mode == FUSION_MODE_CROSS_ATTENTION:
-            counts["fusion"] = count(self.fusion)
+        fusion = getattr(self, "fusion", None)
+        if fusion is not None:
+            counts["fusion"] = count(fusion)
         counts["neck"] = count(self.neck)
         counts["head"] = count(self.head)
         counts["total"] = count(self)

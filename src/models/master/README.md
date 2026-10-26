@@ -151,6 +151,18 @@ Conteo con los `head_strides` por defecto de cada modo; coincide con `sum(p.nume
 
 En el modo `early`, el presupuesto liberado (fusión + un FPN completo) se reinvierte parcialmente en el 4º `DecoupledHead` (P2, stride 4) — ver `openspec/changes/fusion-redesign/design.md` D-3/D-6 para la justificación de por qué el resto **no** se reinvierte.
 
+### Ablación de la atención (`fusion_attention`, `use_nir`)
+
+Dos flags opt-in, solo para `fusion_mode="cross_attention"` (ambos `true` por defecto; validados en `src/training/fusion_modes.py::validate_fusion_ablation`), separan el maestro de dos streams en tres brazos comparables línea a línea, todos con `arch_version=1`:
+
+| Brazo | Config | Flags | Qué cambia | Total (`[8,16,32]`) |
+|---|---|---|---|---:|
+| A | `configs/experiment/twostream.yaml` | defaults | nada: el modelo de siempre | 46,642,930 |
+| B | `twostream_no_attention.yaml` | `fusion_attention: false` | sin `CrossModalFusion`: `F_i = rgb_i`; NIR sigue por `fpn_nir` y llega al head solo por el concat de `DualFPN` | 37,221,010 |
+| C | `twostream_rgb_only.yaml` | `fusion_attention: false`, `use_nir: false` | además sin `nir_stem`, sin pasada NIR por las stages y sin `fpn_nir`; los `fusion_convs` mantienen el bloque Conv1×1 → norm → ReLU → Dropout2d con 256 canales de entrada en vez de 512. `forward(rgb, nir)` acepta `nir` y lo ignora | 34,292,594 |
+
+A vs B aísla el módulo de atención; B vs C aísla el stream NIR. `use_nir=false` exige `fusion_attention=false`, y `fusion_pos_encoding=true` exige `fusion_attention=true`; cualquiera de los dos flags en `false` con `fusion_mode="early"` falla. B y C cambian el esquema del `state_dict`, así que los loaders (`evaluate_checkpoint.py`, `visualize_damage_predictions.py`, el teacher de KD) reconstruyen el brazo desde el `config` grabado en el checkpoint (ausente → `true`) y `check_fusion_ablation_compatible` convierte un desajuste en un único mensaje.
+
 Hardware de entrenamiento local: NVIDIA GTX 1660 SUPER (6.44 GB VRAM), `batch_size=2` con `effective_batch=8` vía gradient accumulation.
 
 ---

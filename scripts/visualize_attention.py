@@ -106,6 +106,12 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     model, _ = load_model("master", args.checkpoint, config, device)
+    if model.fusion is None:
+        raise ValueError(
+            f"Checkpoint {args.checkpoint} was trained with fusion_attention=False; "
+            "it has no cross-modal attention module, so there are no attention "
+            "maps to visualize."
+        )
 
     pairs = discover_image_pairs(rgb_dir, nir_dir, labels_dir, args.split, "master")
     logger.info("Found %d RGB/NIR pairs with labels in split=%s", len(pairs), args.split)
