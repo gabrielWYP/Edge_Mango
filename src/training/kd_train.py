@@ -113,6 +113,7 @@ def main():
     print(f"  Epochs: {config.epochs}, patience: {config.patience}")
     print(f"  Batch size: {config.batch_size}, Precision: {config.precision}")
     print(f"  KD weight: {config.kd_weight}, temperature: {config.kd_temperature}")
+    print(f"  KD loss type: {config.kd_loss_type}")
     print(f"  Distill levels: {config.distill_levels}")
 
     # Create datasets. Do not pass explicit transforms here: YOLODataset's
