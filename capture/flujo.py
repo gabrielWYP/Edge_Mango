@@ -1,4 +1,4 @@
-"""Flujos de cada subcomando (jornada, sanas, impactos, ronda, estado, subir, enfoque, descarte).
+"""Flujos de cada subcomando (jornada, sanas, impactos, ronda, estado, subir, reiniciar, enfoque, descarte).
 
 La logica recibe un `Contexto` con todo lo externo (hardware, consola, reloj, red), de modo que
 se prueba completa con hardware simulado. `captura.py` solo arma el contexto real y despacha.
@@ -9,6 +9,7 @@ Principios:
   * Una captura con QC en ERROR ("luz apagada?") se mueve a `descartes/` y se ofrece repetirla;
     en `--auto` se aborta. Nunca entra al dataset ni se sube.
 """
+import json
 import re
 import shutil
 import time
@@ -138,6 +139,10 @@ def exigir_jornada_verificada(j):
             f"La autoverificación de la exposición manual de la jornada {j.id} {motivo}: vuelve a ejecutar "
             f"`captura.py jornada --id {j.id}` (con la alimentación de la cámara reiniciada si falló) "
             "para rehacer la calibración antes de capturar.")
+    if not j.calibracion_hecha("vacia"):     # p. ej. tras `reiniciar --desde vacia`: sin ella no hay QC
+        raise ErrorPreparacion(
+            f"Falta la bandeja vacía (referencia del QC) de la jornada {j.id}: vuelve a ejecutar "
+            f"`captura.py jornada --id {j.id}` con el mismo --lote y --mangos; retoma solo lo pendiente.")
 
 
 def prechequeo_reloj(ctx, ignorar_ntp=False):
@@ -185,6 +190,29 @@ def _borrar(*rutas):
             r.unlink()
 
 
+def _apartar_archivos(j, archivos, carpeta, motivo, cola=None):
+    """Mueve `archivos` a `carpeta` (con su ruta relativa a la jornada) sin borrar nada.
+
+    Lo que seguia pendiente en la cola de subida queda como perdido para no subirlo; lo ya subido se cuenta
+    porque la URL pre-autenticada no permite borrarlo. Devuelve cuantos archivos ya estaban subidos.
+    """
+    if cola is None:
+        ruta_cola = j.dir / "pendientes.jsonl"
+        cola = subida.ColaSubida(ruta_cola) if ruta_cola.exists() else None
+    ya_subidos = 0
+    for ruta in archivos:
+        destino_bucket = subida.destino_de(ruta, j.dir)
+        destino = carpeta / ruta.relative_to(j.dir)
+        destino.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(ruta), str(destino))
+        estado_cola = cola.estado_de(destino_bucket) if cola else None
+        if estado_cola == "pendiente":
+            cola.marcar_perdido(destino_bucket, motivo)
+        elif estado_cola == "hecho":
+            ya_subidos += 1
+    return ya_subidos
+
+
 # --- sesion de captura -----------------------------------------------------------------------------------
 class Sesion:
     """Una jornada abierta para capturar: cola de subida, hilo de subida y tomas de cara."""
@@ -195,6 +223,7 @@ class Sesion:
         self.cola = subida.ColaSubida(jornada.dir / "pendientes.jsonl") if self.usa_cola else None
         self.subidor = None
         self.gen = ctx.generador_ts(jornada)
+        self.ultima = None          # (mango, cara, ronda_h, ts) de la ultima foto de la sesion; ronda_h None = sana
 
     def abrir(self):
         if not self.usa_cola:
@@ -337,6 +366,61 @@ class Sesion:
             for alerta in res["alertas"]:
                 ui.aviso(alerta)
             return res
+
+    def tomar_cara(self, mango, cara, ronda_h=None):
+        """Captura la cara y la marca en el estado (`ronda_h` None = sana). Recuerda la ultima para `r`."""
+        j = self.j
+        if ronda_h is None:
+            res = self.capturar_cara(mango, cara, "sano")
+            if res is not None:
+                j.marcar_sana(mango, cara, res["ts"], res["alertas"], duracion_s=res["tiempos"]["total"])
+        else:
+            res = self.capturar_cara(mango, cara, "post_impacto", ronda_h=ronda_h,
+                                     impacto_fn=_impacto_fn(j, mango, cara, ronda_h))
+            if res is not None:
+                imp = res["impacto"]
+                j.marcar_ronda(mango, ronda_h, cara, res["ts"], imp["horas_desde_impacto"],
+                               imp["desviacion_min"], res["alertas"])
+        if res is not None:
+            self.ultima = (mango, cara, ronda_h, res["ts"])
+        return res
+
+    def descripcion_ultima(self):
+        mango, cara, ronda_h, _ = self.ultima
+        momento = "sano" if ronda_h is None else vista.etiqueta_ronda(ronda_h)
+        return f"mango {mango} · {momento} · cara {cara}"
+
+    def repetir_ultima(self):
+        """Aparta la ultima foto de la sesion (sin borrarla) y la vuelve a tomar en el acto.
+
+        Sirve para una foto que salio mal y se nota en el momento (mano en la NIR, mango sin girar o sin
+        poner, cara equivocada). Los archivos van a `descartes/repeticion-<hora>/`, que `subir` no recorre,
+        y la repeticion queda en `repeticiones` de jornada.json. q en el aviso deja la cara pendiente.
+        """
+        ui, j = self.ctx.ui, self.j
+        if self.ultima is None:
+            ui.aviso("No hay una foto de esta sesión para repetir.")
+            return
+        mango, cara, ronda_h, ts = self.ultima
+        descripcion = self.descripcion_ultima()
+        carpeta = j.dir / "descartes" / f"repeticion-{self.ctx.reloj().strftime('%Y%m%d-%H%M%S')}"
+        relativa = carpeta.relative_to(j.dir).as_posix()
+        r = rutas_dataset(j.dir, ts)
+        archivos = [p for p in (r.rgb, r.nir, r.raw, r.meta) if p.exists()]
+        ya_subidos = _apartar_archivos(j, archivos, carpeta, "repeticion", cola=self.cola)
+        j.apartar_foto(mango, cara, ronda_h, {"iso": self.ctx.reloj().isoformat(timespec="seconds"),
+                                              "carpeta": relativa, "archivos": len(archivos),
+                                              "ya_subidos": ya_subidos})
+        self.ultima = None
+        ui.decir(f"↺ Foto de {descripcion} apartada a {relativa}/ (no se sube). Se repite ahora.")
+        if ya_subidos:
+            ui.aviso(f"{ya_subidos} de sus archivos ya estaban subidos a OCI y siguen allá (la URL pre-autenticada "
+                     "no permite borrar); jornada.json la registra en `repeticiones`.")
+        rotulo = "" if ronda_h is None else f" · {vista.etiqueta_ronda(ronda_h)}"
+        if ui.esperar(f"Mango {mango}{rotulo} · cara {cara} (repetición) → coloca y presiona Enter "
+                      "· q = salir (la cara queda pendiente)") == "q":
+            raise Salir
+        self.tomar_cara(mango, cara, ronda_h)
 
     # -- calibracion ---------------------------------------------------------------------------------------
     def _intento_calibracion(self, tipo):
@@ -512,6 +596,27 @@ def _con_sesion(ctx, jornada, funcion):
         ses.cerrar()
 
 
+def _esperar(ctx, ses, texto):
+    """`ui.esperar` que, tras una foto de la sesion, ofrece `r` para repetirla y luego vuelve a preguntar."""
+    while True:
+        con_ultima = ses is not None and ses.ultima is not None
+        sufijo = f" · r = repetir la foto anterior ({ses.descripcion_ultima()})" if con_ultima else ""
+        resp = ctx.ui.esperar(texto + sufijo)
+        if resp != "r":
+            return resp
+        if con_ultima:
+            ses.repetir_ultima()
+        else:
+            ctx.ui.aviso("No hay una foto de esta sesión para repetir.")
+
+
+def _ofrecer_repetir_final(ctx, ses):
+    """Al terminar una etapa, ultima oportunidad de repetir la foto recien tomada antes de salir."""
+    if ctx.ui.auto or ses.ultima is None:
+        return
+    _esperar(ctx, ses, "Enter = terminar")
+
+
 # --- jornada ------------------------------------------------------------------------------------------
 def cmd_jornada(ctx, args):
     prechequeo_dispositivos(ctx)
@@ -597,13 +702,12 @@ def cmd_sanas(ctx, args):
         for mango, caras in agrupar_por_mango(pendientes):
             t_mango = ctx.cronometro()
             for cara in caras:
-                if ui.esperar(f"Mango {mango} · cara {cara} → coloca y presiona Enter") == "q":
+                if _esperar(ctx, ses, f"Mango {mango} · cara {cara} → coloca y presiona Enter") == "q":
                     raise Salir
-                res = ses.capturar_cara(mango, cara, "sano")
-                if res is not None:
-                    j.marcar_sana(mango, cara, res["ts"], res["alertas"], duracion_s=res["tiempos"]["total"])
+                ses.tomar_cara(mango, cara)
             ui.decir(f"Mango {mango} listo en {ctx.cronometro() - t_mango:.0f} s "
                      f"(objetivo: {j.slot_min * 60:.0f} s por mango).")
+        _ofrecer_repetir_final(ctx, ses)
         ui.decir("Sanas completas. Siguiente paso: captura.py impactos")
 
     _con_sesion(ctx, j, capturar)
@@ -634,16 +738,19 @@ def cmd_impactos(ctx, args):
         ui.decir(MENSAJE_SALIR)
 
 
-def _registrar_impactos(ctx, j, mango, caras):
-    """Muestra las zonas del mango y registra la hora de cada cara pendiente (q lanza Salir)."""
+def _registrar_impactos(ctx, j, mango, caras, ses=None):
+    """Muestra las zonas del mango y registra la hora de cada cara pendiente (q lanza Salir).
+
+    Con sesion (jornada con +0 h), `r` repite la ultima foto +0 h del mango anterior antes de golpear.
+    """
     ui = ctx.ui
     indice = j.mangos.index(mango)
     zonas = ", ".join(f"cara {c}: {j.zona(mango, c)}" for c in j.caras)
     ui.decir("")
     ui.decir(f"Mango {mango} ({indice + 1} de {len(j.mangos)}) · zonas sorteadas → {zonas}")
     for cara in caras:
-        if ui.esperar(f"Cara {cara} · zona {j.zona(mango, cara)} → "
-                      "presiona Enter AL SOLTAR la bola") == "q":
+        if _esperar(ctx, ses, f"Cara {cara} · zona {j.zona(mango, cara)} → "
+                              "presiona Enter AL SOLTAR la bola") == "q":
             raise Salir
         ahora = ctx.reloj()
         j.marcar_impacto(mango, cara, ahora.isoformat(timespec="milliseconds"))
@@ -672,12 +779,13 @@ def _impactos_con_fotos(ctx, j):
             if not caras and not _fotos_cero_pendientes(j, mango):
                 continue                                    # mango listo (o su +0 h se omitio): sigue el siguiente
             if caras:
-                _registrar_impactos(ctx, j, mango, caras)
+                _registrar_impactos(ctx, j, mango, caras, ses)
             else:                                           # reanudacion: impactos hechos, faltan fotos
                 ui.decir("")
                 ui.decir(f"Mango {mango} ({j.mangos.index(mango) + 1} de {len(j.mangos)}) · "
                          f"impactos completos; faltan las fotos {vista.etiqueta_ronda(0)}")
             _fotos_ronda_cero(ctx, j, ses, mango)
+        _ofrecer_repetir_final(ctx, ses)
         faltan = [m for m in j.mangos if _fotos_cero_pendientes(j, m)]
         if faltan:
             ui.aviso(f"Quedan fotos {vista.etiqueta_ronda(0)} sin tomar (mangos {', '.join(map(str, faltan))}): "
@@ -695,7 +803,7 @@ def _fotos_ronda_cero(ctx, j, ses, mango):
     if not _fotos_cero_pendientes(j, mango):
         return
     if protocolo.clasificar_ventana(ctx.reloj(), j.vencimiento(mango, 0), j.tolerancia_min) == "tarde":
-        if not _ofrecer_ronda_atrasada(ctx, j, mango, 0):
+        if not _ofrecer_ronda_atrasada(ctx, j, mango, 0, ses):
             return
     _capturar_caras_ronda(ctx, j, ses, mango, 0, rotulo=f" · {vista.etiqueta_ronda(0)}")
 
@@ -760,6 +868,9 @@ def cmd_ronda(ctx, args):
         while True:
             item = j.siguiente_pendiente()
             if item is None:
+                _ofrecer_repetir_final(ctx, ses)
+                if j.siguiente_pendiente() is not None:     # la cara repetida se omitio tras un error de QC
+                    continue
                 ui.decir("No queda nada pendiente en las rondas.")
                 return
             ahora = ctx.reloj()
@@ -770,7 +881,7 @@ def cmd_ronda(ctx, args):
                 faltan_s = (item.vence - ahora).total_seconds()
                 ui.decir(f"Faltan {vista.duracion_texto(faltan_s / 60)}, más que la tolerancia de ±{tol:g} min. "
                          "Puedes esperar con cuenta regresiva o seguir ahora con --forzar.")
-                if ui.esperar("Enter = esperar con cuenta regresiva · q = salir") == "q":
+                if _esperar(ctx, ses, "Enter = esperar con cuenta regresiva · q = salir") == "q":
                     raise Salir
                 if not ui.cuenta_regresiva(faltan_s, f"Esperando al mango {item.mango}, ronda "
                                                       f"{vista.etiqueta_ronda(item.ronda_h)}"):
@@ -778,22 +889,22 @@ def cmd_ronda(ctx, args):
                 ui.aviso("Presiona el botón de la batería USB si estuvo inactiva: se duerme sola y las luces "
                          "no encienden (el QC lo detecta como 'luz apagada?').")
             elif ventana == "tarde":
-                if not _ofrecer_ronda_atrasada(ctx, j, item.mango, item.ronda_h):
+                if not _ofrecer_ronda_atrasada(ctx, j, item.mango, item.ronda_h, ses):
                     continue
             else:
-                if ui.esperar("Enter = empezar · q = salir") == "q":
+                if _esperar(ctx, ses, "Enter = empezar · q = salir") == "q":
                     raise Salir
             _capturar_caras_ronda(ctx, j, ses, item.mango, item.ronda_h)
 
     _con_sesion(ctx, j, rondas)
 
 
-def _ofrecer_ronda_atrasada(ctx, j, mango, ronda_h):
+def _ofrecer_ronda_atrasada(ctx, j, mango, ronda_h, ses=None):
     """Avisa que la ventana de la ronda ya paso. True = capturar igual; False = omitida (s); q lanza Salir."""
     ui = ctx.ui
     ui.aviso(f"Mango {mango} ronda {vista.etiqueta_ronda(ronda_h)} está FUERA de "
              f"tolerancia (atrasado): las fotos saldrán marcadas fuera de tolerancia.")
-    resp = ui.esperar("Enter = capturar igual · s = omitir esta ronda del mango · q = salir")
+    resp = _esperar(ctx, ses, "Enter = capturar igual · s = omitir esta ronda del mango · q = salir")
     if resp == "q":
         raise Salir
     if resp == "s":
@@ -805,14 +916,9 @@ def _ofrecer_ronda_atrasada(ctx, j, mango, ronda_h):
 def _capturar_caras_ronda(ctx, j, ses, mango, ronda_h, rotulo=""):
     """Captura las caras pendientes de la ronda del mango y las marca en el estado (`ronda` e `impactos`)."""
     for cara in j.caras_pendientes_ronda(mango, ronda_h):
-        if ctx.ui.esperar(f"Mango {mango}{rotulo} · cara {cara} → coloca y presiona Enter") == "q":
+        if _esperar(ctx, ses, f"Mango {mango}{rotulo} · cara {cara} → coloca y presiona Enter") == "q":
             raise Salir
-        res = ses.capturar_cara(mango, cara, "post_impacto", ronda_h=ronda_h,
-                                impacto_fn=_impacto_fn(j, mango, cara, ronda_h))
-        if res is not None:
-            imp = res["impacto"]
-            j.marcar_ronda(mango, ronda_h, cara, res["ts"], imp["horas_desde_impacto"],
-                           imp["desviacion_min"], res["alertas"])
+        ses.tomar_cara(mango, cara, ronda_h)
 
 
 # --- estado ---------------------------------------------------------------------------------------------------
@@ -822,6 +928,74 @@ def cmd_estado(ctx, args):
     cola = subida.ColaSubida(ruta_cola).resumen() if ruta_cola.exists() else None
     for linea in vista.tabla_estado(j, ctx.reloj(), cola):
         ctx.ui.decir(linea)
+
+
+# --- reiniciar ----------------------------------------------------------------------------------------------
+DESCRIPCION_REINICIO = {
+    "calibracion": "se repite toda la calibración (tarjeta gris, balance de blancos, bandeja vacía, ArUco y "
+                   "verificación de exposición) y se descartan las sanas, los impactos y las rondas",
+    "vacia": "se repite solo la bandeja vacía (referencia del QC) y se descartan las sanas, los impactos y las "
+             "rondas; la tarjeta gris, el balance de blancos y el ArUco se conservan",
+    "sanas": "se descartan las sanas, los impactos y las rondas; la calibración se conserva",
+    "impactos": "se descartan los impactos (con sus fotos +0 h) y las rondas; la calibración y las sanas "
+                "se conservan",
+}
+
+
+def _archivos_a_apartar(j, etapa):
+    """Archivos de `calib/` y `news/` que pertenecen a `etapa` o a una etapa posterior."""
+    raiz, archivos = j.dir, []
+    if etapa == "calibracion":
+        archivos += (raiz / "calib").glob("*")
+    elif etapa == "vacia":
+        archivos += (raiz / "calib").glob("calib-vacia-*")
+    if etapa != "impactos":
+        archivos += (raiz / "news").rglob("*")         # todo news/ es de las sanas en adelante
+    else:
+        # Solo lo posterior al impacto: por la fase del metadato y, por si una caida dejo fotos sin
+        # metadato, por los timestamps que el estado guarda de cada ronda (la +0 h incluida).
+        tss = {reg["timestamp"] for rondas in j.datos["rondas"].values()
+               for caras in rondas.values() for reg in caras.values()}
+        for meta in (raiz / "news" / "meta").glob("mango_meta_*.json"):
+            try:
+                if json.loads(meta.read_text(encoding="utf-8")).get("fase") == "post_impacto":
+                    tss.add(int(meta.stem.rsplit("_", 1)[1]))
+            except ValueError:
+                continue                                 # metadato cortado o nombre raro: se deja
+        for ts in tss:
+            r = rutas_dataset(raiz, ts)
+            archivos += [r.rgb, r.nir, r.raw, r.meta]
+    return sorted({Path(p) for p in archivos if Path(p).is_file()})
+
+
+def cmd_reiniciar(ctx, args):
+    """Aparta lo capturado desde `--desde` (sin borrar) y deja esa etapa pendiente en la misma jornada."""
+    j = abrir_jornada(ctx, getattr(args, "id", None))
+    ui, etapa = ctx.ui, args.desde
+    if j.tiene_impactos() and not getattr(args, "forzar", False):
+        raise ErrorPreparacion(
+            f"La jornada {j.id} ya tiene impactos registrados y reiniciar desde '{etapa}' los descarta, pero "
+            "la fruta ya está golpeada. Si de verdad hay que repetirlos (por ejemplo con fruta nueva), usa --forzar.")
+    archivos = _archivos_a_apartar(j, etapa)
+    carpeta = j.dir / "descartes" / f"reinicio-{ctx.reloj().strftime('%Y%m%d-%H%M%S')}"
+    relativa = carpeta.relative_to(j.dir).as_posix()
+    ui.decir(f"Reiniciar la jornada {j.id} desde '{etapa}': {DESCRIPCION_REINICIO[etapa]}.")
+    ui.decir(f"Se apartan {len(archivos)} archivos a {relativa}/ (no se borra nada y no se suben).")
+    if ui.esperar("Enter = reiniciar · q = cancelar") == "q":
+        ui.decir("Cancelado: no se tocó nada.")
+        return
+    ya_subidos = _apartar_archivos(j, archivos, carpeta, "reinicio")
+    j.reiniciar_desde(etapa, {"iso": ctx.reloj().isoformat(timespec="seconds"), "carpeta": relativa,
+                              "archivos": len(archivos), "ya_subidos": ya_subidos})
+    if ya_subidos:
+        ui.aviso(f"{ya_subidos} de esos archivos ya estaban subidos a OCI y siguen allá (la URL pre-autenticada "
+                 f"no permite borrar): bórralos desde la consola si hace falta; los nombres están en {relativa}/.")
+    if etapa in ("calibracion", "vacia"):
+        siguiente = (f"vuelve a ejecutar `captura.py jornada --id {j.id}` con el mismo --lote y --mangos "
+                     "(retoma solo la calibración pendiente)")
+    else:
+        siguiente = f"captura.py {etapa}"
+    ui.decir(f"✓ Jornada {j.id} reiniciada desde '{etapa}'. Siguiente paso: {siguiente}")
 
 
 # --- subir ----------------------------------------------------------------------------------------------------

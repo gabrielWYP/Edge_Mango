@@ -114,6 +114,8 @@ class Luces:
 # adaptativo de brillo que anula la exposicion fija; un valor distinto es un ERROR, no un aviso.
 CONTROLES_OBLIGATORIOS = ("backlight_compensation", "power_line_frequency")
 PAUSA_CICLO_EXPOSICION_S = 0.2
+PASO_TEMPERATURA_K = 100            # el ciclo del balance mueve la temperatura un paso y la devuelve
+TEMPERATURA_MIN_K = 2800
 
 
 class CamaraRGB:
@@ -145,6 +147,11 @@ class CamaraRGB:
           cuando ya lee 1 NO cambia el modo interno (la camara conserva su propia exposicion mientras
           informa "manual"). Por eso, antes de CADA fijacion de exposicion, SIEMPRE: auto_exposure=3,
           pausa de ~0.2 s, auto_exposure=1, exposure_dynamic_framerate=0 y exposure_time_absolute.
+        * La misma trampa con el balance de blancos: tras una reconexion USB (2026-10-24, "disabled by
+          hub (EMI?)") el driver reescribe white_balance_automatic=0 y la temperatura, la camara los
+          informa, pero sigue en balance automatico (la hoja salio neutra en vez de cian). Por eso,
+          SIEMPRE: white_balance_automatic=1, pausa, =0, y la temperatura movida un paso y devuelta
+          (para que la escritura no se omita por repetir el mismo valor).
         * Un control que falla se registra, pero no aborta... salvo los obligatorios
           (backlight_compensation y power_line_frequency), que son un error.
 
@@ -171,8 +178,18 @@ class CamaraRGB:
             for nombre in ("exposure_dynamic_framerate", "exposure_time_absolute"):
                 if nombre in deseados:
                     fijar(nombre, deseados[nombre])
+        ciclo_wb = deseados.get("white_balance_automatic") == 0 and "white_balance_temperature" in deseados
+        if ciclo_wb:
+            t = deseados["white_balance_temperature"]
+            vecina = t - PASO_TEMPERATURA_K if t - PASO_TEMPERATURA_K >= TEMPERATURA_MIN_K else t + PASO_TEMPERATURA_K
+            fijar("white_balance_automatic", 1)
+            self._dormir(PAUSA_CICLO_EXPOSICION_S)
+            fijar("white_balance_automatic", 0)
+            fijar("white_balance_temperature", vecina)
+            fijar("white_balance_temperature", t)
         for nombre, valor in deseados.items():
-            if (ciclo and nombre in camaras.CICLO_EXPOSICION) or actuales.get(nombre) == valor:
+            if ((ciclo and nombre in camaras.CICLO_EXPOSICION) or (ciclo_wb and nombre in camaras.CICLO_BALANCE)
+                    or actuales.get(nombre) == valor):
                 continue
             fijar(nombre, valor)
         for nombre in CONTROLES_OBLIGATORIOS:

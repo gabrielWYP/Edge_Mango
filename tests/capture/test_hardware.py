@@ -284,6 +284,11 @@ def test_hay_una_pausa_de_0_2_s_entre_auto_exposure_3_y_auto_exposure_1():
     assert secuencia[i + 1] == ("pausa", 0.2) and secuencia[i + 2] == ("set", "auto_exposure=1")
 
 
+def ciclo_balance(t):
+    return ["white_balance_automatic=1", "white_balance_automatic=0",
+            f"white_balance_temperature={t - 100}", f"white_balance_temperature={t}"]
+
+
 def test_el_ciclo_de_exposicion_se_repite_en_cada_aplicacion_aunque_nada_haya_cambiado():
     ej = EjecutorFalso()
     cam = camara_rgb(ej)
@@ -291,9 +296,39 @@ def test_el_ciclo_de_exposicion_se_repite_en_cada_aplicacion_aunque_nada_haya_ca
     antes = len(fijados(ej))
     r = cam.aplicar_controles()
     e = CONTROLES_PEDIDOS["exposure_time_absolute"]
-    assert fijados(ej)[antes:] == CICLO_EXPOSICION + [f"exposure_time_absolute={e}"]   # solo la exposicion
-    assert r["aplicados"] == ["auto_exposure", "exposure_dynamic_framerate", "exposure_time_absolute"]
+    t = CONTROLES_PEDIDOS["white_balance_temperature"]
+    assert fijados(ej)[antes:] == CICLO_EXPOSICION + [f"exposure_time_absolute={e}"] + ciclo_balance(t)
+    assert r["aplicados"] == ["auto_exposure", "exposure_dynamic_framerate", "exposure_time_absolute",
+                              "white_balance_automatic", "white_balance_temperature"]
     assert r["fallidos"] == {}
+
+
+def test_el_balance_alterna_a_automatico_y_mueve_la_temperatura_aunque_ya_lea_manual():
+    """Tras una reconexion USB la Arducam informa balance manual y la temperatura pedida pero sigue en
+    automatico (2026-10-24: la hoja salio neutra en vez de cian hasta alternar el modo)."""
+    ej = EjecutorFalso()
+    ej.ctrls["white_balance_automatic"] = 0
+    ej.ctrls["white_balance_temperature"] = CONTROLES_PEDIDOS["white_balance_temperature"]
+    camara_rgb(ej).aplicar_controles()
+    assert fijados(ej)[4:8] == ciclo_balance(CONTROLES_PEDIDOS["white_balance_temperature"])
+
+
+def test_hay_una_pausa_entre_balance_automatico_y_manual():
+    ej = EjecutorFalso()
+    camara_rgb(ej).aplicar_controles()
+    secuencia = [("pausa", x[1]) if x[0] == "dormir" else ("set", x[1][x[1].index("-c") + 1])
+                 for x in ej.eventos if x[0] == "dormir" or "-c" in x[1]]
+    i = secuencia.index(("set", "white_balance_automatic=1"))
+    assert secuencia[i + 1] == ("pausa", 0.2) and secuencia[i + 2] == ("set", "white_balance_automatic=0")
+
+
+def test_el_ciclo_de_balance_usa_la_temperatura_de_extra_y_no_baja_del_minimo():
+    ej = EjecutorFalso()
+    camara_rgb(ej).aplicar_controles(extra={"white_balance_temperature": 4000})
+    assert fijados(ej)[4:8] == ciclo_balance(4000)
+    ej2 = EjecutorFalso()
+    camara_rgb(ej2).aplicar_controles(extra={"white_balance_temperature": 2800})
+    assert fijados(ej2)[6:8] == ["white_balance_temperature=2900", "white_balance_temperature=2800"]
 
 
 def test_el_ciclo_usa_la_exposicion_pedida_en_extra():
@@ -328,7 +363,7 @@ def test_si_el_valor_leido_de_un_control_obligatorio_no_coincide_es_un_error(tmp
     assert not salida.exists()                             # la foto tomada con el ajuste mal no se conserva
 
 
-def test_aplicar_controles_solo_fija_lo_que_cambio_salvo_el_ciclo_de_exposicion():
+def test_aplicar_controles_solo_fija_lo_que_cambio_salvo_los_ciclos_de_exposicion_y_balance():
     ej = EjecutorFalso()
     cam = camara_rgb(ej)
     cam.aplicar_controles()
@@ -336,7 +371,8 @@ def test_aplicar_controles_solo_fija_lo_que_cambio_salvo_el_ciclo_de_exposicion(
     cam.aplicar_controles()
     nuevos = fijados(ej)[len(fijados_antes):]
     assert {x.split("=")[0] for x in nuevos} <= {"auto_exposure", "exposure_dynamic_framerate",
-                                                 "exposure_time_absolute"}
+                                                 "exposure_time_absolute", "white_balance_automatic",
+                                                 "white_balance_temperature"}
 
 
 def test_aplicar_controles_registra_el_que_falla_y_sigue_con_los_demas():

@@ -143,6 +143,12 @@ class ColaSubida:
         with self._lock:
             return [dict(i) for i in self._items.values() if i["estado"] == "pendiente"]
 
+    def estado_de(self, destino):
+        """'pendiente' | 'hecho' | 'perdido', o None si el destino nunca se encolo."""
+        with self._lock:
+            item = self._items.get(destino)
+            return item["estado"] if item else None
+
     def resumen(self):
         with self._lock:
             estados = [i["estado"] for i in self._items.values()]

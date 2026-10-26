@@ -327,3 +327,111 @@ def test_un_error_de_camara_en_el_enfoque_sale_con_codigo_2_sin_traceback(tmp_pa
     from hardware import ErrorCamara as hardware_error
     assert env.correr("enfoque", "--camara", "rgb", preparar_hw=lambda hw_: setattr(hw_.rgb, "capturar", falla)) == 2
     assert any("Cannot open device" in linea for linea in env.salida)
+
+
+# --- reiniciar ----------------------------------------------------------------------------------------------
+
+def test_reiniciar_exige_una_etapa_valida():
+    assert captura.parse_args(["reiniciar", "--desde", "sanas"]).desde == "sanas"
+    assert captura.parse_args(["reiniciar", "--desde", "vacia", "--forzar"]).forzar is True
+    for argv in (["reiniciar"], ["reiniciar", "--desde", "rondas"]):
+        with pytest.raises(SystemExit):
+            captura.parse_args(argv)
+
+
+def carpeta_j01(tmp_path):
+    return tmp_path / "capturas" / "J01"
+
+
+def reinicios(tmp_path):
+    return list((carpeta_j01(tmp_path) / "descartes").glob("reinicio-*"))
+
+
+def test_reiniciar_desde_sanas_aparta_las_fotos_y_las_sanas_se_repiten_en_la_misma_jornada(tmp_path):
+    env = Entorno(tmp_path)
+    assert env.correr(*JORNADA) == 0
+    assert env.correr("sanas") == 0
+    viejas = {p.name for p in (carpeta_j01(tmp_path) / "news" / "meta").glob("*.json")}
+    assert env.correr("reiniciar", "--desde", "sanas") == 0
+    j = e.Jornada.cargar(carpeta_j01(tmp_path))
+    assert len(j.pendientes_sanas()) == 4 and j.calibracion_hecha("vacia")
+    assert not list((carpeta_j01(tmp_path) / "news").rglob("*.*"))
+    (apartados,) = reinicios(tmp_path)
+    assert {p.name for p in (apartados / "news" / "meta").glob("*.json")} == viejas
+    assert len(list(apartados.rglob("*.jpg"))) == 8 and len(list((carpeta_j01(tmp_path) / "calib").glob("*"))) == 10
+    assert j.datos["reinicios"][0]["desde"] == "sanas" and j.datos["reinicios"][0]["archivos"] == 12
+    assert any("Siguiente paso: captura.py sanas" in linea for linea in env.salida)
+    assert env.correr("sanas") == 0
+    nuevas = {p.name for p in (carpeta_j01(tmp_path) / "news" / "meta").glob("*.json")}
+    assert len(nuevas) == 4 and not nuevas & viejas      # timestamps nuevos: no pisa lo apartado
+
+
+def test_reiniciar_desde_vacia_y_jornada_retoma_solo_la_bandeja_vacia(tmp_path):
+    env = Entorno(tmp_path)
+    assert env.correr(*JORNADA) == 0
+    assert env.correr("sanas") == 0
+    calib = carpeta_j01(tmp_path) / "calib"
+    vacia_vieja = {p.name for p in calib.glob("calib-vacia-*")}
+    assert env.correr("reiniciar", "--desde", "vacia") == 0
+    assert not list(calib.glob("calib-vacia-*")) and len(list(calib.glob("calib-gris-*"))) == 3
+    assert env.correr("sanas") == 2                                  # sin bandeja vacia no hay QC
+    assert any("Falta la bandeja vacía" in linea for linea in env.salida)
+    assert env.correr(*JORNADA) == 0
+    assert len(list(calib.glob("calib-vacia-*"))) == 3 and not {p.name for p in calib.glob("calib-vacia-*")} & vacia_vieja
+    assert len(list(calib.glob("calib-gris-*"))) == 3 and len(list(calib.glob("calib-aruco-*"))) == 3
+    j = e.Jornada.cargar(carpeta_j01(tmp_path))
+    assert j.referencia("nir") is not None and len(j.pendientes_sanas()) == 4
+    assert env.correr("sanas") == 0
+
+
+def test_reiniciar_con_impactos_exige_forzar(tmp_path):
+    env = Entorno(tmp_path)
+    assert env.correr(*JORNADA) == 0
+    assert env.correr("sanas") == 0
+    assert env.correr("impactos") == 0
+    assert env.correr("reiniciar", "--desde", "sanas") == 2
+    assert any("--forzar" in linea for linea in env.salida) and not reinicios(tmp_path)
+    assert e.Jornada.cargar(carpeta_j01(tmp_path)).tiene_impactos()
+    assert env.correr("reiniciar", "--desde", "impactos", "--forzar") == 0
+    j = e.Jornada.cargar(carpeta_j01(tmp_path))
+    assert not j.tiene_impactos() and j.pendientes_sanas() == []
+
+
+def test_reiniciar_desde_impactos_aparta_solo_las_fotos_posteriores_al_impacto(tmp_path):
+    env = Entorno(tmp_path)
+    assert env.correr(*JORNADA_CERO) == 0
+    assert env.correr("sanas") == 0
+    assert env.correr("impactos") == 0
+    assert env.correr("reiniciar", "--desde", "impactos", "--forzar") == 0
+    assert sorted(m["fase"] for m in metas_de(tmp_path)) == ["sano"] * 4
+    (apartados,) = reinicios(tmp_path)
+    fases = [json.loads(p.read_text())["fase"] for p in (apartados / "news" / "meta").glob("*.json")]
+    assert fases == ["post_impacto"] * 4
+    assert env.correr("impactos") == 0 and len(metas_de(tmp_path)) == 8
+
+
+def test_reiniciar_marca_perdido_lo_pendiente_y_avisa_lo_ya_subido(tmp_path):
+    env = Entorno(tmp_path)
+    assert env.correr(*JORNADA) == 0
+    assert env.correr("subir", env={"OCI_PAR_URL": SECRETO}) == 0      # sube la calibracion (10)
+    assert env.correr("sanas") == 0
+    cola = subida.ColaSubida(carpeta_j01(tmp_path) / "pendientes.jsonl")
+    subida.encolar_faltantes(cola, carpeta_j01(tmp_path))              # 12 de las sanas, pendientes
+    assert env.correr("reiniciar", "--desde", "vacia") == 0
+    resumen = subida.ColaSubida(carpeta_j01(tmp_path) / "pendientes.jsonl").resumen()
+    assert resumen == {"pendientes": 0, "subidos": 10, "perdidos": 12}
+    assert any("3 de esos archivos ya estaban subidos" in linea for linea in env.salida)
+    env.puts.clear()
+    assert env.correr("subir", env={"OCI_PAR_URL": SECRETO}) == 0
+    assert env.puts == [] and "SECRETO123" not in "\n".join(env.salida)
+
+
+def test_reiniciar_cancelado_con_q_no_toca_nada(tmp_path):
+    env = Entorno(tmp_path)
+    assert env.correr(*JORNADA) == 0
+    assert env.correr("sanas") == 0
+    antes = (carpeta_j01(tmp_path) / e.NOMBRE_ESTADO).read_text()
+    codigo = captura.main(["--base", env.base, "reiniciar", "--desde", "sanas"],
+                          entorno=env.dic(entrada=lambda texto: "q"))
+    assert codigo == 0 and any("Cancelado" in linea for linea in env.salida)
+    assert (carpeta_j01(tmp_path) / e.NOMBRE_ESTADO).read_text() == antes and not reinicios(tmp_path)

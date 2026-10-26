@@ -38,7 +38,7 @@ archivo no cambian, porque el pipeline empareja por la expresión `(\w+)_(rgb|ni
 | Archivo | Contenido |
 | --- | --- |
 | `captura.py` | Interfaz de línea de comandos y arranque. |
-| `flujo.py` | Lógica de cada subcomando (jornada, sanas, impactos, ronda, estado, subir, enfoque). |
+| `flujo.py` | Lógica de cada subcomando (jornada, sanas, impactos, ronda, estado, subir, reiniciar, enfoque). |
 | `protocolo.py` | Calendario, tolerancias, ritmo y sorteo de zonas (lógica pura). |
 | `estado.py` | `jornada.json`: escritura atómica y reanudación. |
 | `calidad.py` | QC contra la referencia de la bandeja vacía. |
@@ -172,6 +172,13 @@ Verificado en la Pi: tras el ciclo, 1,2 ms dio media 22, 4,5 ms dio 62, y 0,5 co
 invalida la calibración (se hizo con una exposición que no era la pedida) y `sanas`, `ronda` e `impactos` (si la
 jornada incluye la ronda +0 h) se niegan a correr hasta repetir `jornada`. La razón queda en `jornada.json` (`autoverificacion_exposicion`).
 
+**La misma trampa con el balance de blancos.** El 2026-10-24 la Arducam se desconectó y reconectó por USB varias veces
+(`usb usb1-port1: disabled by hub (EMI?)` en `journalctl -k`). Tras cada reconexión el driver le reescribe
+`white_balance_automatic=0` y la temperatura, la cámara los informa, pero sigue en balance automático: la hoja salió
+neutra (R/G ≈ 0,92) en vez de cian (≈ 0,45) en 57 caras de la ronda +4 h. Por eso, antes de cada captura y aunque lea
+manual, el programa escribe `white_balance_automatic=1`, pausa, `=0`, y la temperatura un paso (100 K) corrida y de
+vuelta, para que la escritura no se omita por repetir el valor.
+
 `backlight_compensation=0` y `power_line_frequency=0` son obligatorios: de fábrica `backlight_compensation=1` es un realce
 adaptativo de brillo que anula la exposición fija. Se fijan en cada sesión y un valor distinto al leerlo de vuelta es un error.
 
@@ -229,7 +236,8 @@ python3 ~/captura_v3/captura.py sanas
 ```
 
 Para cada mango y cara: `Mango 7 · cara 2 → coloca y presiona Enter`. Captura RGB y NIR, aplica el QC y muestra una
-línea con el resultado. Marca el avance después de cada cara, así que reanuda donde quedó. `q` sale.
+línea con el resultado. Marca el avance después de cada cara, así que reanuda donde quedó. `r` repite la
+foto anterior (ver "Repetir la foto anterior") y `q` sale.
 
 ### 3. Impactos
 
@@ -343,6 +351,55 @@ después de cada cara y la cola de subida es un registro de eventos que tolera u
 
 Si la jornada se interrumpe durante la calibración, vuelve a ejecutar `jornada` con el mismo `--id`: reanuda los
 pasos pendientes (no repite el barrido de balance ya hecho).
+
+## Repetir la foto anterior (`r`)
+
+Si la foto recién tomada salió mal y se nota en el momento (la mano en la NIR, el mango sin poner o sin girar,
+otro mango, la misma cara dos veces), escribe `r` y Enter en la pregunta siguiente. Cada pregunta que viene
+después de una foto lo ofrece y dice cuál se repetiría: la cara siguiente, el próximo golpe (para la +0 h del
+mango anterior), "Enter = empezar", la cuenta regresiva de `ronda` y un "Enter = terminar" al final de cada etapa.
+
+```text
+Mango 7 · +4 h · cara 3 → coloca y presiona Enter · r = repetir la foto anterior (mango 7 · +4 h · cara 2) r
+↺ Foto de mango 7 · +4 h · cara 2 apartada a descartes/repeticion-20261025-151508/ (no se sube). Se repite ahora.
+Mango 7 · +4 h · cara 2 (repetición) → coloca y presiona Enter · q = salir (la cara queda pendiente)
+```
+
+- La foto mala no se borra: va a `descartes/repeticion-<fecha>/` con su ruta, y lo que seguía en la cola de subida
+  queda como perdido. Si ya se había subido, sigue en OCI y el programa lo avisa.
+- La nueva toma recalcula las horas desde el golpe y la desviación; si la ventana ya pasó, queda marcada fuera de
+  tolerancia como cualquier foto tardía.
+- Cada repetición queda en `repeticiones` de `jornada.json` (mango, momento, cara, timestamp apartado, carpeta).
+- `q` en la pregunta de la repetición sale y deja la cara pendiente: el mismo comando la vuelve a pedir.
+- Solo repite la última foto de la sesión en curso. Para una foto anterior o de una sesión ya cerrada, usa
+  `reiniciar` (una etapa entera) o apártala a mano antes de volver a correr `ronda`.
+
+## Repetir una etapa en la misma jornada (`reiniciar`)
+
+Si algo salió mal (se movió la hoja después de la bandeja vacía, una luz mal puesta en las sanas...), `reiniciar`
+aparta lo capturado desde una etapa y la deja pendiente, sin cambiar de `--id`:
+
+```bash
+python3 ~/captura_v3/captura.py reiniciar --desde sanas
+```
+
+| `--desde` | Se repite | Se conserva |
+| --- | --- | --- |
+| `calibracion` | Tarjeta gris, balance de blancos, bandeja vacía, ArUco, verificación de exposición, sanas, impactos y rondas | Zonas sorteadas y semilla |
+| `vacia` | Bandeja vacía (referencia del QC), sanas, impactos y rondas | Tarjeta gris, balance de blancos, ArUco y verificación |
+| `sanas` | Sanas, impactos y rondas | Toda la calibración |
+| `impactos` | Impactos (con sus fotos +0 h) y rondas | Calibración y sanas |
+
+- **No se borra nada:** los archivos van a `descartes/reinicio-<fecha>/` con su ruta (`news/...`, `calib/...`), que
+  `subir` nunca recorre. Lo que estaba en la cola de subida queda como perdido para no subirlo; lo que ya se había
+  subido sigue en OCI (la URL pre-autenticada no permite borrar) y el programa avisa cuántos archivos son.
+- Pide confirmación (`Enter = reiniciar · q = cancelar`) y registra cada reinicio en `reinicios` de `jornada.json`.
+- **Con impactos registrados se niega** salvo con `--forzar`: la fruta ya está golpeada y unas "sanas" nuevas no
+  serían sanas.
+- Después de `--desde vacia` o `--desde calibracion`, vuelve a ejecutar el mismo comando de `jornada` (mismo `--id`,
+  `--lote` y `--mangos`): retoma solo la calibración pendiente. Mientras falte la bandeja vacía, `sanas`, `impactos`
+  y `ronda` se niegan a correr.
+- Los timestamps nunca se reutilizan, así que las fotos nuevas no pisan las apartadas.
 
 ## Control de calidad (QC)
 

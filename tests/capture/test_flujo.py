@@ -349,7 +349,7 @@ def test_sanas_reanuda_donde_se_quedo(tmp_path):
     flujo.cmd_sanas(ctx1, args())          # mango 1 completo y sale al llegar al mango 2
     j = e.Jornada.cargar(ctx.base / "J01")
     assert j.pendientes_sanas() == [(2, 1), (2, 2)]
-    ctx2, _, salida = contexto(tmp_path, entradas=["", ""], auto=False)
+    ctx2, _, salida = contexto(tmp_path, entradas=["", "", ""], auto=False)   # el ultimo: Enter = terminar
     flujo.cmd_sanas(ctx2, args())
     assert e.Jornada.cargar(ctx.base / "J01").pendientes_sanas() == []
     assert len(metas(ctx.base / "J01")) == 4
@@ -600,7 +600,7 @@ def test_impactos_con_ronda_cero_al_reanudar_con_la_ventana_vencida_ofrece_captu
     raiz = ctx0.base / "J01"
     assert e.Jornada.cargar(raiz).n_caras_hechas_ronda(1, 0) == 0
     reloj.avanzar(minutes=30)                          # la ventana +0 h (±0,5 min) del mango 1 ya pasó
-    ctx2, _, salida2 = contexto(tmp_path, entradas=["s", "", "", "", ""], auto=False, reloj=reloj)
+    ctx2, _, salida2 = contexto(tmp_path, entradas=["s", "", "", "", "", ""], auto=False, reloj=reloj)
     flujo.cmd_impactos(ctx2, args())
     j = e.Jornada.cargar(raiz)
     assert "Enter = capturar igual · s = omitir esta ronda del mango · q = salir" in "\n".join(ctx2.prompts)
@@ -1245,3 +1245,127 @@ def test_sin_ocupantes_o_sin_fuser_no_hay_aviso(tmp_path):
     ctx2.hw.salud.ocupantes = lambda: None               # fuser no esta instalado: no se pudo verificar
     flujo.cmd_sanas(ctx2, args())
     assert not any("Otro proceso" in linea for linea in salida2)
+
+
+# --- repetir la ultima foto (r) ---------------------------------------------------------------------------
+def guion(*pasos, defecto=""):
+    """Entrada interactiva: cada paso es (fragmento del mensaje, respuesta) y se usa una sola vez, en orden."""
+    pendientes = list(pasos)
+
+    def entrada(texto):
+        if pendientes and pendientes[0][0] in texto:
+            return pendientes.pop(0)[1]
+        return defecto
+    entrada.pendientes = pendientes
+    return entrada
+
+
+def apartadas(raiz):
+    return sorted((raiz / "descartes").glob("repeticion-*/news/*/*"))
+
+
+def test_sanas_r_repite_la_foto_anterior_y_la_aparta_sin_borrarla(tmp_path):
+    ctx0, _, _ = jornada_lista(tmp_path)
+    raiz = ctx0.base / "J01"
+    entrada = guion(("Mango 1 · cara 2 →", "r"))
+    ctx, _, salida = contexto(tmp_path, auto=False, entrada=entrada)
+    flujo.cmd_sanas(ctx, args())
+    assert entrada.pendientes == []
+    j = e.Jornada.cargar(raiz)
+    assert j.pendientes_sanas() == []
+    rep, = j.datos["repeticiones"]
+    assert (rep["mango"], rep["cara"], rep["momento"], rep["archivos"]) == (1, 1, "sano", 3)
+    assert rep["timestamp"] != j.datos["sanas"]["1"]["1"]["timestamp"]
+    assert len(metas(raiz)) == 4                                              # el dataset sigue con una por cara
+    assert sorted(p.name for p in apartadas(raiz)) == sorted(
+        f"mango_{t}_{rep['timestamp']}.{x}" for t, x in (("rgb", "jpg"), ("nir", "jpg"), ("meta", "json")))
+    assert rep["carpeta"].startswith("descartes/repeticion-")
+    texto = "\n".join(ctx.prompts)
+    assert "r = repetir la foto anterior (mango 1 · sano · cara 1)" in texto
+    assert "Mango 1 · cara 1 (repetición) → coloca y presiona Enter" in texto
+    assert any(linea.startswith("↺ Foto de mango 1 · sano · cara 1 apartada") for linea in salida)
+
+
+def test_la_primera_cara_no_ofrece_r_y_r_sin_foto_previa_avisa_y_vuelve_a_preguntar(tmp_path):
+    ctx0, _, _ = jornada_lista(tmp_path)
+    ctx, _, salida = contexto(tmp_path, auto=False, entrada=guion(("Mango 1 · cara 1 →", "r")))
+    flujo.cmd_sanas(ctx, args())
+    assert "r = repetir" not in ctx.prompts[0]
+    assert ctx.prompts[1].startswith("Mango 1 · cara 1 →")                   # la misma pregunta, otra vez
+    assert "⚠ No hay una foto de esta sesión para repetir." in salida
+    j = e.Jornada.cargar(ctx0.base / "J01")
+    assert j.pendientes_sanas() == [] and "repeticiones" not in j.datos
+
+
+def test_al_terminar_una_etapa_se_puede_repetir_la_ultima_foto(tmp_path):
+    ctx0, _, _ = jornada_lista(tmp_path)
+    entrada = guion(("Enter = terminar", "r"))
+    ctx, _, salida = contexto(tmp_path, auto=False, entrada=entrada)
+    flujo.cmd_sanas(ctx, args())
+    j = e.Jornada.cargar(ctx0.base / "J01")
+    assert [(r["mango"], r["cara"]) for r in j.datos["repeticiones"]] == [(2, 2)]
+    assert sum("Enter = terminar" in p for p in ctx.prompts) == 2             # vuelve a ofrecerlo tras repetir
+    assert j.pendientes_sanas() == [] and "Sanas completas" in salida[-1]
+
+
+def test_q_en_la_repeticion_sale_y_la_cara_queda_pendiente(tmp_path):
+    ctx0, _, _ = jornada_lista(tmp_path)
+    ctx, _, salida = contexto(tmp_path, auto=False,
+                              entrada=guion(("Mango 1 · cara 2 →", "r"), ("(repetición)", "q")))
+    flujo.cmd_sanas(ctx, args())
+    j = e.Jornada.cargar(ctx0.base / "J01")
+    assert j.pendientes_sanas() == [(1, 1), (1, 2), (2, 1), (2, 2)]
+    assert len(j.datos["repeticiones"]) == 1 and flujo.MENSAJE_SALIR in salida
+
+
+def test_impactos_r_antes_del_siguiente_golpe_repite_la_ultima_foto_cero(tmp_path):
+    ctx0, reloj, _ = jornada_cero(tmp_path)
+    reloj.paso = timedelta(seconds=2)
+    entrada = guion(("Mango 2 · +0 h · cara 1 →", ""), defecto="")
+    vistos = []
+
+    def con_r_en_el_segundo_mango(texto):
+        vistos.append(texto)
+        if texto.startswith("Cara 1 · zona") and sum(v.startswith("Cara 1 · zona") for v in vistos) == 2:
+            return "r"                                             # antes de golpear el mango 2
+        return entrada(texto)
+    ctx, _, _ = contexto(tmp_path, auto=False, entrada=con_r_en_el_segundo_mango, reloj=reloj)
+    flujo.cmd_impactos(ctx, args())
+    raiz = ctx0.base / "J01"
+    j = e.Jornada.cargar(raiz)
+    rep, = j.datos["repeticiones"]
+    assert (rep["mango"], rep["cara"], rep["momento"]) == (1, 2, "0")
+    assert j.pendientes_impactos() == [] and j.estado_ronda(1, 0) == "completa" and j.estado_ronda(2, 0) == "completa"
+    nueva = leer_meta(flujo.rutas_dataset(raiz, j.datos["rondas"]["1"]["0"]["2"]["timestamp"]).meta)
+    assert nueva["impacto"]["hora_iso"] == j.datos["impactos"]["1"]["2"]["hora_iso"]
+    assert len(post_impacto(raiz, 0)) == 4
+
+
+def test_ronda_r_en_la_cara_siguiente_repite_la_anterior_con_horas_recalculadas(tmp_path):
+    ctx0, reloj, _ = jornada_con_impactos(tmp_path)
+    reloj.avanzar(minutes=1)                                       # vence la ronda +1 h del mango 1
+    entrada = guion(("Mango 1 · cara 2 →", "r"), ("esperar con cuenta regresiva", "q"))
+    ctx, _, _ = contexto(tmp_path, auto=False, entrada=entrada, reloj=reloj)
+    flujo.cmd_ronda(ctx, args())
+    raiz = ctx0.base / "J01"
+    j = e.Jornada.cargar(raiz)
+    rep, = j.datos["repeticiones"]
+    assert (rep["mango"], rep["cara"], rep["momento"]) == (1, 1, "1")
+    reg = j.datos["rondas"]["1"]["1"]["1"]
+    assert reg["timestamp"] != rep["timestamp"]
+    meta = leer_meta(flujo.rutas_dataset(raiz, reg["timestamp"]).meta)
+    assert (meta["mango_id"], meta["cara"], meta["ronda_h"]) == (1, 1, 1)
+    assert meta["impacto"]["desviacion_min"] == reg["desviacion_min"]
+    assert "r = repetir la foto anterior (mango 1 · +1 h · cara 1)" in "\n".join(ctx.prompts)
+
+
+def test_repetir_saca_de_la_cola_lo_pendiente_para_no_subir_la_foto_mala(tmp_path):
+    ctx0, _, _ = jornada_lista(tmp_path, no_subir=False)
+    ctx, _, _ = contexto(tmp_path, auto=False, subir=True, entrada=guion(("Mango 1 · cara 2 →", "r")))
+    flujo.cmd_sanas(ctx, args())                                   # sin URL: todo queda en la cola
+    raiz = ctx0.base / "J01"
+    rep, = e.Jornada.cargar(raiz).datos["repeticiones"]
+    cola = subida.ColaSubida(raiz / "pendientes.jsonl")
+    for t, x in (("rgb", "jpg"), ("nir", "jpg"), ("meta", "json")):
+        assert cola.estado_de(f"news/{t}/mango_{t}_{rep['timestamp']}.{x}") == "perdido"
+    assert cola.resumen()["pendientes"] == 12 and rep["ya_subidos"] == 0
