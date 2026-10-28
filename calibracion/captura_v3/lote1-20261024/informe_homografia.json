@@ -1,0 +1,57 @@
+{
+  "marcadores": {
+    "rgb": 44,
+    "nir": 27,
+    "comunes": 27,
+    "inliers_centros": 22
+  },
+  "esquinas_charuco_comunes": 37,
+  "inliers_charuco": 26,
+  "error_en_esquinas_charuco_px": {
+    "vieja_22oct": {
+      "mediana": 3.59,
+      "p95": 7.46,
+      "max": 8.45,
+      "n": 37
+    },
+    "nueva_centros": {
+      "mediana": 2.01,
+      "p95": 6.02,
+      "max": 7.78,
+      "n": 37
+    },
+    "nueva_charuco": {
+      "mediana": 1.91,
+      "p95": 5.27,
+      "max": 6.42,
+      "n": 37
+    },
+    "charuco_validacion_cruzada": [
+      {
+        "mediana": 2.09,
+        "p95": 5.76,
+        "max": 6.3,
+        "n": 19
+      },
+      {
+        "mediana": 2.49,
+        "p95": 4.86,
+        "max": 4.96,
+        "n": 18
+      }
+    ]
+  },
+  "zona_rgb_cubierta_por_esquinas_pct": {
+    "x": [
+      43.3,
+      86.0
+    ],
+    "y": [
+      19.6,
+      77.3
+    ]
+  },
+  "fuente": "calib/calib-aruco-{rgb,nir}-1792857744.jpg de la jornada lote1-20261024 (2026-10-24 11:02, tablero a la altura mediana de los mangos)",
+  "recomendada": "matriz_homografia_lote1_20261024_centros.npy (convencion del repo: centros de marcador, RANSAC 5 px); la charuco da un error parecido",
+  "nota_comparacion": "La clave 'vieja_22oct' de este informe es en realidad la matriz de prueba de las 10:44 del mismo dia: 3,6 px de mediana en el plano del ArUco de la jornada, o sea que el montaje no se movio entre la prueba y la jornada."
+}

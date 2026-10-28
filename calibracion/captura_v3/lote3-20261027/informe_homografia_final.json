@@ -1,0 +1,54 @@
+{
+  "marcadores": {
+    "rgb": 44,
+    "nir": 44,
+    "comunes": 44,
+    "inliers_centros": 38
+  },
+  "esquinas_charuco_comunes": 70,
+  "inliers_charuco": 54,
+  "error_en_esquinas_charuco_px": {
+    "vieja_22oct": {
+      "mediana": 53.49,
+      "p95": 109.08,
+      "max": 117.58,
+      "n": 70
+    },
+    "nueva_centros": {
+      "mediana": 2.31,
+      "p95": 5.33,
+      "max": 7.23,
+      "n": 70
+    },
+    "nueva_charuco": {
+      "mediana": 1.59,
+      "p95": 5.81,
+      "max": 12.83,
+      "n": 70
+    },
+    "charuco_validacion_cruzada": [
+      {
+        "mediana": 2.08,
+        "p95": 4.28,
+        "max": 8.82,
+        "n": 35
+      },
+      {
+        "mediana": 1.89,
+        "p95": 4.03,
+        "max": 4.82,
+        "n": 35
+      }
+    ]
+  },
+  "zona_rgb_cubierta_por_esquinas_pct": {
+    "x": [
+      32.2,
+      83.3
+    ],
+    "y": [
+      12.1,
+      59.4
+    ]
+  }
+}
