@@ -1,0 +1,212 @@
+{
+ "script_version": "3.0.0",
+ "schema": "3.0",
+ "tipo": "calibracion",
+ "calibracion": "aruco-final",
+ "timestamp": 1793154347,
+ "fecha_local": "2026-10-27T21:25:47-05:00",
+ "jornada": {
+  "id": "lote3-20261027",
+  "lote": "lote 3",
+  "temperatura_c": 24.5
+ },
+ "rgb": {
+  "device_by_id": "/dev/v4l/by-id/usb-Arducam_Technology_Co.__Ltd._Arducam_8mp_SN0001-video-index0",
+  "resolucion": "3264x2448",
+  "metodo": "v4l2-ctl",
+  "comando": [
+   "v4l2-ctl",
+   "-d",
+   "/dev/v4l/by-id/usb-Arducam_Technology_Co.__Ltd._Arducam_8mp_SN0001-video-index0",
+   "--set-fmt-video=width=3264,height=2448,pixelformat=MJPG",
+   "--stream-mmap=3",
+   "--stream-skip=5",
+   "--stream-count=1",
+   "--stream-to=/home/RsPhobos/capturas/lote3-20261027/calib/calib-aruco-final-rgb-1793154347.jpg.mjpg.tmp"
+  ],
+  "tablas_huffman_en_origen": true,
+  "comando_mjpeg2jpeg": null,
+  "controles": {
+   "brightness": 0,
+   "contrast": 32,
+   "saturation": 64,
+   "hue": 0,
+   "white_balance_automatic": 0,
+   "red_balance": 100,
+   "blue_balance": 100,
+   "gamma": 100,
+   "gain": 0,
+   "power_line_frequency": 0,
+   "hue_automatic": 0,
+   "white_balance_temperature": 4700,
+   "sharpness": 3,
+   "backlight_compensation": 0,
+   "auto_exposure": 1,
+   "exposure_time_absolute": 104,
+   "exposure_dynamic_framerate": 0,
+   "focus_absolute": 300,
+   "focus_automatic_continuous": 0,
+   "zoom_continuous": 0,
+   "privacy": 0,
+   "iris_absolute": 0,
+   "iris_relative": 0,
+   "pan_speed": 0,
+   "tilt_speed": 0
+  },
+  "controles_pedidos": {
+   "auto_exposure": 1,
+   "exposure_dynamic_framerate": 0,
+   "exposure_time_absolute": 104,
+   "gain": 0,
+   "white_balance_automatic": 0,
+   "white_balance_temperature": 4700,
+   "focus_automatic_continuous": 0,
+   "focus_absolute": 300,
+   "sharpness": 3,
+   "backlight_compensation": 0,
+   "power_line_frequency": 0
+  },
+  "controles_aplicados": [
+   "auto_exposure",
+   "exposure_dynamic_framerate",
+   "exposure_time_absolute",
+   "white_balance_automatic",
+   "white_balance_temperature"
+  ],
+  "controles_fallidos": {},
+  "diferencias": {},
+  "config": {
+   "resolucion": "3264x2448",
+   "mjpeg2jpeg": "auto",
+   "cuadros_descartados": 5,
+   "timeout_s": 60,
+   "controles": {
+    "auto_exposure": 1,
+    "exposure_dynamic_framerate": 0,
+    "exposure_time_absolute": 104,
+    "gain": 0,
+    "white_balance_automatic": 0,
+    "white_balance_temperature": 4700,
+    "focus_automatic_continuous": 0,
+    "focus_absolute": 300,
+    "sharpness": 3,
+    "backlight_compensation": 0,
+    "power_line_frequency": 0
+   }
+  }
+ },
+ "nir": {
+  "comando": [
+   "rpicam-still",
+   "-o",
+   "/home/RsPhobos/capturas/lote3-20261027/calib/calib-aruco-final-nir-1793154347.jpg",
+   "--width",
+   "3280",
+   "--height",
+   "2464",
+   "--mode",
+   "3280:2464",
+   "--shutter",
+   "6000",
+   "--gain",
+   "1.0",
+   "--awbgains",
+   "1,1",
+   "--denoise",
+   "cdn_off",
+   "-t",
+   "1000",
+   "--nopreview",
+   "--metadata",
+   "/home/RsPhobos/capturas/lote3-20261027/tmp/nir_1793154347.json",
+   "--metadata-format",
+   "json"
+  ],
+  "rpicam_metadata": {
+   "ExposureTime": 5992,
+   "SensorTimestamp": 21864948929000,
+   "FrameWallClock": 1793154353603067648,
+   "ColourTemperature": 5536,
+   "ScalerCrop": "(0, 0)/3280x2464",
+   "ColourCorrectionMatrix": [
+    2.286246,
+    -0.838955,
+    -0.447291,
+    -0.654532,
+    2.63268,
+    -0.978151,
+    -0.277473,
+    -0.586022,
+    1.863494
+   ],
+   "FocusFoM": 3956,
+   "SensorBlackLevels": [
+    4096,
+    4096,
+    4096,
+    4096
+   ],
+   "ColourGains": [
+    1.0,
+    1.0
+   ],
+   "Lux": 894.545898,
+   "FrameDuration": 47183,
+   "DigitalGain": 1.001266,
+   "AeState": 0,
+   "AnalogueGain": 1.0
+  },
+  "config": {
+   "width": 3280,
+   "height": 2464,
+   "mode": "3280:2464",
+   "shutter_us": 6000,
+   "gain": 1.0,
+   "denoise": "cdn_off",
+   "awbgains": "1,1",
+   "timeout_ms": 1000,
+   "raw": false,
+   "timeout_s": 25
+  },
+  "raw_dng": false
+ },
+ "calidad": {
+  "rgb": {
+   "borde_media": 67.21,
+   "pct_recortado_centro": 0.0
+  },
+  "nir": {
+   "borde_media": 37.44,
+   "pct_recortado_centro": 0.0
+  }
+ },
+ "salud": {
+  "throttled": {
+   "raw": "0x0",
+   "valor": 0,
+   "flags": []
+  },
+  "camaras": {
+   "rgb_device": "/dev/v4l/by-id/usb-Arducam_Technology_Co.__Ltd._Arducam_8mp_SN0001-video-index0",
+   "nir_presente": true
+  }
+ },
+ "archivos": {
+  "rgb": {
+   "sha256": "837d127914a0e69ec977361c8535a9583a011532662748c6c69fc446c92fd72d",
+   "bytes": 379787
+  },
+  "nir": {
+   "sha256": "bd63de565ec09cb68c5c0f483164f40181dde4ec2c04fdc7a13ac5080fe12ef2",
+   "bytes": 1358877
+  }
+ },
+ "subida": {
+  "estado": "pendiente"
+ },
+ "tiempos_s": {
+  "rgb": 3.29,
+  "nir": 3.89,
+  "total": 7.9
+ }
+}
