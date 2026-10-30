@@ -1,0 +1,16 @@
+# RGB -> NIR homography of every captura_v3 lot (H = cv2.findHomography(pts_rgb, pts_nir)).
+# Source and errors: calibracion/captura_v3/README.md. Paths are relative to the repo root.
+# A rule applies to the photos with min_timestamp <= timestamp <= max_timestamp (both optional);
+# every photo must match exactly one rule of its jornada.
+lots:
+  lote1-20261024:
+    - matrix: calibracion/captura_v3/lote1-20261024/matriz_homografia_lote1_20261024_centros.npy
+  lote2-20261025:
+    - matrix: calibracion/captura_v3/lote2-20261025/matriz_homografia_aruco_3264x2448_lote2_20261025_centros.npy
+  lote3-20261027:
+    # Morning pair, valid up to 75-1 +6 h (15:07:48). The cameras were re-aimed at about 15:25.
+    - matrix: calibracion/captura_v3/lote3-20261027/matriz_homografia_aruco_3264x2448_lote3_20261027_centros.npy
+      max_timestamp: 1793131668
+    # Closing pair, from 75-2 +6 h (15:32:35) on.
+    - matrix: calibracion/captura_v3/lote3-20261027/matriz_homografia_aruco_3264x2448_lote3_20261027_final_centros.npy
+      min_timestamp: 1793133155

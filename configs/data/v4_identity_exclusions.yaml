@@ -1,0 +1,5 @@
+# Photos whose mango/face identity the SIFT audit (auditar_sift.py) did not confirm
+# (docs/tesis/plan-experimental.md, section 3.1 rule 3). Each entry: {timestamp: <int>, reason: <text>}.
+# Lots 1-3: the audits in jornadas/*/observaciones_lote{1,2,3}.json confirmed every photo kept in
+# news/, so the list is empty. Append entries; never remove one without a note in the PR.
+exclusions: []
