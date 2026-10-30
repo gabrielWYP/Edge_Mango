@@ -262,6 +262,9 @@ class YOLODataset(Dataset):
             # Match NIR by stem substitution
             nir_name = rgb_path.name.replace("_rgb", "_nir")
             nir_path = self.nir_dir / nir_name
+            if not nir_path.exists():
+                # Pre-registered NIR (scripts/build_v4_dataset.py) is stored as lossless PNG.
+                nir_path = nir_path.with_suffix(".png")
 
             if not nir_path.exists():
                 print(f"[YOLODataset] Warning: missing NIR pair for {rgb_path.name}, skipping.")

@@ -167,6 +167,24 @@ class TestDatasetRegistersNir:
         pad_y = (self.IMAGE_SIZE - RGB_H) // 2
         assert (cx, cy - pad_y) == pytest.approx((x_nir, y_nir), abs=1.5)
 
+    def test_pre_registered_png_nir_is_used_when_no_jpg_exists(self, tmp_path: Path) -> None:
+        x_rgb, y_rgb = 100, 60
+        nir, _ = _nir_with_block_at_rgb_point(x_rgb, y_rgb)
+        _write_pair(tmp_path, nir)
+        jpg = tmp_path / "nir" / "mango_nir_00001.jpg"
+        H_inv = np.linalg.inv(H_RGB_TO_NIR)
+        registered = cv2.warpPerspective(cv2.imread(str(jpg), cv2.IMREAD_GRAYSCALE), H_inv, (RGB_W, RGB_H))
+        cv2.imwrite(str(jpg.with_suffix(".png")), registered)
+        jpg.unlink()
+        h_path = tmp_path / "identity.npy"
+        np.save(h_path, np.eye(3))
+
+        ds = self._dataset(tmp_path, h_path)
+        assert ds.pairs[0]["nir_path"].suffix == ".png"
+        cx, cy = self._nir_centroid(ds[0], ds)
+        pad_y = (self.IMAGE_SIZE - RGB_H) // 2
+        assert (cx, cy - pad_y) == pytest.approx((x_rgb, y_rgb), abs=1.5)
+
     def test_kwarg_is_required(self, tmp_path: Path) -> None:
         nir, _ = _nir_with_block_at_rgb_point(100, 60)
         _write_pair(tmp_path, nir)
