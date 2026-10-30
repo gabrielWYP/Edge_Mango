@@ -83,7 +83,8 @@ una cota superior del área real en t bajos. Por eso se reporta AP30 junto a AP5
 ### 3.3 Folds
 
 - **Leave-one-lot-out**: el fold *k* prueba en el lote *k*, valida en otro lote (fijo y escrito en el archivo de folds) y entrena en los tres restantes (75 mangos).
-- Archivo nuevo `configs/folds/v4_lot_5fold.json`, generado con `scripts/make_grouped_folds.py`. El de v3 (`lot_5fold.json`) no se reutiliza.
+- Archivo nuevo `configs/folds/v4_lot_5fold.json`, con la misma asignación de `scripts/make_grouped_folds.py` (val = lote *k*+1). El de v3 (`lot_5fold.json`) no se reutiliza. Los folds se generan con `scripts/make_v4_folds.py` a partir de la columna `lot` del `index.csv` del dataset v4 y no por día de captura: el lote 1 termina el 25/10 y el lote 2 empieza ese mismo día, así que agrupar por día los fusionaría.
+- `nir_mean` / `nir_std` se calculan por fold y por variante de NIR solo con el train del fold (`folds_meta.json`).
 - Todas las fotos de un mango (sus 4 caras y sus 8 momentos) van al mismo lado del split. Esto lo garantiza el split por lote; igual se verifica con una prueba de no-solapamiento de `mango_id`.
 - El lote es también el día de captura, con su propio balance de blancos (lote 1: 5300 K; lote 2: 4600 K) y su propia homografía RGB→NIR. LOLO mide exactamente esa generalización a un día nuevo.
 
