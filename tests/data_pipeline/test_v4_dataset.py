@@ -13,7 +13,7 @@ import pytest
 from src.annotation.nir_display import enhance_nir
 from src.data_pipeline.v4_dataset import build_dataset, raw_nir, registered_nir
 from src.data_pipeline.v4_selection import RGB_SIZE
-from tests.annotation.synthetic import JORNADA_1, make_meta, write_dataset
+from tests.annotation.synthetic import JORNADA_1, make_meta, synthetic_nir, write_dataset
 from tests.data_pipeline.v4_synth import H_SHIFT, RULES, make_task
 
 
@@ -97,6 +97,31 @@ class TestBuildDataset:
             "mango_nir_1.png",
             "mango_nir_2.png",
         ]
+
+    def test_interpolates_only_the_nir_lines_that_cross_the_mango(self, setup: dict) -> None:
+        nir_path = setup["data_root"] / "news" / "nir" / "mango_nir_2.jpg"
+        nir = synthetic_nir(2, 2464, 3280)
+        nir[1000, 1400:1700] = 5  # NIR mango box ~[1108, 806, 2108, 1606] (H_SHIFT)
+        nir[300, 200:500] = 5  # background
+        cv2.imwrite(str(nir_path), nir)
+        report = build_dataset(**setup)
+        out = setup["out_dir"]
+
+        with (out / "nir_lines.csv").open() as handle:
+            lines = list(csv.DictReader(handle))
+        assert [(line["stem"], line["row"], line["crosses_mango"]) for line in lines] == [
+            ("mango_rgb_2", "300", "0"),
+            ("mango_rgb_2", "1000", "1"),
+        ]
+        assert report["nir_lines"] == {"lot1": {"detected": 2, "interpolated": 1}}
+        with (out / "index.csv").open() as handle:
+            row = {r["stem"]: r for r in csv.DictReader(handle)}["mango_rgb_2"]
+        assert (row["nir_lines"], row["nir_lines_interpolated"]) == ("2", "1")
+        # In the RGB frame the lines sit 6 rows and 8 columns earlier.
+        for sub in ("nir", "nir_clahe"):
+            baked = cv2.imread(str(out / sub / "mango_nir_2.png"), cv2.IMREAD_UNCHANGED)
+            assert np.median(baked[994, 1420:1660]) > 60
+            assert np.median(baked[294, 220:460]) < 30
 
     def test_refuses_a_non_empty_output(self, setup: dict) -> None:
         setup["out_dir"].mkdir()

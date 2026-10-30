@@ -9,11 +9,15 @@ baked into the files, so training runs with ``nir_homography_path=<out>/homograp
     <out>/nir_clahe/mango_nir_<ts>.png  the CLAHE annotation view (``enhance_nir``), same warp
     <out>/labels/mango_rgb_<ts>.txt  YOLO labels in the RGB frame: 0 mango, 1 damage
     <out>/homographies/identity.npy
-    <out>/index.csv  exclusions.csv  report.json
+    <out>/index.csv  exclusions.csv  nir_lines.csv  report.json
 
 The photos come from ``v4_selection.select_photos``. The mango box (class 0) does not exist in
 Label Studio: it is the bounding box of ``rgb_mango_mask`` on the 1/4-scale RGB; a photo where
 no plausible mango is found is excluded as ``mango_mask_failed``.
+
+NIR line artifacts (``nir_lines``) are detected on the full NIR frame. Those whose pixels,
+mapped into the RGB frame, overlap the mango box are interpolated before both NIR variants are
+made; the rest are left. Every line is listed in ``nir_lines.csv``.
 """
 
 from __future__ import annotations
@@ -32,6 +36,17 @@ import yaml
 from src.annotation.captura_v3_tasks import load_wb_timestamps
 from src.annotation.mango_registration import rgb_mango_mask
 from src.annotation.nir_display import enhance_nir, method_params, nir_gray
+from src.data_pipeline.nir_lines import (
+    HALO,
+    MAX_RATIO,
+    MIN_DROP,
+    MIN_RUN,
+    ROW_GAP,
+    SMOOTH_PX,
+    detect_lines,
+    interpolate_lines,
+    line_corners,
+)
 from src.data_pipeline.v4_selection import (
     DRAWN_FROM_HOUR,
     LATENT_HOURS,
@@ -85,6 +100,8 @@ INDEX_FIELDS = (
     "damage_x1",
     "damage_y1",
     "damage_in_mango",
+    "nir_lines",
+    "nir_lines_interpolated",
 )
 EXCLUSION_FIELDS = (
     "timestamp",
@@ -95,6 +112,18 @@ EXCLUSION_FIELDS = (
     "ronda_h",
     "reason",
     "detail",
+)
+NIR_LINE_FIELDS = (
+    "stem",
+    "timestamp",
+    "lot",
+    "mango_id",
+    "cara",
+    "ronda_h",
+    "row",
+    "x0",
+    "x1",
+    "crosses_mango",
 )
 
 
@@ -145,8 +174,16 @@ def registered_nir(gray: np.ndarray, H_rgb_to_nir: np.ndarray) -> np.ndarray:
     )
 
 
-def bake_photo(job: tuple[Photo, Path, Path, Path]) -> dict | None:
-    """Write the RGB link, registered NIRs and labels of one photo; None if no mango is found."""
+def overlaps(a: np.ndarray, b: np.ndarray) -> bool:
+    """Whether two [x0, y0, x1, y1] boxes share some area."""
+    return bool(a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3])
+
+
+def bake_photo(job: tuple[Photo, Path, Path, Path]) -> tuple[dict, list[dict]] | None:
+    """Write the RGB link, registered NIRs and labels of one photo.
+
+    Returns the index row and one row per NIR line artifact, or None if no mango is found.
+    """
     photo, data_root, repo_root, out_dir = job
     c, label = photo.capture, photo.label
     stem = f"mango_rgb_{c.timestamp}"
@@ -200,6 +237,24 @@ def bake_photo(job: tuple[Photo, Path, Path, Path]) -> dict | None:
         }
     (out_dir / "rgb" / f"{stem}.jpg").symlink_to(rgb_src.resolve())
     bgr = read_nir(data_root / "news" / "nir" / f"mango_nir_{c.timestamp}.jpg")
+    nir_lines = detect_lines(nir_gray(bgr))
+    crossing = [
+        line
+        for line in nir_lines
+        if overlaps(box_in_rgb_frame(line_corners(line), "nir", H), mango)
+    ]
+    bgr = interpolate_lines(bgr, crossing)
+    row |= {"nir_lines": len(nir_lines), "nir_lines_interpolated": len(crossing)}
+    line_rows = [
+        {
+            **{k: row[k] for k in ("stem", "timestamp", "lot", "mango_id", "cara", "ronda_h")},
+            "row": line.row,
+            "x0": line.x0,
+            "x1": line.x1,
+            "crosses_mango": int(line in crossing),
+        }
+        for line in nir_lines
+    ]
     # CLAHE runs on the whole NIR frame, as in the annotation view: after the warp the
     # zero border would leak into its tiles.
     for sub, gray in (("nir", raw_nir(bgr)), ("nir_clahe", enhance_nir(bgr))):
@@ -208,7 +263,7 @@ def bake_photo(job: tuple[Photo, Path, Path, Path]) -> dict | None:
         if not cv2.imwrite(str(nir_out), nir, [cv2.IMWRITE_PNG_COMPRESSION, PNG_COMPRESSION]):
             raise OSError(f"cannot write {nir_out}")
     (out_dir / "labels" / f"{stem}.txt").write_text("".join(lines), encoding="utf-8")
-    return row
+    return row, line_rows
 
 
 def _sha256(path: Path) -> str:
@@ -254,16 +309,22 @@ def build_dataset(
             results = list(pool.map(bake_photo, jobs, chunksize=4))
     else:
         results = [bake_photo(job) for job in jobs]
-    rows = []
-    for photo, row in zip(photos, results):
-        if row is None:
+    rows, line_rows = [], []
+    for photo, result in zip(photos, results):
+        if result is None:
             excluded.append(Exclusion(photo.capture, "mango_mask_failed"))
         else:
-            rows.append(row)
+            rows.append(result[0])
+            line_rows += result[1]
     excluded.sort(key=lambda e: e.capture.timestamp)
 
     _write_csv(out_dir / "index.csv", INDEX_FIELDS, rows)
     _write_csv(out_dir / "exclusions.csv", EXCLUSION_FIELDS, [e.row() for e in excluded])
+    _write_csv(out_dir / "nir_lines.csv", NIR_LINE_FIELDS, line_rows)
+    nir_line_counts = {f"lot{r['lot']}": Counter(detected=0, interpolated=0) for r in rows}
+    for line_row in line_rows:
+        nir_line_counts[f"lot{line_row['lot']}"]["detected"] += 1
+        nir_line_counts[f"lot{line_row['lot']}"]["interpolated"] += line_row["crosses_mango"]
     included: dict[str, Counter] = {}
     for row in rows:
         included.setdefault(f"lot{row['lot']}", Counter())[row["ronda_h"]] += 1
@@ -294,6 +355,17 @@ def build_dataset(
                 "warp as nir",
                 **{k: v for k, v in method_params().items() if k != "jpeg_quality"},
             },
+            "nir_lines": {
+                "method": f"per pixel after a 1x{SMOOTH_PX} box filter: at least min_drop below "
+                "the darker of the rows row_gap above and below, and at most max_ratio of it; "
+                "runs of min_run px or more. Lines overlapping the mango box in the RGB frame "
+                "get rows +- halo linearly interpolated before both NIR variants",
+                "row_gap": ROW_GAP,
+                "min_drop": MIN_DROP,
+                "max_ratio": MAX_RATIO,
+                "min_run": MIN_RUN,
+                "halo": HALO,
+            },
             "mango_box": f"rgb_mango_mask on the 1/{MASK_DOWNSCALE} RGB, area fraction in "
             f"{list(MANGO_AREA_RANGE)}",
             "latent_hours": list(LATENT_HOURS),
@@ -303,6 +375,7 @@ def build_dataset(
         "num_excluded": len(excluded),
         "included": {lot: dict(sorted(c.items())) for lot, c in sorted(included.items())},
         "excluded": {lot: dict(sorted(c.items())) for lot, c in sorted(excluded_counts.items())},
+        "nir_lines": {lot: dict(sorted(c.items())) for lot, c in sorted(nir_line_counts.items())},
         "sin_bruise_faces": sorted(map(list, sin_bruise_faces(labels))),
         "annotation_conflicts": conflicts,
         "damage_mostly_outside_mango": sorted(
