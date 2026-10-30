@@ -175196,7 +175196,111 @@
  },
  {
   "id": 2999,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2438,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 37.98942544718431,
+       "y": 48.60864407618073,
+       "width": 7.908480510808434,
+       "height": 11.048259123565797,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "SmHH2vLotV",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction-changed"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "8ZQX8jwauQ",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "r4J8cNWFYl",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:16:02.678333Z",
+    "updated_at": "2026-10-30T22:16:02.678345Z",
+    "draft_created_at": null,
+    "lead_time": 7.588,
+    "prediction": {
+     "id": 919,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 37.23754574793619,
+        "y": 48.4656613875482,
+        "width": 7.908480510808434,
+        "height": 11.048259123565797,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "43 minutes",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.558927Z",
+     "updated_at": "2026-10-30T21:32:55.558945Z",
+     "model": null,
+     "model_run": null,
+     "task": 2999,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "d083fc19-4bf7-4859-acd0-f78129a9d0eb",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 2999,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 919,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -175253,21 +175357,90 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.519156Z",
-  "updated_at": "2026-10-30T21:32:55.519172Z",
+  "updated_at": "2026-10-30T22:16:02.737723Z",
   "allow_skip": true,
   "inner_id": 1799,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3000,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2439,
+    "completed_by": 1,
+    "result": [
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "onl-2cp_iN",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 37.486573576799145,
+       "y": 44.038668098818476,
+       "width": 10.096670247046191,
+       "height": 12.72545928829495,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "At-YoM-jD3",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "no"
+       ]
+      },
+      "id": "jKwAgDmmeD",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:16:20.467262Z",
+    "updated_at": "2026-10-30T22:16:20.467278Z",
+    "draft_created_at": null,
+    "lead_time": 8.484,
+    "prediction": {},
+    "result_count": 3,
+    "unique_id": "b86e3b35-a67b-4ac0-b599-81d11ac014f8",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3000,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": null,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [],
   "data": {
@@ -175297,21 +175470,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.519226Z",
-  "updated_at": "2026-10-30T21:32:55.519229Z",
+  "updated_at": "2026-10-30T22:16:20.526355Z",
   "allow_skip": true,
   "inner_id": 1800,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 0,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3001,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2440,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 30.461042898172202,
+       "y": 37.5025271505963,
+       "width": 9.19987993720507,
+       "height": 13.029456557019554,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "sBlnpSmNAX",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction-changed"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "uA0Bhg46e5",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "skrpJnteJT",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:16:32.846667Z",
+    "updated_at": "2026-10-30T22:16:32.846680Z",
+    "draft_created_at": "2026-10-30T22:16:30.329671Z",
+    "lead_time": 10.156,
+    "prediction": {
+     "id": 920,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 28.957283499675974,
+        "y": 34.92883875521079,
+        "width": 11.1332848781288,
+        "height": 15.88911032967012,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "43 minutes",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.558964Z",
+     "updated_at": "2026-10-30T21:32:55.558967Z",
+     "model": null,
+     "model_run": null,
+     "task": 3001,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "a67771c4-3bf7-44fa-ab81-664791c82ef6",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3001,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 920,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -175368,21 +175645,90 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.519249Z",
-  "updated_at": "2026-10-30T21:32:55.519252Z",
+  "updated_at": "2026-10-30T22:16:32.905024Z",
   "allow_skip": true,
   "inner_id": 1801,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3002,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2441,
+    "completed_by": 1,
+    "result": [
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "l-G-fvCkKr",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 40.06444683136413,
+       "y": 43.75270272155342,
+       "width": 6.659505907626205,
+       "height": 11.581597779234727,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "R-Y_Tm08en",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "ruBvbCsvXr",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:16:47.389109Z",
+    "updated_at": "2026-10-30T22:16:47.389125Z",
+    "draft_created_at": "2026-10-30T22:16:40.677619Z",
+    "lead_time": 12.923,
+    "prediction": {},
+    "result_count": 3,
+    "unique_id": "4b1ba9ac-92d8-45d9-895f-1a57b098b57f",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3002,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": null,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [],
   "data": {
@@ -175412,21 +175758,90 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.519269Z",
-  "updated_at": "2026-10-30T21:32:55.519273Z",
+  "updated_at": "2026-10-30T22:16:47.450067Z",
   "allow_skip": true,
   "inner_id": 1802,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 0,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3003,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2442,
+    "completed_by": 1,
+    "result": [
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "HllWhNOKrS",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 36.21911934235405,
+       "y": 49.48457280174896,
+       "width": 5.930446857174587,
+       "height": 5.814918671645209,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "lIhb3yb2KQ",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "XhgZd0c8WL",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:17:02.210185Z",
+    "updated_at": "2026-10-30T22:17:02.210201Z",
+    "draft_created_at": "2026-10-30T22:16:55.383805Z",
+    "lead_time": 13.605,
+    "prediction": {},
+    "result_count": 3,
+    "unique_id": "5aa16f7a-72fe-401b-a84a-c1897a5d8b4d",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3003,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": null,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [],
   "data": {
@@ -175456,21 +175871,90 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.519291Z",
-  "updated_at": "2026-10-30T21:32:55.519294Z",
+  "updated_at": "2026-10-30T22:17:02.274639Z",
   "allow_skip": true,
   "inner_id": 1803,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 0,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3004,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2443,
+    "completed_by": 1,
+    "result": [
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "iTTKOj7k_g",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 51.23523093447906,
+       "y": 44.89656423061364,
+       "width": 5.155746509129962,
+       "height": 7.578082497523958,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "t1X3NagQ9L",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "lCggCN-HJb",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:17:11.334932Z",
+    "updated_at": "2026-10-30T22:17:11.334948Z",
+    "draft_created_at": null,
+    "lead_time": 7.959,
+    "prediction": {},
+    "result_count": 3,
+    "unique_id": "3767cb52-ccac-44d5-8dd1-f869925b1bd4",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3004,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": null,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [],
   "data": {
@@ -175500,21 +175984,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.519312Z",
-  "updated_at": "2026-10-30T21:32:55.519315Z",
+  "updated_at": "2026-10-30T22:17:11.394545Z",
   "allow_skip": true,
   "inner_id": 1804,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 0,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3005,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2444,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 41.618571111597845,
+       "y": 40.85571698292656,
+       "width": 6.466249014289977,
+       "height": 10.495525794856201,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "kt-_bwzdg9",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction-changed"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "TNSqKvK4dy",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "_rsBQaHQVh",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:17:21.551098Z",
+    "updated_at": "2026-10-30T22:17:21.551112Z",
+    "draft_created_at": "2026-10-30T22:17:19.640256Z",
+    "lead_time": 9.312,
+    "prediction": {
+     "id": 921,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 41.08151418356348,
+        "y": 39.85483816249892,
+        "width": 9.151533654461835,
+        "height": 10.781491172121193,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "44 minutes",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.558982Z",
+     "updated_at": "2026-10-30T21:32:55.558985Z",
+     "model": null,
+     "model_run": null,
+     "task": 3005,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "a8325a73-045a-4bcf-82cc-715bb994922b",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3005,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 921,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -175571,21 +176159,90 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.519333Z",
-  "updated_at": "2026-10-30T21:32:55.519336Z",
+  "updated_at": "2026-10-30T22:17:21.611177Z",
   "allow_skip": true,
   "inner_id": 1805,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3006,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2445,
+    "completed_by": 1,
+    "result": [
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "ewETfDCOOp",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 40.27926960257788,
+       "y": 33.029001074113864,
+       "width": 6.659505907626205,
+       "height": 8.578961317951649,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "asL4A_71pC",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "no"
+       ]
+      },
+      "id": "q3Gbk-3aBI",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:17:38.225462Z",
+    "updated_at": "2026-10-30T22:17:38.225478Z",
+    "draft_created_at": "2026-10-30T22:17:29.755868Z",
+    "lead_time": 15.471,
+    "prediction": {},
+    "result_count": 3,
+    "unique_id": "ceb22410-c77e-42e5-9bf4-2b68a32edbad",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3006,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": null,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [],
   "data": {
@@ -175615,21 +176272,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.519353Z",
-  "updated_at": "2026-10-30T21:32:55.519356Z",
+  "updated_at": "2026-10-30T22:17:38.287089Z",
   "allow_skip": true,
   "inner_id": 1806,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 0,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3007,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2446,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 42.16862531766126,
+       "y": 29.742344941022665,
+       "width": 5.789106935072816,
+       "height": 6.933580429953497,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "VXeI1BqcnM",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction-changed"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "Zo_e4Kmeae",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "Hke2lXn-cP",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:17:47.380525Z",
+    "updated_at": "2026-10-30T22:17:47.380538Z",
+    "draft_created_at": null,
+    "lead_time": 7.976,
+    "prediction": {
+     "id": 922,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 41.09451146159252,
+        "y": 31.17217182734794,
+        "width": 5.789106935072816,
+        "height": 6.933580429953497,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "44 minutes",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.558997Z",
+     "updated_at": "2026-10-30T21:32:55.559000Z",
+     "model": null,
+     "model_run": null,
+     "task": 3007,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "37ef3a50-9996-4f63-a6ae-6fa67513de90",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3007,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 922,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -175686,21 +176447,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.519372Z",
-  "updated_at": "2026-10-30T21:32:55.519375Z",
+  "updated_at": "2026-10-30T22:17:47.467270Z",
   "allow_skip": true,
   "inner_id": 1807,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3008,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2447,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 31.66399323531996,
+       "y": 42.70845929706846,
+       "width": 9.033333945528934,
+       "height": 11.618921998614129,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "O3l8QYMycW",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction-changed"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "N0n-1UZ8C1",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "A4Y06AT0Wt",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:17:54.338683Z",
+    "updated_at": "2026-10-30T22:17:54.338695Z",
+    "draft_created_at": null,
+    "lead_time": 6.009,
+    "prediction": {
+     "id": 923,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 32.952929862602446,
+        "y": 42.85144198570099,
+        "width": 9.033333945528934,
+        "height": 11.61892199861413,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "44 minutes",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.559012Z",
+     "updated_at": "2026-10-30T21:32:55.559022Z",
+     "model": null,
+     "model_run": null,
+     "task": 3008,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "e46cc904-18ab-4aad-a887-502b82777bda",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3008,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 923,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -175757,21 +176622,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.519391Z",
-  "updated_at": "2026-10-30T21:32:55.519394Z",
+  "updated_at": "2026-10-30T22:17:54.392498Z",
   "allow_skip": true,
   "inner_id": 1808,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3009,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2448,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 38.78373225384061,
+       "y": 53.67500771960347,
+       "width": 9.288844009161815,
+       "height": 9.606583853607791,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "jl4EzP6RGj",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction-changed"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "v9CH-fAkxd",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "8veA9eGscW",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:18:01.417045Z",
+    "updated_at": "2026-10-30T22:18:01.417058Z",
+    "draft_created_at": null,
+    "lead_time": 5.956,
+    "prediction": {
+     "id": 924,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 38.461498097019984,
+        "y": 53.24605965370589,
+        "width": 9.288844009161815,
+        "height": 9.606583853607791,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "45 minutes",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.559041Z",
+     "updated_at": "2026-10-30T21:32:55.559045Z",
+     "model": null,
+     "model_run": null,
+     "task": 3009,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "ef61f99c-3353-46e1-864f-6cecb2bc8b28",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3009,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 924,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -175828,21 +176797,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.519409Z",
-  "updated_at": "2026-10-30T21:32:55.519412Z",
+  "updated_at": "2026-10-30T22:18:01.473127Z",
   "allow_skip": true,
   "inner_id": 1809,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3010,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2449,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 30.546827502107433,
+       "y": 42.605101521292724,
+       "width": 7.510108946450993,
+       "height": 9.239198610213565,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "ROAmnNwofO",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "RNqnV4Hjc-",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "9aibNc92dp",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:20:13.981293Z",
+    "updated_at": "2026-10-30T22:20:13.981307Z",
+    "draft_created_at": null,
+    "lead_time": 131.67,
+    "prediction": {
+     "id": 925,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 30.546827502107433,
+        "y": 42.605101521292724,
+        "width": 7.510108946450993,
+        "height": 9.239198610213565,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "47 minutes",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.559057Z",
+     "updated_at": "2026-10-30T21:32:55.559059Z",
+     "model": null,
+     "model_run": null,
+     "task": 3010,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "2eb43bbe-b2c7-4ef2-aa75-9bf31df8605f",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3010,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 925,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -175899,21 +176972,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.519428Z",
-  "updated_at": "2026-10-30T21:32:55.519432Z",
+  "updated_at": "2026-10-30T22:20:14.071739Z",
   "allow_skip": true,
   "inner_id": 1810,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3011,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2450,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 40.94208401258892,
+       "y": 42.505004144770105,
+       "width": 7.155584680383735,
+       "height": 10.01466782230861,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "geESqLuUME",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction-changed"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "ygiO9_kqke",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "TUVz9_4GQq",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:20:23.639332Z",
+    "updated_at": "2026-10-30T22:20:23.639346Z",
+    "draft_created_at": null,
+    "lead_time": 8.102,
+    "prediction": {
+     "id": 926,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 40.08279292773392,
+        "y": 40.93219456981231,
+        "width": 8.766755464486861,
+        "height": 11.301512020001365,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "47 minutes",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.559070Z",
+     "updated_at": "2026-10-30T21:32:55.559073Z",
+     "model": null,
+     "model_run": null,
+     "task": 3011,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "af8c687a-d3d3-4305-9dea-00f2f9c31f80",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3011,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 926,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -175970,21 +177147,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.519448Z",
-  "updated_at": "2026-10-30T21:32:55.519451Z",
+  "updated_at": "2026-10-30T22:20:23.698948Z",
   "allow_skip": true,
   "inner_id": 1811,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3012,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2451,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 39.473694599690226,
+       "y": 51.4611021727283,
+       "width": 7.664692678869904,
+       "height": 9.745889707328564,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "ozy8auqsTe",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction-changed"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "9HJmzzuKsx",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "jPgW5kTf7l",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:20:30.639945Z",
+    "updated_at": "2026-10-30T22:20:30.639958Z",
+    "draft_created_at": null,
+    "lead_time": 5.829,
+    "prediction": {
+     "id": 927,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 38.50699212922836,
+        "y": 50.74618872956567,
+        "width": 7.664692678869904,
+        "height": 9.745889707328564,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "47 minutes",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.559108Z",
+     "updated_at": "2026-10-30T21:32:55.559113Z",
+     "model": null,
+     "model_run": null,
+     "task": 3012,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "67e19725-4a60-46c2-9293-3e52a26584ba",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3012,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 927,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -176041,21 +177322,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.519466Z",
-  "updated_at": "2026-10-30T21:32:55.519469Z",
+  "updated_at": "2026-10-30T22:20:30.698421Z",
   "allow_skip": true,
   "inner_id": 1812,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3013,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2452,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 49.88091531823135,
+       "y": 53.70266732487763,
+       "width": 6.105565020714083,
+       "height": 7.728768267486412,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "37eocAToqQ",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction-changed"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "GYodcyxHtv",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "NlETVbB4lo",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:20:39.173468Z",
+    "updated_at": "2026-10-30T22:20:39.173481Z",
+    "draft_created_at": null,
+    "lead_time": 6.691,
+    "prediction": {
+     "id": 928,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 49.6660925470176,
+        "y": 53.41670194761258,
+        "width": 6.105565020714083,
+        "height": 7.728768267486412,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "47 minutes",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.559126Z",
+     "updated_at": "2026-10-30T21:32:55.559129Z",
+     "model": null,
+     "model_run": null,
+     "task": 3013,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "53e779cb-0525-44ae-9e9b-81a4c83f42a4",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3013,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 928,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -176112,21 +177497,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.519486Z",
-  "updated_at": "2026-10-30T21:32:55.519488Z",
+  "updated_at": "2026-10-30T22:20:39.230052Z",
   "allow_skip": true,
   "inner_id": 1813,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3014,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2453,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 40.605824981687746,
+       "y": 34.41860408321716,
+       "width": 9.723631711732377,
+       "height": 7.896579671032636,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "D1jpBbn0uM",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction-changed"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "ME4ZnrYCZL",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "D_07g6cUio",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:20:46.677660Z",
+    "updated_at": "2026-10-30T22:20:46.677674Z",
+    "draft_created_at": null,
+    "lead_time": 6.419,
+    "prediction": {
+     "id": 929,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 40.928059138508374,
+        "y": 33.989656017319575,
+        "width": 9.723631711732377,
+        "height": 7.896579671032636,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "47 minutes",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.559140Z",
+     "updated_at": "2026-10-30T21:32:55.559143Z",
+     "model": null,
+     "model_run": null,
+     "task": 3014,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "6718a743-13bc-4c79-bdab-ee253db31d64",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3014,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 929,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -176183,21 +177672,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.519504Z",
-  "updated_at": "2026-10-30T21:32:55.519507Z",
+  "updated_at": "2026-10-30T22:20:46.731840Z",
   "allow_skip": true,
   "inner_id": 1814,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3015,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2454,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 35.29845246037863,
+       "y": 39.99978023236316,
+       "width": 7.224893911032187,
+       "height": 9.23700255978998,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "4pbF1B9qQv",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction-changed"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "xKPEkd3cK0",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "HKs5fjYwGs",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:20:53.416634Z",
+    "updated_at": "2026-10-30T22:20:53.416645Z",
+    "draft_created_at": null,
+    "lead_time": 5.668,
+    "prediction": {
+     "id": 930,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 35.942920774019875,
+        "y": 39.99978023236316,
+        "width": 7.224893911032187,
+        "height": 9.23700255978998,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "47 minutes",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.559154Z",
+     "updated_at": "2026-10-30T21:32:55.559157Z",
+     "model": null,
+     "model_run": null,
+     "task": 3015,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "5dadeff3-e838-4c50-920a-0b77a896b612",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3015,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 930,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -176254,21 +177847,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.519522Z",
-  "updated_at": "2026-10-30T21:32:55.519525Z",
+  "updated_at": "2026-10-30T22:20:53.474247Z",
   "allow_skip": true,
   "inner_id": 1815,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3016,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2455,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 35.814586664777664,
+       "y": 44.76359030815826,
+       "width": 7.444778385010635,
+       "height": 9.928804163570808,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "Hq04hvwQ1C",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction-changed"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "6LRd_nwAU2",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "Xp25OF4Swm",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:21:00.256346Z",
+    "updated_at": "2026-10-30T22:21:00.256359Z",
+    "draft_created_at": null,
+    "lead_time": 5.321,
+    "prediction": {
+     "id": 931,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 34.52565003749517,
+        "y": 45.4785037513209,
+        "width": 7.444778385010635,
+        "height": 9.928804163570808,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "48 minutes",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.559168Z",
+     "updated_at": "2026-10-30T21:32:55.559171Z",
+     "model": null,
+     "model_run": null,
+     "task": 3016,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "fe6d552a-344d-4da6-98e8-7ca82a21e797",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3016,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 931,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -176325,21 +178022,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.519541Z",
-  "updated_at": "2026-10-30T21:32:55.519544Z",
+  "updated_at": "2026-10-30T22:21:00.321737Z",
   "allow_skip": true,
   "inner_id": 1816,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3017,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2456,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 38.97962266178256,
+       "y": 39.44395918828619,
+       "width": 8.260134326598887,
+       "height": 13.163439503351954,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "mgipCZADkX",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction-changed"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "EFIwAiRw5D",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "no"
+       ]
+      },
+      "id": "7ADFtQLBZc",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:21:11.895050Z",
+    "updated_at": "2026-10-30T22:21:11.895064Z",
+    "draft_created_at": null,
+    "lead_time": 10.116,
+    "prediction": {
+     "id": 932,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 37.90550880571381,
+        "y": 39.58694187691873,
+        "width": 8.260134326598887,
+        "height": 13.163439503351954,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "48 minutes",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.559182Z",
+     "updated_at": "2026-10-30T21:32:55.559185Z",
+     "model": null,
+     "model_run": null,
+     "task": 3017,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "18ab3ba4-0aa3-4590-8b4a-160b41411687",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3017,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 932,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -176396,21 +178197,90 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.519561Z",
-  "updated_at": "2026-10-30T21:32:55.519563Z",
+  "updated_at": "2026-10-30T22:21:11.950614Z",
   "allow_skip": true,
   "inner_id": 1817,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3018,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2457,
+    "completed_by": 1,
+    "result": [
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "9qFOToN-B_",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 43.035214957262916,
+       "y": 56.2596894989149,
+       "width": 5.42679280945062,
+       "height": 4.620742327223249,
+       "rotation": 0.5300727368545495,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "jArsmlT0C1",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "J298xayNUv",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:23:32.977992Z",
+    "updated_at": "2026-10-30T22:23:32.978009Z",
+    "draft_created_at": "2026-10-30T22:23:21.541788Z",
+    "lead_time": 139.848,
+    "prediction": {},
+    "result_count": 3,
+    "unique_id": "15b1eced-aef4-41ac-923f-683750790e90",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3018,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": null,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [],
   "data": {
@@ -176440,21 +178310,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.519579Z",
-  "updated_at": "2026-10-30T21:32:55.519582Z",
+  "updated_at": "2026-10-30T22:23:33.055578Z",
   "allow_skip": true,
   "inner_id": 1818,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 0,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3019,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2458,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 32.5452584125499,
+       "y": 41.635615880540975,
+       "width": 6.842065559499392,
+       "height": 8.824161204843408,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "xWaXjtTHGm",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction-changed"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "kQs-dJg9Xo",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "V5E1TW0Fu9",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:23:40.575381Z",
+    "updated_at": "2026-10-30T22:23:40.575393Z",
+    "draft_created_at": null,
+    "lead_time": 5.748,
+    "prediction": {
+     "id": 933,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 32.65266979815677,
+        "y": 41.349650503275925,
+        "width": 6.842065559499392,
+        "height": 8.824161204843408,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "50 minutes",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.559199Z",
+     "updated_at": "2026-10-30T21:32:55.559202Z",
+     "model": null,
+     "model_run": null,
+     "task": 3019,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "ffea3971-e612-4f19-8e92-6c1411f35486",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3019,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 933,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -176511,21 +178485,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.519597Z",
-  "updated_at": "2026-10-30T21:32:55.519600Z",
+  "updated_at": "2026-10-30T22:23:40.628602Z",
   "allow_skip": true,
   "inner_id": 1819,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3020,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2459,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 39.89817311247214,
+       "y": 45.802450882350854,
+       "width": 6.633510751019054,
+       "height": 10.121690150040212,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "roszcnBe-G",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction-changed"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "HS9Orc5jgO",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "l757KOdxiA",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:23:49.130330Z",
+    "updated_at": "2026-10-30T22:23:49.130344Z",
+    "draft_created_at": null,
+    "lead_time": 7.464,
+    "prediction": {
+     "id": 934,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 37.427711243514025,
+        "y": 44.229641307393045,
+        "width": 6.633510751019054,
+        "height": 10.121690150040214,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "50 minutes",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.559213Z",
+     "updated_at": "2026-10-30T21:32:55.559216Z",
+     "model": null,
+     "model_run": null,
+     "task": 3020,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "733dcc52-37a5-4ae6-96a3-6b65d0ef562b",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3020,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 934,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -176582,21 +178660,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.519616Z",
-  "updated_at": "2026-10-30T21:32:55.519619Z",
+  "updated_at": "2026-10-30T22:23:49.185913Z",
   "allow_skip": true,
   "inner_id": 1820,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3021,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2460,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 36.054228635083454,
+       "y": 41.95988406457066,
+       "width": 6.4246146861593925,
+       "height": 9.409474604677166,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "HQsGtQ1dy-",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction-changed"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "4oVXGO0c_r",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "VsTpEytlsS",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:23:55.752153Z",
+    "updated_at": "2026-10-30T22:23:55.752165Z",
+    "draft_created_at": null,
+    "lead_time": 5.494,
+    "prediction": {
+     "id": 935,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 36.054228635083454,
+        "y": 41.38795331004055,
+        "width": 6.4246146861593925,
+        "height": 9.409474604677168,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "51 minutes",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.559227Z",
+     "updated_at": "2026-10-30T21:32:55.559229Z",
+     "model": null,
+     "model_run": null,
+     "task": 3021,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "b01d1a65-ef28-4c58-b67b-efe39527249a",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3021,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 935,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -176653,21 +178835,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.519634Z",
-  "updated_at": "2026-10-30T21:32:55.519637Z",
+  "updated_at": "2026-10-30T22:23:55.811889Z",
   "allow_skip": true,
   "inner_id": 1821,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3022,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2461,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 34.67924313918423,
+       "y": 41.483220257404014,
+       "width": 6.700602699287063,
+       "height": 8.205010065907164,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "2LSdkDxDya",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction-changed"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "76Wh3o5idt",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "oN86iTZmOa",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:24:03.269551Z",
+    "updated_at": "2026-10-30T22:24:03.269564Z",
+    "draft_created_at": null,
+    "lead_time": 6.492,
+    "prediction": {
+     "id": 936,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 34.67924313918423,
+        "y": 40.625324125608856,
+        "width": 6.700602699287063,
+        "height": 8.205010065907164,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "51 minutes",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.559254Z",
+     "updated_at": "2026-10-30T21:32:55.559258Z",
+     "model": null,
+     "model_run": null,
+     "task": 3022,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "d3cec845-5c7c-4059-8920-9957d9771a16",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3022,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 936,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -176724,21 +179010,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.519652Z",
-  "updated_at": "2026-10-30T21:32:55.519655Z",
+  "updated_at": "2026-10-30T22:24:03.334082Z",
   "allow_skip": true,
   "inner_id": 1822,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3023,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2462,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 35.611200987975614,
+       "y": 49.52895381784773,
+       "width": 6.7612204547093935,
+       "height": 9.611584855268598,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "IA8Si8n7qA",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction-changed"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "CPaeoNbGjT",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "ORYdYs6zgn",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:24:13.144046Z",
+    "updated_at": "2026-10-30T22:24:13.144059Z",
+    "draft_created_at": null,
+    "lead_time": 7.897,
+    "prediction": {
+     "id": 937,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 35.611200987975614,
+        "y": 49.52895381784772,
+        "width": 6.7612204547093935,
+        "height": 9.611584855268598,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "51 minutes",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.559272Z",
+     "updated_at": "2026-10-30T21:32:55.559275Z",
+     "model": null,
+     "model_run": null,
+     "task": 3023,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "6f1f9ed4-bc4f-4e93-8933-aa4289af6fd4",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3023,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 937,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -176795,21 +179185,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.519670Z",
-  "updated_at": "2026-10-30T21:32:55.519674Z",
+  "updated_at": "2026-10-30T22:24:13.206532Z",
   "allow_skip": true,
   "inner_id": 1823,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3024,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2463,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 40.16631109753575,
+       "y": 39.47353577213011,
+       "width": 7.305090421522207,
+       "height": 10.992937619470663,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "ImF-V9_OVw",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "PDt0gU1ODF",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "WZjBKzmkI0",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:24:49.692226Z",
+    "updated_at": "2026-10-30T22:24:49.692240Z",
+    "draft_created_at": null,
+    "lead_time": 35.628,
+    "prediction": {
+     "id": 938,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 40.16631109753575,
+        "y": 39.47353577213011,
+        "width": 7.305090421522207,
+        "height": 10.992937619470663,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "51 minutes",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.559287Z",
+     "updated_at": "2026-10-30T21:32:55.559290Z",
+     "model": null,
+     "model_run": null,
+     "task": 3024,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "414437be-36b9-4a13-ba6a-c0687a5f94bc",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3024,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 938,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -176866,21 +179360,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.519762Z",
-  "updated_at": "2026-10-30T21:32:55.519776Z",
+  "updated_at": "2026-10-30T22:24:49.770644Z",
   "allow_skip": true,
   "inner_id": 1824,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3025,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2464,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 38.07499701280938,
+       "y": 51.0730707179344,
+       "width": 8.97816007358458,
+       "height": 8.469666215323775,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "6GDpmt5SnD",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "ZL61NrNVME",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "O85rjIyyo5",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:29:25.878239Z",
+    "updated_at": "2026-10-30T22:29:25.878253Z",
+    "draft_created_at": null,
+    "lead_time": 274.302,
+    "prediction": {
+     "id": 939,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 38.07499701280938,
+        "y": 51.0730707179344,
+        "width": 8.97816007358458,
+        "height": 8.469666215323775,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "56 minutes",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.559301Z",
+     "updated_at": "2026-10-30T21:32:55.559304Z",
+     "model": null,
+     "model_run": null,
+     "task": 3025,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "d7869a8a-833e-4bd3-a9fa-46ce8328c16f",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3025,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 939,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -176937,21 +179535,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.519806Z",
-  "updated_at": "2026-10-30T21:32:55.519811Z",
+  "updated_at": "2026-10-30T22:29:25.949409Z",
   "allow_skip": true,
   "inner_id": 1825,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3026,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2465,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 37.901767693762054,
+       "y": 33.61422961424657,
+       "width": 8.371170893564758,
+       "height": 6.32348452964304,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "5aAypcPnBm",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction-changed"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "pks_4nvHPK",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "ExUFU1_T95",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:29:33.523847Z",
+    "updated_at": "2026-10-30T22:29:33.523864Z",
+    "draft_created_at": null,
+    "lead_time": 6.554,
+    "prediction": {
+     "id": 940,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 38.224001850582674,
+        "y": 31.898437350656227,
+        "width": 8.371170893564758,
+        "height": 6.32348452964304,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "56 minutes",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.559314Z",
+     "updated_at": "2026-10-30T21:32:55.559317Z",
+     "model": null,
+     "model_run": null,
+     "task": 3026,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "57080705-e770-492d-aca0-102a04e631a1",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3026,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 940,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -177008,21 +179710,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.519830Z",
-  "updated_at": "2026-10-30T21:32:55.519833Z",
+  "updated_at": "2026-10-30T22:29:33.582210Z",
   "allow_skip": true,
   "inner_id": 1826,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3027,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2466,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 37.642089676502934,
+       "y": 52.92854413117616,
+       "width": 10.481610666818634,
+       "height": 9.934608301659456,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "zNX78PvDK3",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction-changed"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "x3E4bYNCAU",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "EUmocOCCAz",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:29:38.980509Z",
+    "updated_at": "2026-10-30T22:29:38.980521Z",
+    "draft_created_at": null,
+    "lead_time": 4.278,
+    "prediction": {
+     "id": 941,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 39.790317388640425,
+        "y": 52.499596065278574,
+        "width": 10.481610666818634,
+        "height": 9.934608301659454,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "56 minutes",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.559327Z",
+     "updated_at": "2026-10-30T21:32:55.559330Z",
+     "model": null,
+     "model_run": null,
+     "task": 3027,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "624c12fe-cef7-436e-bb4d-9411911d32fe",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3027,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 941,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -177079,21 +179885,90 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.519849Z",
-  "updated_at": "2026-10-30T21:32:55.519852Z",
+  "updated_at": "2026-10-30T22:29:39.037672Z",
   "allow_skip": true,
   "inner_id": 1827,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3028,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2467,
+    "completed_by": 1,
+    "result": [
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "kdy5Fg0GXF",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 47.647363092039896,
+       "y": 46.22720746286899,
+       "width": 6.502373366278692,
+       "height": 12.105043279768042,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "LehEA-zSRA",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "u16r227vgU",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:29:58.070331Z",
+    "updated_at": "2026-10-30T22:29:58.070347Z",
+    "draft_created_at": "2026-10-30T22:29:49.170401Z",
+    "lead_time": 18.064,
+    "prediction": {},
+    "result_count": 3,
+    "unique_id": "f05442ad-c124-4420-8a28-0ec74a49efe3",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3028,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": null,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [],
   "data": {
@@ -177123,21 +179998,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.519868Z",
-  "updated_at": "2026-10-30T21:32:55.519870Z",
+  "updated_at": "2026-10-30T22:29:58.132594Z",
   "allow_skip": true,
   "inner_id": 1828,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 0,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3029,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2468,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 32.78063392205278,
+       "y": 42.53864595360783,
+       "width": 8.182350357466529,
+       "height": 11.115542278566332,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "iDP9ORrVYN",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction-changed"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "6mqGfdyOyX",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "KrB3hmkNPD",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:30:04.772773Z",
+    "updated_at": "2026-10-30T22:30:04.772785Z",
+    "draft_created_at": null,
+    "lead_time": 5.554,
+    "prediction": {
+     "id": 942,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 32.35098837962528,
+        "y": 42.82461133087288,
+        "width": 8.182350357466529,
+        "height": 11.115542278566332,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "57 minutes",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.559352Z",
+     "updated_at": "2026-10-30T21:32:55.559358Z",
+     "model": null,
+     "model_run": null,
+     "task": 3029,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "a66c3af0-23a9-4d3a-8291-33385f7bc846",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3029,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 942,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -177194,21 +180173,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.519887Z",
-  "updated_at": "2026-10-30T21:32:55.519891Z",
+  "updated_at": "2026-10-30T22:30:04.838869Z",
   "allow_skip": true,
   "inner_id": 1829,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3030,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2469,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 41.894751004369844,
+       "y": 44.732854008592874,
+       "width": 8.936926744803603,
+       "height": 11.864103562647106,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "PnoSSLq2Wx",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction-changed"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "om0As-G6VS",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "izloKZz-VJ",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:30:12.303995Z",
+    "updated_at": "2026-10-30T22:30:12.304008Z",
+    "draft_created_at": null,
+    "lead_time": 6.41,
+    "prediction": {
+     "id": 943,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 41.2502826907286,
+        "y": 43.58899249953266,
+        "width": 8.936926744803605,
+        "height": 11.864103562647104,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "57 minutes",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.559375Z",
+     "updated_at": "2026-10-30T21:32:55.559378Z",
+     "model": null,
+     "model_run": null,
+     "task": 3030,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "317892dc-831b-4c15-a3c4-ebc5901f8fa4",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3030,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 943,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -177265,21 +180348,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.519907Z",
-  "updated_at": "2026-10-30T21:32:55.519910Z",
+  "updated_at": "2026-10-30T22:30:12.375284Z",
   "allow_skip": true,
   "inner_id": 1830,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3031,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2470,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 43.772567681388004,
+       "y": 42.58157698898889,
+       "width": 6.785620948576672,
+       "height": 9.631975355999213,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "NVeE7Ya5mB",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction-changed"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "6sVijto9Nj",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "-OwxQbhQzv",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:30:19.183702Z",
+    "updated_at": "2026-10-30T22:30:19.183716Z",
+    "draft_created_at": null,
+    "lead_time": 5.692,
+    "prediction": {
+     "id": 944,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 43.3429221389605,
+        "y": 40.865784725398555,
+        "width": 6.785620948576672,
+        "height": 9.631975355999213,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "57 minutes",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.559391Z",
+     "updated_at": "2026-10-30T21:32:55.559394Z",
+     "model": null,
+     "model_run": null,
+     "task": 3031,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "e5794d45-efa5-4236-aaf4-b11598238d37",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3031,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 944,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -177336,21 +180523,90 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.519925Z",
-  "updated_at": "2026-10-30T21:32:55.519928Z",
+  "updated_at": "2026-10-30T22:30:19.246424Z",
   "allow_skip": true,
   "inner_id": 1831,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3032,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2471,
+    "completed_by": 1,
+    "result": [
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "e2L69Txxbx",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 35.210596228525674,
+       "y": 41.8795448953261,
+       "width": 5.974361092926735,
+       "height": 9.475775814700057,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "8ppGlFW9Ko",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "TAWkMgc276",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:30:31.553157Z",
+    "updated_at": "2026-10-30T22:30:31.553173Z",
+    "draft_created_at": "2026-10-30T22:30:28.353979Z",
+    "lead_time": 9.874,
+    "prediction": {},
+    "result_count": 3,
+    "unique_id": "fdb2e4c9-be52-4b7d-b03b-30bc82cc27c0",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3032,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": null,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [],
   "data": {
@@ -177380,21 +180636,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.519944Z",
-  "updated_at": "2026-10-30T21:32:55.519947Z",
+  "updated_at": "2026-10-30T22:30:31.642011Z",
   "allow_skip": true,
   "inner_id": 1832,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 0,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3033,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2472,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 48.3053152637626,
+       "y": 46.171152046525584,
+       "width": 7.636379523501434,
+       "height": 9.077676768020988,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "ylZpXwVcYa",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction-changed"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "gzyOiTZDX0",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "HBkJdeEl5a",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:30:39.066130Z",
+    "updated_at": "2026-10-30T22:30:39.066141Z",
+    "draft_created_at": null,
+    "lead_time": 6.254,
+    "prediction": {
+     "id": 945,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 48.62754942058322,
+        "y": 44.74132516020031,
+        "width": 7.636379523501434,
+        "height": 9.077676768020988,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "57 minutes",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.559405Z",
+     "updated_at": "2026-10-30T21:32:55.559408Z",
+     "model": null,
+     "model_run": null,
+     "task": 3033,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "5b98b994-cd08-4463-acc8-29b7f4dc980b",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3033,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 945,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -177451,21 +180811,90 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.519964Z",
-  "updated_at": "2026-10-30T21:32:55.519967Z",
+  "updated_at": "2026-10-30T22:30:39.127750Z",
   "allow_skip": true,
   "inner_id": 1833,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3034,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2473,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 45.85207131841801,
+       "y": 48.68843238231156,
+       "width": 8.690513772365792,
+       "height": 10.127564816186627,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "7H_6wD0o8s",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction-changed"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "UgfQ3k2_4V",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "lYO19Ln5eF",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:30:45.883275Z",
+    "updated_at": "2026-10-30T22:30:45.883291Z",
+    "draft_created_at": null,
+    "lead_time": 5.903,
+    "prediction": {},
+    "result_count": 3,
+    "unique_id": "9e165c9f-ce59-4385-81ee-f73cef516b0f",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3034,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 946,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -177522,21 +180951,90 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.519984Z",
-  "updated_at": "2026-10-30T21:32:55.519987Z",
+  "updated_at": "2026-10-30T22:30:45.938043Z",
   "allow_skip": true,
   "inner_id": 1834,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3035,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2474,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 49.1756750471437,
+       "y": 37.21722917179019,
+       "width": 5.9007514130651755,
+       "height": 7.283689885216443,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "C1ZQoCYsGT",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction-changed"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "5TQtSpM5t7",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "i0LcZHCRpc",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:30:53.282735Z",
+    "updated_at": "2026-10-30T22:30:53.282750Z",
+    "draft_created_at": null,
+    "lead_time": 6.185,
+    "prediction": {},
+    "result_count": 3,
+    "unique_id": "f4866a38-37ed-4a15-b959-b543b179fbf0",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3035,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 947,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -177593,21 +181091,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.520003Z",
-  "updated_at": "2026-10-30T21:32:55.520007Z",
+  "updated_at": "2026-10-30T22:30:53.337779Z",
   "allow_skip": true,
   "inner_id": 1835,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3036,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2475,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 41.33608619019249,
+       "y": 39.042091821379216,
+       "width": 8.065940070074944,
+       "height": 11.134789943556388,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "I24WFUfdGI",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "WPLArLBX7P",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "IaxUwmw9dG",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:33:30.318370Z",
+    "updated_at": "2026-10-30T22:33:30.318384Z",
+    "draft_created_at": null,
+    "lead_time": 155.786,
+    "prediction": {
+     "id": 948,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 41.33608619019249,
+        "y": 39.042091821379216,
+        "width": 8.065940070074944,
+        "height": 11.134789943556388,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "1 hour",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.559446Z",
+     "updated_at": "2026-10-30T21:32:55.559449Z",
+     "model": null,
+     "model_run": null,
+     "task": 3036,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "b64fc0e0-6ec7-4335-8309-1e3b476fa7ba",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3036,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 948,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -177664,21 +181266,90 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.520022Z",
-  "updated_at": "2026-10-30T21:32:55.520025Z",
+  "updated_at": "2026-10-30T22:33:30.391373Z",
   "allow_skip": true,
   "inner_id": 1836,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3037,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2476,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 38.41620271319065,
+       "y": 48.98714022343115,
+       "width": 8.38286554317277,
+       "height": 8.169290871846595,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "SV9OzN5b_4",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction-changed"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "jqQ1967fyl",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "YC1bGJPNiW",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:33:38.607570Z",
+    "updated_at": "2026-10-30T22:33:38.607586Z",
+    "draft_created_at": null,
+    "lead_time": 4.99,
+    "prediction": {},
+    "result_count": 3,
+    "unique_id": "a8fa2f2c-c4c2-4418-881f-aaf4a73a7a91",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3037,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 949,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -177735,21 +181406,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.520041Z",
-  "updated_at": "2026-10-30T21:32:55.520044Z",
+  "updated_at": "2026-10-30T22:33:38.673158Z",
   "allow_skip": true,
   "inner_id": 1837,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3038,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2477,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 39.14220829373748,
+       "y": 44.850886621727135,
+       "width": 7.835489977422877,
+       "height": 9.917751590369503,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "hQN6fHYSPC",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction-changed"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "Rsw-JJ1z8e",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "fENUwg01PP",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:33:46.282974Z",
+    "updated_at": "2026-10-30T22:33:46.282988Z",
+    "draft_created_at": null,
+    "lead_time": 6.758,
+    "prediction": {
+     "id": 950,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 38.497739980096235,
+        "y": 43.70702511266691,
+        "width": 7.835489977422877,
+        "height": 9.917751590369503,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "1 hour",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.559476Z",
+     "updated_at": "2026-10-30T21:32:55.559479Z",
+     "model": null,
+     "model_run": null,
+     "task": 3038,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "c7c75e13-a338-45b0-8af9-c026497f2a2f",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3038,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 950,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -177806,21 +181581,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.520060Z",
-  "updated_at": "2026-10-30T21:32:55.520063Z",
+  "updated_at": "2026-10-30T22:33:46.337673Z",
   "allow_skip": true,
   "inner_id": 1838,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3039,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2478,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 34.27401674962001,
+       "y": 37.82478783213478,
+       "width": 6.532076230029067,
+       "height": 8.177295958540297,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "tC-WGXmK92",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction-changed"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "ibs2Er1xov",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "1Mvf1Rg7qf",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:33:54.563864Z",
+    "updated_at": "2026-10-30T22:33:54.563878Z",
+    "draft_created_at": null,
+    "lead_time": 7.182,
+    "prediction": {
+     "id": 951,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 33.95178259279939,
+        "y": 35.537064814014336,
+        "width": 6.532076230029067,
+        "height": 8.177295958540297,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "1 hour",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.559490Z",
+     "updated_at": "2026-10-30T21:32:55.559493Z",
+     "model": null,
+     "model_run": null,
+     "task": 3039,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "888e0afc-7c63-404c-b246-7d84c27b2a70",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3039,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 951,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -177877,21 +181756,90 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.520079Z",
-  "updated_at": "2026-10-30T21:32:55.520082Z",
+  "updated_at": "2026-10-30T22:33:54.626581Z",
   "allow_skip": true,
   "inner_id": 1839,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3040,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2479,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 43.826023500909336,
+       "y": 43.16497662151827,
+       "width": 6.45035101778159,
+       "height": 8.959776475275897,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "pxpYtltMof",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction-changed"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "9XL38YzEwH",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "vfx43EXe1C",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:34:05.845391Z",
+    "updated_at": "2026-10-30T22:34:05.845407Z",
+    "draft_created_at": null,
+    "lead_time": 10.368,
+    "prediction": {},
+    "result_count": 3,
+    "unique_id": "8bdce003-4166-49d0-9f20-eb5e936fae87",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3040,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 952,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -177948,21 +181896,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.520097Z",
-  "updated_at": "2026-10-30T21:32:55.520100Z",
+  "updated_at": "2026-10-30T22:34:05.898574Z",
   "allow_skip": true,
   "inner_id": 1840,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3041,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2480,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 33.49841338139395,
+       "y": 41.24124291597327,
+       "width": 7.131614176900272,
+       "height": 10.437361874394028,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "o8GWS-aUSU",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction-changed"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "MKs2EH5Qm5",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "XPlYFdhgLR",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:34:13.878111Z",
+    "updated_at": "2026-10-30T22:34:13.878124Z",
+    "draft_created_at": null,
+    "lead_time": 6.924,
+    "prediction": {
+     "id": 953,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 33.60582476700083,
+        "y": 39.954398718280515,
+        "width": 7.131614176900272,
+        "height": 10.437361874394028,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "1 hour, 1 minute",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.559517Z",
+     "updated_at": "2026-10-30T21:32:55.559520Z",
+     "model": null,
+     "model_run": null,
+     "task": 3041,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "05ff50d7-32d4-4872-8450-3940cc6cc032",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3041,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 953,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -178019,21 +182071,90 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.520115Z",
-  "updated_at": "2026-10-30T21:32:55.520118Z",
+  "updated_at": "2026-10-30T22:34:13.934245Z",
   "allow_skip": true,
   "inner_id": 1841,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3042,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2481,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 47.554880503742766,
+       "y": 35.276943288554655,
+       "width": 7.623201397928102,
+       "height": 6.568944637234406,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "-Sk9rcUQgf",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction-changed"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "KOwiA-y8-L",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "GN0u0_nStb",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:34:20.681447Z",
+    "updated_at": "2026-10-30T22:34:20.681463Z",
+    "draft_created_at": null,
+    "lead_time": 5.62,
+    "prediction": {},
+    "result_count": 3,
+    "unique_id": "25045bd5-57f4-417e-81f4-ed38152ab117",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3042,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 954,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -178090,21 +182211,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.520134Z",
-  "updated_at": "2026-10-30T21:32:55.520137Z",
+  "updated_at": "2026-10-30T22:34:20.752137Z",
   "allow_skip": true,
   "inner_id": 1842,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3043,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2482,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 45.69753197456458,
+       "y": 42.70911139421904,
+       "width": 8.244496580825752,
+       "height": 11.092268421070232,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "XJuLuSj9L_",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction-changed"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "LtJcE3aPvE",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "Ky1ED0aPRM",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:34:26.202689Z",
+    "updated_at": "2026-10-30T22:34:26.202703Z",
+    "draft_created_at": null,
+    "lead_time": 4.623,
+    "prediction": {
+     "id": 955,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 45.59012058895771,
+        "y": 41.994197951056414,
+        "width": 8.244496580825752,
+        "height": 11.092268421070232,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "1 hour, 1 minute",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.559544Z",
+     "updated_at": "2026-10-30T21:32:55.559547Z",
+     "model": null,
+     "model_run": null,
+     "task": 3043,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "b3c43461-2686-4982-ad29-08416cfb97c8",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3043,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 955,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -178161,21 +182386,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.520153Z",
-  "updated_at": "2026-10-30T21:32:55.520155Z",
+  "updated_at": "2026-10-30T22:34:26.264124Z",
   "allow_skip": true,
   "inner_id": 1843,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3044,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2483,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 51.456967936955145,
+       "y": 36.46229492902623,
+       "width": 7.041416326998042,
+       "height": 8.94973740167892,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "SPL4lg_XR9",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction-changed"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "YO2um9KQvr",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "KbH2Q2Gd3S",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:34:33.174110Z",
+    "updated_at": "2026-10-30T22:34:33.174123Z",
+    "draft_created_at": null,
+    "lead_time": 6.004,
+    "prediction": {
+     "id": 956,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 51.456967936955145,
+        "y": 35.17545073133348,
+        "width": 7.041416326998042,
+        "height": 8.94973740167892,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "1 hour, 1 minute",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.559557Z",
+     "updated_at": "2026-10-30T21:32:55.559560Z",
+     "model": null,
+     "model_run": null,
+     "task": 3044,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "d1722863-c8b8-48de-9e1f-220594c431ea",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3044,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 956,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -178232,21 +182561,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.520171Z",
-  "updated_at": "2026-10-30T21:32:55.520173Z",
+  "updated_at": "2026-10-30T22:34:33.234382Z",
   "allow_skip": true,
   "inner_id": 1844,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3045,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2484,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 31.88340215068913,
+       "y": 41.85222674415695,
+       "width": 8.824612857433278,
+       "height": 9.907618992540408,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "XWmoHx8Num",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction-changed"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "37jhkQ8Qwo",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "UAffdz1q3M",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:34:39.450316Z",
+    "updated_at": "2026-10-30T22:34:39.450329Z",
+    "draft_created_at": null,
+    "lead_time": 4.389,
+    "prediction": {
+     "id": 957,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 31.775990765082252,
+        "y": 40.994330612361786,
+        "width": 8.824612857433278,
+        "height": 9.907618992540408,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "1 hour, 1 minute",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.559570Z",
+     "updated_at": "2026-10-30T21:32:55.559573Z",
+     "model": null,
+     "model_run": null,
+     "task": 3045,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "e4f8ed6b-a7b0-43bd-9626-83cadc0aa046",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3045,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 957,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -178303,21 +182736,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.520189Z",
-  "updated_at": "2026-10-30T21:32:55.520192Z",
+  "updated_at": "2026-10-30T22:34:39.513139Z",
   "allow_skip": true,
   "inner_id": 1845,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3046,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2485,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 44.051813501945496,
+       "y": 36.50224751177886,
+       "width": 9.727684186325952,
+       "height": 11.018828728014212,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "A9t_XYLCY0",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction-changed"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "I_fgKJw5Hs",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "BkDxHkjYVr",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:35:39.941847Z",
+    "updated_at": "2026-10-30T22:35:39.941859Z",
+    "draft_created_at": null,
+    "lead_time": 53.996,
+    "prediction": {
+     "id": 958,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 44.696281815586744,
+        "y": 34.35750718229095,
+        "width": 9.727684186325952,
+        "height": 11.01882872801421,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "1 hour, 2 minutes",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.559583Z",
+     "updated_at": "2026-10-30T21:32:55.559586Z",
+     "model": null,
+     "model_run": null,
+     "task": 3046,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "60cdc812-e88f-47f3-94ad-50f36deea927",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3046,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 958,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -178374,21 +182911,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.520208Z",
-  "updated_at": "2026-10-30T21:32:55.520211Z",
+  "updated_at": "2026-10-30T22:35:40.018148Z",
   "allow_skip": true,
   "inner_id": 1846,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3047,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2486,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 36.63503481192878,
+       "y": 40.16899218545988,
+       "width": 10.390815157292108,
+       "height": 13.271467954700917,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "NLUJOpJW5D",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "0JjT7IKZhk",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "CyRpey6ccF",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:35:44.501194Z",
+    "updated_at": "2026-10-30T22:35:44.501206Z",
+    "draft_created_at": null,
+    "lead_time": 3.513,
+    "prediction": {
+     "id": 959,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 36.63503481192878,
+        "y": 40.16899218545988,
+        "width": 10.390815157292108,
+        "height": 13.271467954700917,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "1 hour, 2 minutes",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.559596Z",
+     "updated_at": "2026-10-30T21:32:55.559600Z",
+     "model": null,
+     "model_run": null,
+     "task": 3047,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "dd145073-8ebc-428d-ad89-4a7e3573f67a",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3047,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 959,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -178445,21 +183086,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.520227Z",
-  "updated_at": "2026-10-30T21:32:55.520230Z",
+  "updated_at": "2026-10-30T22:35:44.557531Z",
   "allow_skip": true,
   "inner_id": 1847,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3048,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2487,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 42.46184493243885,
+       "y": 44.74704570937044,
+       "width": 6.967722629916913,
+       "height": 10.214203431879184,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "iFuKJn47zd",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "I_6QwAZirA",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "urWDZvKfUg",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:35:52.297890Z",
+    "updated_at": "2026-10-30T22:35:52.297902Z",
+    "draft_created_at": null,
+    "lead_time": 6.822,
+    "prediction": {
+     "id": 960,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 42.46184493243885,
+        "y": 44.74704570937044,
+        "width": 6.967722629916913,
+        "height": 10.214203431879184,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "1 hour, 2 minutes",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.559610Z",
+     "updated_at": "2026-10-30T21:32:55.559626Z",
+     "model": null,
+     "model_run": null,
+     "task": 3048,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "02441706-0bae-48a9-8ae2-70c5931b559a",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3048,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 960,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -178516,21 +183261,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.520244Z",
-  "updated_at": "2026-10-30T21:32:55.520247Z",
+  "updated_at": "2026-10-30T22:35:52.355051Z",
   "allow_skip": true,
   "inner_id": 1848,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3049,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2488,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 33.683611114645004,
+       "y": 49.02797055176926,
+       "width": 7.100291219363315,
+       "height": 8.71087230575861,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "3hluO2zfeO",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "WARAL5ev_b",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "177BD7vRTx",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:49:50.623036Z",
+    "updated_at": "2026-10-30T22:49:50.623051Z",
+    "draft_created_at": null,
+    "lead_time": 836.137,
+    "prediction": {
+     "id": 961,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 33.683611114645004,
+        "y": 49.02797055176926,
+        "width": 7.100291219363315,
+        "height": 8.71087230575861,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "1 hour, 16 minutes",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.559643Z",
+     "updated_at": "2026-10-30T21:32:55.559647Z",
+     "model": null,
+     "model_run": null,
+     "task": 3049,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "145a68ab-6002-498c-8b9f-f87d433f76f3",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3049,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 961,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -178587,21 +183436,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.520262Z",
-  "updated_at": "2026-10-30T21:32:55.520264Z",
+  "updated_at": "2026-10-30T22:49:50.692537Z",
   "allow_skip": true,
   "inner_id": 1849,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3050,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2489,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 35.15504895578741,
+       "y": 44.80690444773129,
+       "width": 5.065486817175726,
+       "height": 8.464469658983639,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "38e9ZxNkam",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "l4cKAEdgXT",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "__YNk7RQ89",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:49:57.428240Z",
+    "updated_at": "2026-10-30T22:49:57.428252Z",
+    "draft_created_at": null,
+    "lead_time": 5.355,
+    "prediction": {
+     "id": 962,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 35.15504895578741,
+        "y": 44.80690444773129,
+        "width": 5.065486817175726,
+        "height": 8.464469658983639,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "1 hour, 17 minutes",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.559659Z",
+     "updated_at": "2026-10-30T21:32:55.559662Z",
+     "model": null,
+     "model_run": null,
+     "task": 3050,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "78efebb5-47b2-4c0d-95a0-1cfd13bb2438",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3050,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 962,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -178658,21 +183611,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.520279Z",
-  "updated_at": "2026-10-30T21:32:55.520282Z",
+  "updated_at": "2026-10-30T22:49:57.486708Z",
   "allow_skip": true,
   "inner_id": 1850,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3051,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2490,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 42.437411699696256,
+       "y": 54.44315732917852,
+       "width": 6.861134591228568,
+       "height": 7.4805446678638186,
+       "rotation": 29.011089481158194,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "CcMj4frMha",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction-changed"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "Q9Isg7ErmY",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "gwQIINYK9B",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:50:02.097327Z",
+    "updated_at": "2026-10-30T22:55:55.120274Z",
+    "draft_created_at": null,
+    "lead_time": 356.39099999999996,
+    "prediction": {
+     "id": 963,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 37.69541112676861,
+        "y": 49.25207331878029,
+        "width": 8.569842740018226,
+        "height": 10.057936897513144,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "1 hour, 17 minutes",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.559673Z",
+     "updated_at": "2026-10-30T21:32:55.559675Z",
+     "model": null,
+     "model_run": null,
+     "task": 3051,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "863d6522-d767-46dc-968a-b9a83822735f",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3051,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 963,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -178729,21 +183786,90 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.522431Z",
-  "updated_at": "2026-10-30T21:32:55.522441Z",
+  "updated_at": "2026-10-30T22:55:55.231477Z",
   "allow_skip": true,
   "inner_id": 1851,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3052,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2491,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 48.84978970815315,
+       "y": 44.47531340455047,
+       "width": 5.9419174958186955,
+       "height": 6.731461930080543,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "VpdIYDW71n",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction-changed"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "I93QgRS6hn",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "uO2ROzdO8i",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:56:03.947890Z",
+    "updated_at": "2026-10-30T22:56:03.947906Z",
+    "draft_created_at": null,
+    "lead_time": 7.405,
+    "prediction": {},
+    "result_count": 3,
+    "unique_id": "d7df6a92-c6a3-46e7-9484-5068b9ee50a0",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3052,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 964,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -178800,21 +183926,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.522465Z",
-  "updated_at": "2026-10-30T21:32:55.522468Z",
+  "updated_at": "2026-10-30T22:56:04.014901Z",
   "allow_skip": true,
   "inner_id": 1852,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3053,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2492,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 40.39622786198267,
+       "y": 52.534775024616266,
+       "width": 9.494119568243066,
+       "height": 6.245433795217419,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "Ndmo_N4aVa",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction-changed"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "UowHVKksLN",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "d08g0jFaBc",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:56:10.962555Z",
+    "updated_at": "2026-10-30T22:56:10.962569Z",
+    "draft_created_at": null,
+    "lead_time": 6.06,
+    "prediction": {
+     "id": 965,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 40.39622786198267,
+        "y": 50.818982761025936,
+        "width": 9.494119568243066,
+        "height": 6.24543379521742,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "1 hour, 23 minutes",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.559700Z",
+     "updated_at": "2026-10-30T21:32:55.559705Z",
+     "model": null,
+     "model_run": null,
+     "task": 3053,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "b5e2cca9-f9fc-4243-b461-498ba567badb",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3053,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 965,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -178871,21 +184101,90 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.522486Z",
-  "updated_at": "2026-10-30T21:32:55.522489Z",
+  "updated_at": "2026-10-30T22:56:11.022832Z",
   "allow_skip": true,
   "inner_id": 1853,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3054,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2493,
+    "completed_by": 1,
+    "result": [
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "iGa7f97TzH",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 40.923737916219125,
+       "y": 50.75885446454726,
+       "width": 6.659505907626212,
+       "height": 7.864047874789016,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "h2i7r_O4PP",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "byyYN3IdG_",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:56:19.418413Z",
+    "updated_at": "2026-10-30T22:56:19.418430Z",
+    "draft_created_at": null,
+    "lead_time": 7.323,
+    "prediction": {},
+    "result_count": 3,
+    "unique_id": "15b46593-0181-4eeb-899a-797e856d3e6b",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3054,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": null,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [],
   "data": {
@@ -178915,21 +184214,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.522506Z",
-  "updated_at": "2026-10-30T21:32:55.522510Z",
+  "updated_at": "2026-10-30T22:56:19.482115Z",
   "allow_skip": true,
   "inner_id": 1854,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 0,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3055,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2494,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 41.04754577716189,
+       "y": 41.93208289226828,
+       "width": 8.786866133472335,
+       "height": 11.506532079922346,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "eDPe7dbqQl",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "avZsPkqHiH",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "kAZrVlOUuK",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:56:24.998176Z",
+    "updated_at": "2026-10-30T22:56:24.998189Z",
+    "draft_created_at": null,
+    "lead_time": 4.475,
+    "prediction": {
+     "id": 966,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 41.04754577716189,
+        "y": 41.93208289226828,
+        "width": 8.786866133472335,
+        "height": 11.506532079922346,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "1 hour, 23 minutes",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.559716Z",
+     "updated_at": "2026-10-30T21:32:55.559719Z",
+     "model": null,
+     "model_run": null,
+     "task": 3055,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "d53006a8-de1e-4ec4-9be8-e8a6b8fe61b1",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3055,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 966,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -178986,21 +184389,90 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.522527Z",
-  "updated_at": "2026-10-30T21:32:55.522530Z",
+  "updated_at": "2026-10-30T22:56:25.053901Z",
   "allow_skip": true,
   "inner_id": 1855,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3056,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2495,
+    "completed_by": 1,
+    "result": [
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "WFyYH-sC0D",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 40.27926960257787,
+       "y": 39.60620475121012,
+       "width": 7.3039742212674605,
+       "height": 8.578961317951652,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "HJcEhOGzj9",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "WNDqV_kvTS",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:56:34.114112Z",
+    "updated_at": "2026-10-30T22:56:34.114129Z",
+    "draft_created_at": null,
+    "lead_time": 8.043,
+    "prediction": {},
+    "result_count": 3,
+    "unique_id": "38df3931-d10b-4207-96df-cc618a5a5137",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3056,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": null,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [],
   "data": {
@@ -179030,21 +184502,125 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.522547Z",
-  "updated_at": "2026-10-30T21:32:55.522550Z",
+  "updated_at": "2026-10-30T22:56:34.183279Z",
   "allow_skip": true,
   "inner_id": 1856,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 0,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3057,
-  "annotations": [],
+  "annotations": [
+   {
+    "id": 2496,
+    "completed_by": 1,
+    "result": [
+     {
+      "original_width": 3280,
+      "original_height": 2464,
+      "image_rotation": 0,
+      "value": {
+       "x": 40.657626574879856,
+       "y": 41.39045729133572,
+       "width": 8.888000186604344,
+       "height": 12.497016572281199,
+       "rotation": 0,
+       "rectanglelabels": [
+        "damage"
+       ]
+      },
+      "id": "n2nC5aA38c",
+      "from_name": "damage_nir",
+      "to_name": "nir",
+      "type": "rectanglelabels",
+      "origin": "prediction-changed"
+     },
+     {
+      "value": {
+       "choices": [
+        "yes"
+       ]
+      },
+      "id": "QJ-RVUQIs2",
+      "from_name": "visible_nir",
+      "to_name": "nir",
+      "type": "choices",
+      "origin": "manual"
+     },
+     {
+      "value": {
+       "choices": [
+        "unsure"
+       ]
+      },
+      "id": "o04S9DRG7H",
+      "from_name": "visible_rgb",
+      "to_name": "rgb",
+      "type": "choices",
+      "origin": "manual"
+     }
+    ],
+    "was_cancelled": false,
+    "ground_truth": false,
+    "created_at": "2026-10-30T22:56:42.122489Z",
+    "updated_at": "2026-10-30T22:56:42.122504Z",
+    "draft_created_at": null,
+    "lead_time": 6.129,
+    "prediction": {
+     "id": 967,
+     "result": [
+      {
+       "from_name": "damage_nir",
+       "to_name": "nir",
+       "type": "rectanglelabels",
+       "original_width": 3280,
+       "original_height": 2464,
+       "image_rotation": 0,
+       "origin": "prediction",
+       "value": {
+        "x": 41.302094888521104,
+        "y": 42.24835342313089,
+        "width": 8.888000186604344,
+        "height": 12.497016572281199,
+        "rotation": 0,
+        "rectanglelabels": [
+         "damage"
+        ]
+       }
+      }
+     ],
+     "model_version": "proj-12h-A",
+     "created_ago": "1 hour, 23 minutes",
+     "score": 0.9,
+     "cluster": null,
+     "neighbors": null,
+     "mislabeling": 0.0,
+     "created_at": "2026-10-30T21:32:55.559730Z",
+     "updated_at": "2026-10-30T21:32:55.559733Z",
+     "model": null,
+     "model_run": null,
+     "task": 3057,
+     "project": 3
+    },
+    "result_count": 3,
+    "unique_id": "6e57b576-31e6-4e41-ad08-23c222ac54b9",
+    "import_id": null,
+    "last_action": null,
+    "bulk_created": false,
+    "task": 3057,
+    "project": 3,
+    "updated_by": 1,
+    "parent_prediction": 967,
+    "parent_annotation": null,
+    "last_created_by": null
+   }
+  ],
   "drafts": [],
   "predictions": [
    {
@@ -179101,17 +184677,17 @@
   },
   "meta": {},
   "created_at": "2026-10-30T21:32:55.522565Z",
-  "updated_at": "2026-10-30T21:32:55.522568Z",
+  "updated_at": "2026-10-30T22:56:42.189473Z",
   "allow_skip": true,
   "inner_id": 1857,
-  "total_annotations": 0,
+  "total_annotations": 1,
   "cancelled_annotations": 0,
   "total_predictions": 1,
   "comment_count": 0,
   "unresolved_comment_count": 0,
   "last_comment_updated_at": null,
   "project": 3,
-  "updated_by": null
+  "updated_by": 1
  },
  {
   "id": 3058,
