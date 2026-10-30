@@ -191,6 +191,7 @@ def _parse_capture(meta: dict) -> Capture:
 
 
 def load_captures(data_root: Path) -> list[Capture]:
+    """Parse every meta, leaving out photos the capture program set aside (``apartada``)."""
     meta_dir = data_root / "news" / "meta"
     if not meta_dir.is_dir():
         raise FileNotFoundError(f"meta folder not found: {meta_dir}")
@@ -198,6 +199,8 @@ def load_captures(data_root: Path) -> list[Capture]:
     for path in sorted(meta_dir.glob("mango_meta_*.json")):
         try:
             meta = json.loads(path.read_text(encoding="utf-8"))
+            if "apartada" in meta:
+                continue
             captures.append(_parse_capture(meta))
         except KeyError as exc:
             raise ValueError(f"{path.name}: missing field {exc}") from exc

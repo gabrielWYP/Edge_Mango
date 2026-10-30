@@ -195,6 +195,28 @@ class TestDuplicateResolution:
         assert "mango 2 face 1 +4 h" in message
         assert "mango 3" not in message
 
+    def test_set_aside_photo_never_competes_for_its_slot(self, roots) -> None:
+        set_aside = make_meta(100, mango_id=63, cara=2, ronda_h=2)
+        set_aside["apartada"] = {"motivo": "duplicate of face 1; do not use"}
+        real = make_meta(200, mango_id=63, cara=2, ronda_h=2)
+
+        result = build(roots, [set_aside, real], moments=(2,))
+
+        assert [t["data"]["timestamp"] for t in result.tasks] == [200]
+        assert result.dropped == []
+        assert result.missing == []
+
+    def test_slot_with_only_a_set_aside_photo_is_reported_missing(self, roots) -> None:
+        kept = make_meta(100, mango_id=1, cara=1, ronda_h=2)
+        set_aside = make_meta(200, mango_id=1, cara=2, ronda_h=2)
+        set_aside["apartada"] = {"motivo": "do not use"}
+        other_moment = make_meta(300, mango_id=1, cara=2, ronda_h=4)
+
+        result = build(roots, [kept, set_aside, other_moment], moments=(2,))
+
+        assert [t["data"]["timestamp"] for t in result.tasks] == [100]
+        assert result.missing == [Slot(JORNADA_1, 1, 2, 2)]
+
     def test_duplicates_in_unselected_moments_are_ignored(self, roots) -> None:
         metas = [
             make_meta(1, ronda_h=12),
