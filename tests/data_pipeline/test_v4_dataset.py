@@ -10,7 +10,8 @@ import cv2
 import numpy as np
 import pytest
 
-from src.data_pipeline.v4_dataset import build_dataset
+from src.annotation.nir_display import enhance_nir
+from src.data_pipeline.v4_dataset import build_dataset, raw_nir, registered_nir
 from src.data_pipeline.v4_selection import RGB_SIZE
 from tests.annotation.synthetic import JORNADA_1, make_meta, write_dataset
 from tests.data_pipeline.v4_synth import H_SHIFT, RULES, make_task
@@ -81,6 +82,21 @@ class TestBuildDataset:
         assert rows["mango_rgb_2"]["provenance"] == "dibujada"
         assert rows["mango_rgb_2"]["damage_in_mango"] == "1.0"
         assert (out / "exclusions.csv").read_text().count("unlabeled") == 1
+
+    def test_writes_the_clahe_view_warped_like_the_raw_nir(self, setup: dict) -> None:
+        build_dataset(**setup)
+        out = setup["out_dir"]
+        bgr = cv2.imread(str(setup["data_root"] / "news" / "nir" / "mango_nir_2.jpg"))
+        H = np.load(setup["repo_root"] / "h1.npy")
+        clahe = cv2.imread(str(out / "nir_clahe" / "mango_nir_2.png"), cv2.IMREAD_UNCHANGED)
+        raw = cv2.imread(str(out / "nir" / "mango_nir_2.png"), cv2.IMREAD_UNCHANGED)
+        assert clahe.shape == (RGB_SIZE[1], RGB_SIZE[0]) and clahe.dtype == np.uint8
+        assert np.array_equal(clahe, registered_nir(enhance_nir(bgr), H))
+        assert np.array_equal(raw, registered_nir(raw_nir(bgr), H))
+        assert sorted(p.name for p in (out / "nir_clahe").iterdir()) == [
+            "mango_nir_1.png",
+            "mango_nir_2.png",
+        ]
 
     def test_refuses_a_non_empty_output(self, setup: dict) -> None:
         setup["out_dir"].mkdir()

@@ -7,6 +7,7 @@ See `src/data_pipeline/v4_dataset.py` for the layout and the inclusion rules. Tr
                nir_homography_path=<out>/homographies/identity.npy
 
 plus the fold labels and manifest (`labels_dir`, `split_manifest`) built from `<out>/labels`.
+Use `nir_dir=<out>/nir_clahe` for the CLAHE NIR, with its own `nir_mean`/`nir_std`.
 
 Typical use (a linked worktree reads the untracked data of the primary checkout):
 

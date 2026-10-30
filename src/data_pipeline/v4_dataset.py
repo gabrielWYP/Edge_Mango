@@ -6,6 +6,7 @@ baked into the files, so training runs with ``nir_homography_path=<out>/homograp
 
     <out>/rgb/mango_rgb_<ts>.jpg     symlink to news/rgb_wb/ (white balance corrected) or news/rgb/
     <out>/nir/mango_nir_<ts>.png     gray NIR (B + R) / 2, warped into the RGB frame with inv(H)
+    <out>/nir_clahe/mango_nir_<ts>.png  the CLAHE annotation view (``enhance_nir``), same warp
     <out>/labels/mango_rgb_<ts>.txt  YOLO labels in the RGB frame: 0 mango, 1 damage
     <out>/homographies/identity.npy
     <out>/index.csv  exclusions.csv  report.json
@@ -30,7 +31,7 @@ import yaml
 
 from src.annotation.captura_v3_tasks import load_wb_timestamps
 from src.annotation.mango_registration import rgb_mango_mask
-from src.annotation.nir_display import nir_gray
+from src.annotation.nir_display import enhance_nir, method_params, nir_gray
 from src.data_pipeline.v4_selection import (
     DRAWN_FROM_HOUR,
     LATENT_HOURS,
@@ -121,11 +122,19 @@ def mango_box(rgb_path: Path) -> np.ndarray | None:
     return np.array([x, y, x + w, y + h], dtype=np.float64) * MASK_DOWNSCALE
 
 
-def registered_nir(nir_path: Path, H_rgb_to_nir: np.ndarray) -> np.ndarray:
+def read_nir(nir_path: Path) -> np.ndarray:
     bgr = cv2.imread(str(nir_path), cv2.IMREAD_COLOR)
     if bgr is None or (bgr.shape[1], bgr.shape[0]) != VIEW_SIZES["nir"]:
         raise ValueError(f"{nir_path}: unreadable or not a {VIEW_SIZES['nir']} NIR image")
-    gray = np.clip(np.rint(nir_gray(bgr)), 0, 255).astype(np.uint8)
+    return bgr
+
+
+def raw_nir(bgr: np.ndarray) -> np.ndarray:
+    return np.clip(np.rint(nir_gray(bgr)), 0, 255).astype(np.uint8)
+
+
+def registered_nir(gray: np.ndarray, H_rgb_to_nir: np.ndarray) -> np.ndarray:
+    """Warp a full NIR-frame gray image into the RGB frame."""
     return cv2.warpPerspective(
         gray,
         np.linalg.inv(H_rgb_to_nir),
@@ -137,7 +146,7 @@ def registered_nir(nir_path: Path, H_rgb_to_nir: np.ndarray) -> np.ndarray:
 
 
 def bake_photo(job: tuple[Photo, Path, Path, Path]) -> dict | None:
-    """Write the RGB link, registered NIR and labels of one photo; None if no mango is found."""
+    """Write the RGB link, registered NIRs and labels of one photo; None if no mango is found."""
     photo, data_root, repo_root, out_dir = job
     c, label = photo.capture, photo.label
     stem = f"mango_rgb_{c.timestamp}"
@@ -190,10 +199,14 @@ def bake_photo(job: tuple[Photo, Path, Path, Path]) -> dict | None:
             "damage_in_mango": round(float(np.prod(inter) / np.prod(union[2:] - union[:2])), 3),
         }
     (out_dir / "rgb" / f"{stem}.jpg").symlink_to(rgb_src.resolve())
-    nir = registered_nir(data_root / "news" / "nir" / f"mango_nir_{c.timestamp}.jpg", H)
-    nir_out = out_dir / "nir" / f"mango_nir_{c.timestamp}.png"
-    if not cv2.imwrite(str(nir_out), nir, [cv2.IMWRITE_PNG_COMPRESSION, PNG_COMPRESSION]):
-        raise OSError(f"cannot write {nir_out}")
+    bgr = read_nir(data_root / "news" / "nir" / f"mango_nir_{c.timestamp}.jpg")
+    # CLAHE runs on the whole NIR frame, as in the annotation view: after the warp the
+    # zero border would leak into its tiles.
+    for sub, gray in (("nir", raw_nir(bgr)), ("nir_clahe", enhance_nir(bgr))):
+        nir_out = out_dir / sub / f"mango_nir_{c.timestamp}.png"
+        nir = registered_nir(gray, H)
+        if not cv2.imwrite(str(nir_out), nir, [cv2.IMWRITE_PNG_COMPRESSION, PNG_COMPRESSION]):
+            raise OSError(f"cannot write {nir_out}")
     (out_dir / "labels" / f"{stem}.txt").write_text("".join(lines), encoding="utf-8")
     return row
 
@@ -232,7 +245,7 @@ def build_dataset(
     rules = load_homography_rules(rules_path)
     photos, excluded = select_photos(metas, labels, identity, load_wb_timestamps(data_root), rules)
 
-    for sub in ("rgb", "nir", "labels", "homographies"):
+    for sub in ("rgb", "nir", "nir_clahe", "labels", "homographies"):
         (out_dir / sub).mkdir(parents=True, exist_ok=True)
     np.save(out_dir / "homographies" / "identity.npy", np.eye(3))
     jobs = [(photo, data_root, Path(repo_root), out_dir) for photo in photos]
@@ -276,6 +289,11 @@ def build_dataset(
         "params": {
             "nir": "gray = (B + R) / 2 of the NIR JPEG, rounded to uint8, warped with inv(H) "
             f"(bilinear, border {NIR_BORDER_VALUE}), PNG",
+            "nir_clahe": {
+                "method": "enhance_nir (annotation view) of the full NIR frame, then the same "
+                "warp as nir",
+                **{k: v for k, v in method_params().items() if k != "jpeg_quality"},
+            },
             "mango_box": f"rgb_mango_mask on the 1/{MASK_DOWNSCALE} RGB, area fraction in "
             f"{list(MANGO_AREA_RANGE)}",
             "latent_hours": list(LATENT_HOURS),
