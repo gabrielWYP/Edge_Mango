@@ -23,6 +23,7 @@ procedure is in [`docs/capture/guia-lote-1.md`](../capture/guia-lote-1.md).
 | 5 | Import the tasks file | Data Manager |
 | 6 | Annotate | Label stream |
 | Optional | Show the contrast-enhanced grayscale NIR | [Enhanced NIR](#enhanced-nir-optional) |
+| Optional | Rebuild the +12 h reference images of the export | [Reference images](#reference-images-10-h-and-earlier-rounds) |
 
 ## Setup
 
@@ -117,6 +118,34 @@ skips images that already exist (`--overwrite` regenerates them) and never write
   `tasks_12h_nirvis.json`.
 - If some tasks are already annotated, do **not** delete them (that deletes the annotations): ask before
   switching.
+
+## Reference images (+10 h and earlier rounds)
+
+The tasks of the +10 h and earlier rounds show a read-only reference (`data.ref`): the same face at +12 h with
+its hand box outlined. The lot 3 +12 h and +10 h rounds have none and show a gray "No reference" placeholder. The
+files live in `cache/captura_v3/news/ref_12h/` and are rebuilt from the Label Studio export:
+
+```bash
+.venv/bin/python scripts/build_reference_images.py \
+    --labels data/labels/captura_v3_lots1-3_12h_0h.json \
+    --document-root "$PWD/data"
+```
+
+| Option | Meaning |
+| --- | --- |
+| `--labels` | Label Studio JSON export (list of tasks with `data` and `annotations`) |
+| `--document-root` | Required. Folder Label Studio serves files from: the `?d=` paths of the export are relative to it |
+| `--overwrite` | Regenerate images that already exist (default: skip them) |
+
+| Output | What it is |
+| --- | --- |
+| `mango_nir_<ts>.jpg` / `mango_rgb_<ts>.jpg` | The image the face's +12 h task displays (`data.nir` or `data.rgb`, so the enhanced NIR or the WB-corrected RGB) with the box outlined in red (about 0.4 % of the width). Same size and JPEG. `<ts>` is the +12 h task timestamp; the prefix is the modality of its box |
+| `no_reference.jpg` | Neutral gray 3280×2464 image with the text "No reference" |
+
+It prints how many images it wrote and skipped, and exits non-zero (`error:`) if a source image is missing or the
+export is inconsistent (a face without its +12 h task, box or matching name). Nothing is written in that case,
+and it never writes outside `cache/captura_v3/news/ref_12h/`. The sources must already exist, so build the
+enhanced NIR first if the export uses it.
 
 ## Annotation protocol
 
