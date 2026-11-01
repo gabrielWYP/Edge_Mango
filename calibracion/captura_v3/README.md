@@ -20,7 +20,7 @@ Use the `centros` matrix (marker centres, RANSAC 5 px). The `charuco` matrix (in
 
 Errors are on the ChArUco corners common to both images, in the RGB frame, on the board plane. Points below that plane (the mango flanks, the sheet) shift by parallax.
 
-**These errors are on the board, not on the fruit.** On real photos the fruit stays 20-98 px off with the homography alone, depending on the lot, so pixel-level work needs a per-photo translation on top: see [`docs/findings/2026-11-01-rgb-nir-residual/`](../../docs/findings/2026-11-01-rgb-nir-residual/README.md).
+**These errors are on the board, not on the fruit.** On real photos the fruit stays about 20-98 px off with the homography alone, depending on the lot, so pixel-level work needs a per-photo translation on top: see [`docs/findings/2026-11-01-rgb-nir-residual/`](../../docs/findings/2026-11-01-rgb-nir-residual/README.md).
 
 The matrices do not transfer between lots. The lot-1 matrix misses the lot-2 board by 32 px and the lot-3 morning board by 116 px (medians). The lot-3 morning matrix misses the lot-3 closing board by 53 px (median, max 118 px).
 

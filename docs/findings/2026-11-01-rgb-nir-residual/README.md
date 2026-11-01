@@ -4,7 +4,7 @@
 | --- | --- |
 | Date | 2026-11-01 |
 | Data | 3200 captura_v3 pairs, lots 1-4 (without the one photo marked `apartada`) |
-| Result | The per-lot homography does not align the fruit: the median residual is 20-98 px, depending on the lot |
+| Result | The per-lot homography does not align the fruit: the median residual is about 20-98 px, depending on the lot |
 | Output | [`registration_residuals.csv`](registration_residuals.csv) (one row per photo), [`overlays.jpg`](overlays.jpg), lot 4 matrix in [`calibracion/captura_v3/lote4-20261031/`](../../../calibracion/captura_v3/lote4-20261031/) |
 
 ## Why it matters
@@ -88,7 +88,7 @@ homography only and closes with the shift, most clearly on lot 4.
 - One rigid shift per photo. The fruit is curved, so the residual varies across its surface.
 - The search area is the central image rectangle, not a fruit mask, so the sheet and the shadow also vote. This may be
   why lot 3 morning has a high `corr H only` next to a large best shift. Treat those lot 3 shifts with more care.
-- Lot 1 has the lowest `corr best` (0.34-0.51), and 10 of its photos hit the search limit.
+- Lot 1 has the lowest `corr best` (0.34-0.51), and 9 of its photos hit the search limit.
 
 ## Next step
 
