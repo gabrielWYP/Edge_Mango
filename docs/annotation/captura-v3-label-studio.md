@@ -122,12 +122,12 @@ skips images that already exist (`--overwrite` regenerates them) and never write
 ## Reference images (+10 h and earlier rounds)
 
 The tasks of the +10 h and earlier rounds show a read-only reference (`data.ref`): the same face at +12 h with
-its hand box outlined. The lot 3 +12 h and +10 h rounds have none and show a gray "No reference" placeholder. The
-files live in `cache/captura_v3/news/ref_12h/` and are rebuilt from the Label Studio export:
+its hand box outlined. The lot 3 and lot 4 +12 h rounds and the lot 3 +10 h round have none and show a gray
+"No reference" placeholder. The files live in `cache/captura_v3/news/ref_12h/` and are rebuilt from the Label Studio export:
 
 ```bash
 .venv/bin/python scripts/build_reference_images.py \
-    --labels data/labels/captura_v3_lots1-3_12h_0h.json \
+    --labels data/labels/captura_v3_lots1-4_12h_0h.json \
     --document-root "$PWD/data"
 ```
 

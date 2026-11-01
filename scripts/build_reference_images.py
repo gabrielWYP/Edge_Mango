@@ -3,7 +3,7 @@
 
 Usage:
     .venv/bin/python scripts/build_reference_images.py \
-        --labels data/labels/captura_v3_lots1-3_12h_0h.json \
+        --labels data/labels/captura_v3_lots1-4_12h_0h.json \
         --document-root "$PWD/data"
 
 Reads the Label Studio JSON export and writes, for every ``data.ref`` in it,
