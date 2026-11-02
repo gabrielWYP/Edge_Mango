@@ -1,8 +1,8 @@
 """Read-only +12 h reference images for the Label Studio tasks of the earlier rounds.
 
 The tasks of the +10 h and earlier rounds show, next to the photo to annotate, the same fruit face at +12 h
-with the hand-drawn damage box on it (``data.ref``). Tasks annotated without one (the lot 3 +12 h and +10 h
-rounds) point at a gray "No reference" placeholder.
+with the hand-drawn damage box on it (``data.ref``). Tasks annotated without one (the lot 3 and lot 4 +12 h
+rounds and the lot 3 +10 h round) point at a gray "No reference" placeholder.
 
 Everything is rebuilt from a Label Studio JSON export: the reference of a face is the image its +12 h task
 displays (``data.nir`` or ``data.rgb``, whichever modality the single box was drawn on) with that box
