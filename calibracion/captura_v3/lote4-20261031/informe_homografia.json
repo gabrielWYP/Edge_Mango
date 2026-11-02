@@ -1,0 +1,35 @@
+{
+  "marcadores": {
+    "rgb": 44,
+    "nir": 44,
+    "comunes": 44,
+    "inliers_centros": 39
+  },
+  "esquinas_charuco_comunes": 70,
+  "error_en_esquinas_charuco_px": {
+    "lote3_final": {
+      "mediana": 50.37,
+      "p95": 57.43,
+      "max": 59.26,
+      "n": 70
+    },
+    "nueva_centros": {
+      "mediana": 1.98,
+      "p95": 4.57,
+      "max": 11.85,
+      "n": 70
+    }
+  },
+  "zona_rgb_cubierta_por_esquinas_pct": {
+    "x": [
+      31.3,
+      81.7
+    ],
+    "y": [
+      12.0,
+      57.7
+    ]
+  },
+  "fuente": "calib/calib-aruco-{rgb,nir}-1793454960.jpg de la jornada lote4-20261031",
+  "metodo": "docs/findings/2026-11-01-rgb-nir-residual/tools/fit_lot_homography.py"
+}
