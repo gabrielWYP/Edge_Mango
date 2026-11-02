@@ -186,6 +186,9 @@ back from +12 h as pre-annotations; the task format stays the same, only `--mome
 | 1-px lines in lot 2 NIR | 11 lot-2 NIR photos have 1-pixel sensor lines (source: the lot-2 capture summary `jornadas/lote2-20261025/resumen_lote2.md` in the OCI bucket). They are an artifact, not damage. |
 | `relabeled (was mango N face M)` | The photo was assigned to a different mango/face after capture. Trust the header, not the original label. Lot 2 at +2 h has a block of these (mangos 33-43), plus one dropped duplicate (mango 33 face 1) and one missing photo (mango 34 face 3). |
 | Lot 1 +12 h retakes | Five photos were taken 33-68 min late (`timing out of tolerance`), so the bruise is a little older. Two of them (mango 3, faces 2 and 3) were shot in swapped order and are flagged `relabeled`. |
+| Lot 2 41-4 +8 h is excluded | Photo ts 1792974516 has no mango in the NIR (only the sheet), though its RGB shows one. It has no task and no label. It is still in `jornada.json`, on the Pi and in OCI, so exclude it by timestamp. Usable pairs: lots 1-5 have 800, 798, 800, 800 and 798, 3996 in total. |
+| Two more pairs in OCI | `news/` also holds pairs set aside after upload: ts 1792954369 (lot 2) and 1793115416 (lot 3). Objects there cannot be deleted through the upload URL. They are not in `jornada.json`, so filter by it: `news/rgb/` holds 3999 photos. |
+| Task ids repeat in `captura_v3_lots1-4_12h_0h.json` | 184 ids are used twice, because the lot 4 ids overlap the older lots (2331 is both 33-4 +2 h and 83-4 +8 h). Match tasks by `jornada`, `mango_id`, `cara`, `ronda_h` and `timestamp`, not by id. |
 
 ## If something fails
 
