@@ -84,6 +84,23 @@ folder; the tasks come from the JSON.
 
 **Data Manager** → **Import** → upload `tasks_12h.json`. You should see 200 tasks, ordered by lot, mango, face.
 
+## Import the whole canonical file
+
+`data/labels/captura_v3_lots1-5_12h_0h.json` holds every task of all lots, annotated and pending, and imports directly into a new project:
+
+1. Create the project with `configs/label_studio/captura_v3_damage_ref.xml` as the config (step 3).
+2. Add the Local files storage (step 4).
+3. In **Data Manager** → **Import**, upload the file.
+
+The images must exist first, so build the enhanced NIR and the references of each lot (see the two sections below).
+
+| What | Detail |
+| --- | --- |
+| Tasks | 3496: 3046 annotated and 450 pending at the time of writing. The import adds 3047 annotations (one task has two) and 529 predictions |
+| Annotations after an import | Label Studio resets `created_at` and does not keep the `prediction` snapshot, so an export of the new project has lost them |
+| Export | By default the export leaves out pending tasks |
+| Updating the file | Replace only the tasks that changed, matching by `timestamp`, and keep the other tasks as they are. A full replacement would lose the two fields above and the pending tasks |
+
 ## Enhanced NIR (optional)
 
 Bruises sit in the shadowed parts of the curved fruit, so the raw NIR can be hard to read. A contrast-enhanced
@@ -188,7 +205,7 @@ back from +12 h as pre-annotations; the task format stays the same, only `--mome
 | Lot 1 +12 h retakes | Five photos were taken 33-68 min late (`timing out of tolerance`), so the bruise is a little older. Two of them (mango 3, faces 2 and 3) were shot in swapped order and are flagged `relabeled`. |
 | Lot 2 41-4 +8 h is excluded | Photo ts 1792974516 has no mango in the NIR (only the sheet), though its RGB shows one. It has no task and no label. It is still in `jornada.json`, on the Pi and in OCI, so exclude it by timestamp. Usable pairs: lots 1-5 have 800, 798, 800, 800 and 798, 3996 in total. |
 | Two more pairs in OCI | `news/` also holds pairs set aside after upload: ts 1792954369 (lot 2) and 1793115416 (lot 3). Objects there cannot be deleted through the upload URL. They are not in `jornada.json`, so filter by it: `news/rgb/` holds 3999 photos. |
-| Task ids repeat in `captura_v3_lots1-5_12h_0h.json` | 184 ids are used twice, because the lot 4 ids overlap the older lots (2331 is both 33-4 +2 h and 83-4 +8 h). Match tasks by `jornada`, `mango_id`, `cara`, `ronda_h` and `timestamp`, not by id. |
+| Tasks have no id in `captura_v3_lots1-5_12h_0h.json` | The file carries no ids of any Label Studio database, because they repeat across projects. Match tasks by `jornada`, `mango_id`, `cara`, `ronda_h` and `timestamp`. |
 
 ## If something fails
 
