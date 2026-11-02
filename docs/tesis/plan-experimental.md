@@ -59,7 +59,7 @@ H1 y H2 se prueban en **secuencia fija** (sección 8.3): H2 solo se evalúa como
 ### 3.1 Reglas de inclusión (se aplican antes de cualquier experimento)
 
 1. Solo fotos con `impacto.en_tolerancia = true` (±10 min). Las retomas tardías fuera de tolerancia se excluyen y se cuentan.
-   **Excepción:** la ronda +4 h del lote 4 (100 fotos, +19.3 a +32.3 min) se incluye completa, porque sigue en la misma franja de la ronda. En el análisis usa las horas reales (`impacto.horas_desde_impacto`, 4.32-4.54 h), no 4 h nominal.
+   **Excepción:** la ronda +4 h de los lotes 4 y 5 se incluye completa, porque sigue en la misma franja de la ronda: lote 4, 100 fotos (+19.3 a +32.3 min, 4.32-4.54 h reales); lote 5, 12 fotos de los mangos 123-125 (+12.1 a +14.2 min, 4.20-4.24 h reales). En el análisis usa las horas reales (`impacto.horas_desde_impacto`), no 4 h nominal.
 2. Las fotos movidas a `descartes/` (reinicios, correcciones) no entran.
 3. La identidad mango/cara se verifica con la auditoría SIFT (`auditar_sift.py`, ver las observaciones de cada lote). Una foto cuya identidad no se confirma se excluye.
 4. Los artefactos de línea horizontal en el NIR (CSI) se interpolan si cruzan el mango y se dejan si están solo en el fondo. Se reporta cuántos hay por lote.
@@ -350,4 +350,4 @@ inferencia confirmatoria es solo la de nivel lote.
 | Fecha | Cambio | Motivo | ¿Antes o después de ver test? |
 | :-- | :-- | :-- | :-- |
 | 2026-10-25 | Versión inicial | — | Antes |
-| 2026-11-02 | La ventana latente pasa de t ∈ {0, 2, 4} a t ∈ {0, 2, 4, 6}, y el daño desarrollado queda en t ∈ {8, 10, 12}. La ronda +4 h del lote 4 se incluye aunque esté fuera de tolerancia (regla 1 de 3.1). | Decisión del autor. Las fotos +4 h del lote 4 se atrasaron +19.3 a +32.3 min y siguen en la misma franja. | Antes de E1 y E2. E0 preliminar del lote 1 ya estaba visto. |
+| 2026-11-02 | La ventana latente pasa de t ∈ {0, 2, 4} a t ∈ {0, 2, 4, 6}, y el daño desarrollado queda en t ∈ {8, 10, 12}. La ronda +4 h de los lotes 4 y 5 se incluye aunque esté fuera de tolerancia (regla 1 de 3.1). | Decisión del autor. Las fotos +4 h fuera de tolerancia (lote 4: +19.3 a +32.3 min; lote 5: +12.1 a +14.2 min) siguen en la misma franja. | Antes de E1 y E2. E0 preliminar del lote 1 ya estaba visto. |
