@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from .config import TrainingConfig
-from .kd_loss import KD_LOSS_TYPES
+from .kd_loss import KD_LOSS_TYPES, validate_region_weights, validate_sublevels
 
 
 @dataclass
@@ -36,6 +36,13 @@ class KDConfig(TrainingConfig):
         kd_loss_type: Per-pair feature loss, "mse" (default, raw-feature MSE)
             or "pearson" (PKD, per-channel standardized MSE). See
             `src/training/kd_loss.py`.
+        kd_region_weights: Optional weights for "damage", "fruit" and
+            "background". Each region is averaged over its own cells, so a
+            small lesion is not lost in the map mean. None (default) keeps the
+            plain per-map loss.
+        kd_sublevels: Optional map indices to distill per level, finest first,
+            for example {"fpn": [0, 1]} for P3 and P4. A level left out keeps
+            all its maps; an empty list turns it off. None (default) keeps all.
         distill_levels: Per-level weights for KD loss (backbone, fpn, head_cls, head_reg).
     """
 
@@ -46,6 +53,8 @@ class KDConfig(TrainingConfig):
     kd_weight: float = 1.0
     kd_temperature: float = 1.0
     kd_loss_type: str = "mse"
+    kd_region_weights: dict | None = None
+    kd_sublevels: dict | None = None
     distill_levels: dict = field(default_factory=lambda: {
         "backbone": 1.0,
         "fpn": 0.1,
@@ -76,3 +85,5 @@ class KDConfig(TrainingConfig):
                 f"Invalid kd_loss_type '{self.kd_loss_type}'. "
                 f"Must be one of: {KD_LOSS_TYPES}"
             )
+        validate_region_weights(self.kd_region_weights)
+        validate_sublevels(self.kd_sublevels, self.distill_levels)

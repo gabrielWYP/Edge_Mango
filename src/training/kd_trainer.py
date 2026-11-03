@@ -118,6 +118,8 @@ class KDTrainer(Trainer):
             level_weights=config.distill_levels,
             temperature=config.kd_temperature,
             loss_type=config.kd_loss_type,
+            region_weights=config.kd_region_weights,
+            sublevels=config.kd_sublevels,
         ).to(self.device)
 
     def _auxiliary_param_groups(self, lr: float) -> list[dict]:
@@ -345,7 +347,10 @@ class KDTrainer(Trainer):
                     det_loss, det_dict = self.criterion(s_out["preds"], targets)
 
                     # --- KD loss ---
-                    kd_loss, kd_per_level = self.kd_criterion(kd_teacher, adapted_student)
+                    region_targets = (bboxes, labels) if self.config.kd_region_weights else ()
+                    kd_loss, kd_per_level = self.kd_criterion(
+                        kd_teacher, adapted_student, *region_targets
+                    )
 
                     # --- Total loss ---
                     loss = det_loss + self.config.kd_weight * kd_loss

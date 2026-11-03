@@ -124,6 +124,8 @@ def main():
     print(f"  Batch size: {config.batch_size}, Precision: {config.precision}")
     print(f"  KD weight: {config.kd_weight}, temperature: {config.kd_temperature}")
     print(f"  KD loss type: {config.kd_loss_type}")
+    print(f"  KD region weights: {config.kd_region_weights}")
+    print(f"  KD sublevels: {config.kd_sublevels}")
     print(f"  Distill levels: {config.distill_levels}")
     if config.modality_ablation != DEFAULT_MODALITY_ABLATION:
         print(f"  modality_ablation: {config.modality_ablation}")
