@@ -10,6 +10,9 @@ Modules:
     detectability:  E0 of docs/tesis/plan-experimental.md: disk-vs-ring
                     contrast, AUROC, mango-cluster bootstrap and grouped
                     out-of-fold logistic scores.
+    v4_metrics:     Metrics of plan section 7 from saved per-image predictions:
+                    latent AP50 and AP30, per-face AUROC and the strata by hour,
+                    zone and box provenance.
 
 These modules are pure functions of numbers (numpy + scipy.stats); reading
 metrics, images and writing reports stays in `scripts/aggregate_kfold.py`,

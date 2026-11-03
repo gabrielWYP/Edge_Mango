@@ -31,6 +31,16 @@ differences cannot be analysed (zero variance, fewer than 2 folds) gets
 `{"error": ...}` instead of numbers. `paired.per_fold_seed` keeps the
 per-seed differences for `scripts/plan_seeds.py`.
 
+Latent-window metrics. A run may hold a `metrics_v4.json` next to its
+`metrics.json` (`scripts/v4_metrics.py`, plan-experimental section 7). When any
+run has one, `latent_ap50` (primary), `latent_ap30` and `face_auroc` join the
+other metrics in `per_fold`, `summary` and `paired`, including the paired
+inference, with their seeds under `v4_seeds`; `v4` lists the splits covered and
+the runs left out. A null value (no ground truth or an empty group in the test
+lot) never enters a statistic, so that fold has no pair for that metric. Only a
+run whose `metrics.json` is readable counts. With no `metrics_v4.json` the output
+is exactly what it is without this feature.
+
 Outputs: `<reports-root>/kfold_results.json` and `<reports-root>/kfold_results.md`
 (deterministic: the same metrics give byte-identical files).
 
@@ -65,6 +75,8 @@ DAMAGE_CLASS_ID = 1
 SPLITS = ("val", "test")
 METRICS = ("ap50", "ap50_95", "precision", "recall")
 METRIC_LABELS = {"ap50": "AP50", "ap50_95": "AP50-95", "precision": "Precision", "recall": "Recall"}
+V4_METRICS = ("latent_ap50", "latent_ap30", "face_auroc")
+V4_METRIC_LABELS = {"latent_ap50": "Latent AP50", "latent_ap30": "Latent AP30", "face_auroc": "Face AUROC"}
 DEFAULT_FOLDS = "0,1,2,3,4"
 DEFAULT_FOLD_SPEC = "configs/folds/lot_5fold.json"
 DEFAULT_CONFIDENCE = 0.95
@@ -117,16 +129,63 @@ def load_run(reports_root: Path, arm: str, fold: int, seed: int, split: str) -> 
         return {**record, "status": "invalid", "reason": f"{path}: {type(error).__name__}: {error}"}
 
 
+def v4_summary(metrics: dict) -> dict:
+    """The inferential metrics of one `metrics_v4.json`; None for an empty stratum."""
+    values = {
+        "latent_ap50": metrics["latent_ap50"]["ap"],
+        "latent_ap30": metrics["latent_ap30"]["ap"],
+        "face_auroc": metrics["face_auroc"]["auroc"],
+    }
+    return {metric: None if value is None else float(value) for metric, value in values.items()}
+
+
+def load_v4_run(reports_root: Path, arm: str, fold: int, seed: int, split: str) -> dict:
+    """The `metrics_v4.json` of one run: `{"status": "ok", **summary}`, or a missing/invalid record."""
+    path = Path(reports_root) / arm / f"fold{fold}_seed{seed}" / split / "metrics_v4.json"
+    record = {"arm": arm, "fold": fold, "seed": seed, "split": split}
+    if not path.is_file():
+        return {**record, "status": "missing", "reason": f"{path} not found"}
+    try:
+        return {**record, "status": "ok", **v4_summary(json.loads(path.read_text()))}
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        return {**record, "status": "invalid", "reason": f"{path}: {type(error).__name__}: {error}"}
+
+
 # --------------------------------------------------------------------------
 # Fold spec and paired inference
 # --------------------------------------------------------------------------
 
 
-def load_fold_spec(path: Path) -> list[dict]:
-    """The `folds` list of a fold assignment file (`configs/folds/lot_5fold.json`).
+def _keyed_folds_to_rows(folds: Mapping) -> list[dict] | None:
+    """The fold rows of a `folds_meta.json` of `scripts/make_v4_folds.py`, None if it is not one.
 
-    Every entry needs `fold`, `num_test` and `num_train`. Raises ValueError, with
-    the path in the message, for an unreadable or malformed file.
+    That file keys the folds by id and holds the sizes under `splits.<split>.images`.
+    """
+    rows = []
+    for fold_id, entry in folds.items():
+        splits = entry.get("splits") if isinstance(entry, dict) else None
+        if not str(fold_id).isdigit() or not isinstance(splits, dict):
+            return None
+        sizes = {split: splits[split].get("images") for split in splits if isinstance(splits[split], dict)}
+        if sizes.get("test") is None or sizes.get("train") is None:
+            return None
+        rows.append({
+            "fold": int(fold_id),
+            "num_test": sizes["test"],
+            "num_train": sizes["train"],
+            "num_val": sizes.get("val"),
+            **{key: entry[key] for key in ("test", "train", "val") if key in entry},
+        })
+    return rows
+
+
+def load_fold_spec(path: Path) -> list[dict]:
+    """The fold rows of a fold assignment file.
+
+    Either a `folds` list (`configs/folds/lot_5fold.json`), whose entries need
+    `fold`, `num_test` and `num_train`, or the `folds` block of the `folds_meta.json`
+    written by `scripts/make_v4_folds.py`, which is converted to those rows. Raises
+    ValueError, with the path in the message, for an unreadable or malformed file.
     """
     path = Path(path)
     try:
@@ -136,6 +195,8 @@ def load_fold_spec(path: Path) -> list[dict]:
     except ValueError as error:                      # json.JSONDecodeError and UnicodeDecodeError
         raise ValueError(f"The fold spec {path} is not valid JSON: {error}") from None
     folds = data.get("folds") if isinstance(data, dict) else None
+    if isinstance(folds, dict):
+        folds = _keyed_folds_to_rows(folds)
     if not isinstance(folds, list) or not folds:
         raise ValueError(f"The fold spec {path} has no non-empty 'folds' list.")
     seen: set = set()
@@ -284,7 +345,7 @@ def aggregate(
         paired["inference"] = inference
         paired["inference_settings"] = {"confidence": confidence, "rope": rope}
 
-    return {
+    results = {
         "arms": list(arms),
         "damage_class_id": DAMAGE_CLASS_ID,
         "folds": list(folds),
@@ -297,6 +358,86 @@ def aggregate(
         "splits": list(SPLITS),
         "summary": summary,
     }
+    _merge_v4_metrics(results, runs, spec_by_id, rope, confidence)
+    return results
+
+
+def _merge_v4_metrics(
+    results: dict,
+    runs: Mapping[tuple, Mapping],
+    spec_by_id: Mapping[int, Mapping] | None,
+    rope: float | None,
+    confidence: float,
+) -> None:
+    """Add the `metrics_v4.json` metrics to `results`, in place; nothing when no run has that file."""
+    v4_runs = {
+        key: load_v4_run(Path(results["reports_root"]), *key) for key, run in runs.items() if run["status"] == "ok"
+    }
+    splits = [s for s in SPLITS if any(key[3] == s and run["status"] != "missing" for key, run in v4_runs.items())]
+    if not splits:
+        return
+
+    def value(arm: str, fold_key: str, seed: int, split: str, metric: str) -> float | None:
+        """None for a run with no such value: no file, an unreadable one, or an empty stratum."""
+        return v4_runs.get((arm, int(fold_key), seed, split), {}).get(metric)
+
+    paired = results["paired"]
+    baseline, treatment = paired["baseline"], paired["treatment"]
+    for split in splits:
+        for arm in results["arms"]:
+            rows = results["per_fold"][arm][split]
+            for fold_key, row in rows.items():
+                row["v4_seeds"] = {}
+                for metric in V4_METRICS:
+                    present = [s for s in row["seeds"] if value(arm, fold_key, s, split, metric) is not None]
+                    if present:
+                        row[metric] = statistics.fmean(value(arm, fold_key, s, split, metric) for s in present)
+                        row["v4_seeds"][metric] = present
+            results["summary"][arm][split].update(
+                {m: mean_std([row[m] for row in rows.values() if m in row]) for m in V4_METRICS}
+            )
+
+        rows = paired["per_fold"][split]
+        for metric in V4_METRICS:
+            paired["per_fold_seed"][split][metric] = {}
+        for fold_key, row in rows.items():
+            row["v4_seeds"] = {}
+            for metric in V4_METRICS:
+                deltas = {
+                    s: value(treatment, fold_key, s, split, metric) - value(baseline, fold_key, s, split, metric)
+                    for s in row["seeds"]
+                    if value(treatment, fold_key, s, split, metric) is not None
+                    and value(baseline, fold_key, s, split, metric) is not None
+                }
+                if deltas:
+                    row[metric] = statistics.fmean(deltas.values())
+                    row["v4_seeds"][metric] = list(deltas)
+                    paired["per_fold_seed"][split][metric][fold_key] = {str(s): d for s, d in deltas.items()}
+        paired["summary"][split].update(
+            {m: mean_std([row[m] for row in rows.values() if m in row]) for m in V4_METRICS}
+        )
+        if spec_by_id is not None:
+            for metric in V4_METRICS:
+                present = [fold for fold in results["folds"] if metric in rows.get(str(fold), {})]
+                paired["inference"][split][metric] = paired_inference(
+                    [rows[str(fold)][metric] for fold in present],
+                    [spec_by_id[fold] for fold in present], rope, confidence,
+                )
+
+    left_out = []
+    for run in v4_runs.values():
+        if run["split"] not in splits:
+            continue
+        record = {k: run[k] for k in ("arm", "fold", "seed", "split")}
+        if run["status"] != "ok":
+            left_out.append({**record, "status": run["status"], "reason": run["reason"]})
+            continue
+        left_out += [
+            {**record, "status": "null", "reason": f"{metric} is null: no ground truth or an empty group in its stratum"}
+            for metric in V4_METRICS if run[metric] is None
+        ]
+    results["metrics"] += list(V4_METRICS)
+    results["v4"] = {"metrics": list(V4_METRICS), "missing": left_out, "splits": splits}
 
 
 # --------------------------------------------------------------------------
@@ -321,6 +462,27 @@ def _fmt_p(p: float) -> str:
     return "<0.0001" if p < 1e-4 else f"{p:.4f}"
 
 
+def _inference_header(confidence: float) -> list[str]:
+    return ["n", "mean Δ", f"{confidence * 100:g}% CI", "p (two-sided)", "P(left)", "P(rope)", "P(right)",
+            "sign k/n", "sign-flip p", "min p"]
+
+
+def _inference_cells(entry: dict) -> list[str]:
+    """The cells of one `paired_inference` result, aligned with `_inference_header`."""
+    if "error" in entry:
+        return ["—", f"error: {entry['error']}"] + ["—"] * 8
+    ct, bayes, flip = entry["corrected_t"], entry["bayes"], entry["sign_flip"]
+    return [
+        str(entry["n_folds"]), _fmt(ct["mean"], signed=True),
+        f"[{_fmt(ct['ci_low'], signed=True)}, {_fmt(ct['ci_high'], signed=True)}]",
+        _fmt_p(ct["p_two_sided"]),
+        f"{bayes['p_left']:.3f}", f"{bayes['p_rope']:.3f}", f"{bayes['p_right']:.3f}",
+        f"{entry['n_positive']}/{entry['n_folds']}",
+        _fmt_p(flip["p_two_sided"]) + ("" if flip["exact"] else " (MC)"),
+        _fmt_p(flip["min_attainable_p_two_sided"]),
+    ]
+
+
 def _render_inference(results: dict) -> list[str]:
     """The 'Paired inference' section: one AP50 row per split."""
     paired = results["paired"]
@@ -329,8 +491,7 @@ def _render_inference(results: dict) -> list[str]:
     ratios = sorted({f"{e['test_train_ratio']:.4f}" for e in entries.values() if "error" not in e})
     rope_text = ("ROPE ±" + f"{rope:g}") if rope else "no ROPE set (P(rope) = 0)"
     pct = f"{confidence * 100:g}%"
-    header = ["split", "n", "mean Δ", f"{pct} CI", "p (two-sided)", "P(left)", "P(rope)", "P(right)",
-              "sign k/n", "sign-flip p", "min p"]
+    header = ["split", *_inference_header(confidence)]
     lines = [
         "", "## Paired inference", "",
         f"AP50, paired difference {paired['treatment']} − {paired['baseline']}; n is the number of folds "
@@ -347,21 +508,74 @@ def _render_inference(results: dict) -> list[str]:
         "", "| " + " | ".join(header) + " |", "|" + "---|" * len(header),
     ]
     for split in results["splits"]:
-        entry = entries[split]
-        if "error" in entry:
-            cells = [split, "—", f"error: {entry['error']}"] + ["—"] * (len(header) - 3)
-        else:
-            ct, bayes, flip = entry["corrected_t"], entry["bayes"], entry["sign_flip"]
-            cells = [
-                split, str(entry["n_folds"]), _fmt(ct["mean"], signed=True),
-                f"[{_fmt(ct['ci_low'], signed=True)}, {_fmt(ct['ci_high'], signed=True)}]",
-                _fmt_p(ct["p_two_sided"]),
-                f"{bayes['p_left']:.3f}", f"{bayes['p_rope']:.3f}", f"{bayes['p_right']:.3f}",
-                f"{entry['n_positive']}/{entry['n_folds']}",
-                _fmt_p(flip["p_two_sided"]) + ("" if flip["exact"] else " (MC)"),
-                _fmt_p(flip["min_attainable_p_two_sided"]),
-            ]
-        lines.append("| " + " | ".join(cells) + " |")
+        lines.append("| " + " | ".join([split, *_inference_cells(entries[split])]) + " |")
+    return lines
+
+
+def _v4_seeds_cell(row: dict) -> str:
+    seeds = sorted({seed for present in row["v4_seeds"].values() for seed in present})
+    return ", ".join(map(str, seeds)) if seeds else "no value"
+
+
+def _render_v4(results: dict) -> list[str]:
+    """The 'Latent-window metrics' section: per-arm tables, paired differences and their inference."""
+    v4, paired, folds = results["v4"], results["paired"], results["folds"]
+    labels = [V4_METRIC_LABELS[m] for m in V4_METRICS]
+    table_head = ["| fold | seeds | " + " | ".join(labels) + " |", "|---|---|" + "---|" * len(V4_METRICS)]
+    lines = [
+        "", "## Latent-window metrics", "",
+        "From `metrics_v4.json` (`scripts/v4_metrics.py`, plan-experimental section 7). **Latent AP50**, the "
+        "primary metric, is the damage AP50 on the latent window photos plus the `sano` photos of the lot; "
+        "**Latent AP30** is the same photos at IoU 0.30; **Face AUROC** ranks the latent photos against the "
+        "`sano` photos by their maximum damage confidence. A cell with — has no value: its stratum had no "
+        "ground truth or an empty group, or the file is missing, and that fold enters no statistic of the metric.",
+    ]
+    for split in v4["splits"]:
+        lines += ["", f"### {split}"]
+        for arm in results["arms"]:
+            lines += ["", f"#### {arm}", "", *table_head]
+            rows = results["per_fold"][arm][split]
+            for fold in folds:
+                row = rows.get(str(fold))
+                if row is None:
+                    lines.append(f"| {fold} | missing | " + " | ".join("—" for _ in V4_METRICS) + " |")
+                else:
+                    lines.append(f"| {fold} | {_v4_seeds_cell(row)} | "
+                                 + " | ".join(_fmt(row.get(m)) for m in V4_METRICS) + " |")
+            stats = results["summary"][arm][split]
+            lines.append("| **mean ± σ** | | "
+                         + " | ".join(f"{_fmt_stat(stats[m])} (n={stats[m]['n']})" for m in V4_METRICS) + " |")
+        lines += ["", f"#### Paired difference {paired['treatment']} − {paired['baseline']} ({split})", "", *table_head]
+        rows = paired["per_fold"][split]
+        for fold in folds:
+            row = rows.get(str(fold))
+            if row is None:
+                lines.append(f"| {fold} | missing | " + " | ".join("—" for _ in V4_METRICS) + " |")
+            else:
+                lines.append(f"| {fold} | {_v4_seeds_cell(row)} | "
+                             + " | ".join(_fmt(row.get(m), signed=True) for m in V4_METRICS) + " |")
+        stats = paired["summary"][split]
+        lines.append("| **mean ± σ** | | "
+                     + " | ".join(f"{_fmt_stat(stats[m], signed=True)} (n={stats[m]['n']})" for m in V4_METRICS) + " |")
+
+    if "inference" in paired:
+        header = ["split", "metric", *_inference_header(paired["inference_settings"]["confidence"])]
+        lines += [
+            "", "### Paired inference of these metrics", "",
+            "Same statistics as the AP50 rows of the section above, on the folds with a pair; the ROPE is in "
+            "units of each metric. Their limits are those stated there.",
+            "", "| " + " | ".join(header) + " |", "|" + "---|" * len(header),
+        ]
+        for split in v4["splits"]:
+            for metric in V4_METRICS:
+                cells = [split, V4_METRIC_LABELS[metric], *_inference_cells(paired["inference"][split][metric])]
+                lines.append("| " + " | ".join(cells) + " |")
+
+    if v4["missing"]:
+        lines += ["", f"{len(v4['missing'])} entries are not in these statistics:", ""]
+        for m in v4["missing"]:
+            lines.append(f"- {m['arm']} fold {m['fold']} seed {m['seed']} {m['split']}: {m['status']}"
+                         + (f" ({m['reason']})" if m["status"] != "missing" else ""))
     return lines
 
 
@@ -424,6 +638,9 @@ def render_markdown(results: dict) -> str:
     if "inference" in results["paired"]:
         lines += _render_inference(results)
 
+    if "v4" in results:
+        lines += _render_v4(results)
+
     lines += ["", "## Missing runs", ""]
     if not results["missing"]:
         lines.append("None: every expected evaluation was found.")
@@ -455,7 +672,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--treatment", default=None, help="Treatment arm of the paired difference (default: last arm).")
     parser.add_argument("--fold-spec", default=None,
                         help="Fold assignment file with the per-fold num_test / num_train used for the test/train "
-                             f"ratio of the paired inference (default: <repo>/{DEFAULT_FOLD_SPEC}).")
+                             f"ratio of the paired inference (default: <repo>/{DEFAULT_FOLD_SPEC}); the "
+                             "folds_meta.json of make_v4_folds.py is also accepted.")
     parser.add_argument("--rope", type=float, default=None,
                         help="Half-width of the region of practical equivalence, in metric units "
                              "(e.g. 0.02 = 2 AP points); applied to every metric. Default: no ROPE (P(rope) = 0).")

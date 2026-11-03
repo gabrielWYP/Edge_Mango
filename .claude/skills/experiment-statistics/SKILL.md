@@ -73,6 +73,16 @@ On the seed-averaged fold-level differences, `paired.inference.test.ap50` holds:
 - A metric whose differences cannot be analysed (zero variance, fewer than 2
   folds) holds `{"error": ...}` instead of numbers. Say so; do not fill it in.
 
+For the v4 dataset, `scripts/v4_metrics.py` writes a `metrics_v4.json` next to each
+`metrics.json`, from the `predictions.jsonl` of the same evaluation. When those
+files exist, the same blocks also hold `paired.inference.test.latent_ap50` (the
+plan's primary metric), `latent_ap30` and `face_auroc`, and `v4.missing` lists the
+runs left out. `--fold-spec` accepts the `folds_meta.json` of
+`scripts/make_v4_folds.py`. A null metric (a test lot with no ground truth or an
+empty group in that stratum) gives that fold no pair, so its n can be below 5:
+report that fold as absent, never as 0. The per-hour, zone and provenance strata in
+`metrics_v4.json` are descriptive and get no inference here.
+
 **Report, always:**
 
 1. All 5 per-fold deltas (not just the mean), with the seeds behind each.
@@ -115,8 +125,13 @@ Applied with the pre-registered ROPE and threshold (example: 0.95).
   & Miller 2008 report over-rejection with 5-30 clusters). Do not add one.
 - An image-level bootstrap inside one lot is anti-conservative: it treats
   correlated photographs of the same mangos as independent.
-- No per-image predictions are persisted today (by design), so image-level
-  analyses cannot be run after the fact.
+- Per-image predictions are persisted only by
+  `scripts/evaluate_checkpoint.py --save-predictions` (`predictions.jsonl`, the
+  raw boxes decoded at `eval_conf_threshold`, normalized to the source RGB frame
+  of the label files). An evaluation run without the flag, any before it existed
+  included, has none, so its image-level analyses cannot be run after the fact.
+  The file feeds descriptive strata; it does not change the unit of inference,
+  which stays the lot.
 - A significance verdict on cross-validated scores can flip when the same
   experiment is repeated with different random partitions (Bouckaert & Frank
   2004 measure this replicability): another reason to fix the seed set up front.

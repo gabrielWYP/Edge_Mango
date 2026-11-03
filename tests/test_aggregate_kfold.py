@@ -527,3 +527,242 @@ def test_main_rejects_invalid_rope_and_confidence(tmp_path: Path, capsys, flags:
     _synthetic_tree(tmp_path)
     assert agg.main(["--reports-root", str(tmp_path), *flags]) == 2
     assert "ERROR" in capsys.readouterr().err
+
+
+# --------------------------------------------------------------------------
+# metrics_v4.json: latent AP50, latent AP30 and per-face AUROC
+# --------------------------------------------------------------------------
+
+
+def _v4(latent_ap50: float | None, latent_ap30: float | None = None, face_auroc: float | None = None) -> dict:
+    """The fields of the JSON `scripts/v4_metrics.py` writes that the aggregation reads."""
+    return {
+        "latent_ap50": {"ap": latent_ap50, "n_gt": 9, "n_images": 30},
+        "latent_ap30": {"ap": latent_ap30, "n_gt": 9, "n_images": 30},
+        "face_auroc": {"auroc": face_auroc, "n_positive": 20, "n_negative": 10},
+    }
+
+
+def _write_v4(root: Path, arm: str, fold: int, seed: int, split: str, metrics: dict | str) -> Path:
+    path = root / arm / f"fold{fold}_seed{seed}" / split / "metrics_v4.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(metrics if isinstance(metrics, str) else json.dumps(metrics))
+    return path
+
+
+def _v4_tree(root: Path, deltas: dict[int, float] = DELTAS, folds=FIVE, seeds=SEEDS, split: str = "test") -> None:
+    """`_synthetic_tree` plus a metrics_v4.json per run, with known paired differences per metric."""
+    _synthetic_tree(root, folds=folds, seeds=seeds)
+    for fold in folds:
+        for seed in seeds:
+            base = 0.20 + 0.01 * fold
+            noisy = deltas[fold] + SEED_NOISE[seed]
+            _write_v4(root, BASE, fold, seed, split, _v4(base, base + 0.1, 0.6))
+            _write_v4(root, TREAT, fold, seed, split, _v4(base + noisy, base + 0.1 + 2 * noisy, 0.6 + noisy / 2))
+
+
+def test_v4_metrics_are_aggregated_per_fold_arm_and_seed(tmp_path: Path) -> None:
+    _synthetic_tree(tmp_path)
+    for fold in FIVE:
+        _write_v4(tmp_path, BASE, fold, 42, "test", _v4(0.2, 0.4, 0.6))
+        _write_v4(tmp_path, BASE, fold, 1337, "test", _v4(0.4, 0.6, 0.8))
+    results = _inferred(tmp_path)
+
+    row = results["per_fold"][BASE]["test"]["3"]
+    assert row["latent_ap50"] == pytest.approx(0.3)     # (0.2 + 0.4) / 2
+    assert row["latent_ap30"] == pytest.approx(0.5)     # (0.4 + 0.6) / 2
+    assert row["face_auroc"] == pytest.approx(0.7)      # (0.6 + 0.8) / 2
+    assert row["v4_seeds"]["latent_ap50"] == [42, 1337]
+    assert results["summary"][BASE]["test"]["latent_ap50"]["mean"] == pytest.approx(0.3)
+    assert results["summary"][BASE]["test"]["latent_ap50"]["n"] == 5
+    assert results["metrics"] == [*agg.METRICS, *agg.V4_METRICS]
+    # The metrics.json numbers of the same runs are unchanged by the merge.
+    assert row["ap50"] == pytest.approx(0.36)
+    assert row["seeds"] == [42, 1337]
+
+
+def test_v4_metrics_enter_the_same_paired_inference(tmp_path: Path) -> None:
+    _v4_tree(tmp_path)
+    results = _inferred(tmp_path, rope=0.02)
+    paired = results["paired"]
+
+    deltas = [DELTAS[f] for f in FIVE]
+    assert [paired["per_fold"]["test"][str(f)]["latent_ap50"] for f in FIVE] == pytest.approx(deltas)
+    assert [paired["per_fold"]["test"][str(f)]["latent_ap30"] for f in FIVE] == pytest.approx([2 * d for d in deltas])
+    assert [paired["per_fold"]["test"][str(f)]["face_auroc"] for f in FIVE] == pytest.approx([d / 2 for d in deltas])
+    assert paired["summary"]["test"]["latent_ap50"]["mean"] == pytest.approx(statistics.fmean(deltas))
+    per_seed = paired["per_fold_seed"]["test"]["latent_ap50"]["2"]
+    assert per_seed["42"] == pytest.approx(DELTAS[2] + 0.01)
+    assert per_seed["1337"] == pytest.approx(DELTAS[2] - 0.01)
+
+    for metric, scale in (("latent_ap50", 1.0), ("latent_ap30", 2.0), ("face_auroc", 0.5)):
+        expected = agg.paired_inference([d * scale for d in deltas], _spec_rows(), 0.02, 0.95)
+        entry = paired["inference"]["test"][metric]
+        assert entry["n_folds"] == 5
+        assert entry["corrected_t"]["mean"] == pytest.approx(expected["corrected_t"]["mean"])
+        assert entry["corrected_t"]["p_two_sided"] == pytest.approx(expected["corrected_t"]["p_two_sided"])
+        assert entry["bayes"]["p_right"] == pytest.approx(expected["bayes"]["p_right"])
+        assert entry["sign_flip"]["min_attainable_p_two_sided"] == pytest.approx(0.0625)
+
+
+def test_a_null_v4_metric_stays_out_of_every_statistic_and_is_listed(tmp_path: Path) -> None:
+    _v4_tree(tmp_path)
+    for arm in (BASE, TREAT):
+        for seed in SEEDS:
+            _write_v4(tmp_path, arm, 4, seed, "test", _v4(None, None, None))
+    results = _inferred(tmp_path)
+
+    assert "latent_ap50" not in results["per_fold"][BASE]["test"]["4"]
+    assert "latent_ap50" not in results["paired"]["per_fold"]["test"]["4"]
+    assert set(results["paired"]["per_fold_seed"]["test"]["latent_ap50"]) == {"0", "1", "2", "3"}
+    assert results["summary"][BASE]["test"]["latent_ap50"]["n"] == 4
+    assert results["paired"]["inference"]["test"]["latent_ap50"]["n_folds"] == 4
+    nulls = [m for m in results["v4"]["missing"] if m["status"] == "null"]
+    assert {(m["arm"], m["fold"], m["seed"]) for m in nulls} == {(a, 4, s) for a in (BASE, TREAT) for s in SEEDS}
+    assert all(m["split"] == "test" for m in nulls)
+    # A fold whose latent stratum is empty still counts for what its metrics.json holds.
+    assert results["paired"]["inference"]["test"]["ap50"]["n_folds"] == 5
+    assert results["missing"] == []
+
+
+def test_a_fold_with_a_v4_file_on_only_one_arm_has_no_pair(tmp_path: Path) -> None:
+    _v4_tree(tmp_path)
+    for seed in SEEDS:
+        (tmp_path / TREAT / f"fold1_seed{seed}" / "test" / "metrics_v4.json").unlink()
+    results = _inferred(tmp_path)
+
+    assert "latent_ap50" not in results["paired"]["per_fold"]["test"]["1"]
+    assert "latent_ap50" in results["per_fold"][BASE]["test"]["1"]
+    absent = [m for m in results["v4"]["missing"] if m["status"] == "missing"]
+    assert {(m["arm"], m["fold"], m["seed"]) for m in absent} == {(TREAT, 1, s) for s in SEEDS}
+
+
+def test_an_unreadable_v4_file_is_listed_as_invalid_and_keeps_the_rest(tmp_path: Path) -> None:
+    _v4_tree(tmp_path)
+    _write_v4(tmp_path, BASE, 0, 42, "test", "{not json")
+    _write_v4(tmp_path, BASE, 1, 42, "test", json.dumps({"latent_ap50": {}}))
+    results = _inferred(tmp_path)
+
+    invalid = [m for m in results["v4"]["missing"] if m["status"] == "invalid"]
+    assert {(m["arm"], m["fold"], m["seed"]) for m in invalid} == {(BASE, 0, 42), (BASE, 1, 42)}
+    assert all("metrics_v4.json" in m["reason"] for m in invalid)
+    assert results["per_fold"][BASE]["test"]["0"]["v4_seeds"]["latent_ap50"] == [1337]
+
+
+def test_a_split_with_no_v4_file_gets_no_v4_block(tmp_path: Path) -> None:
+    _v4_tree(tmp_path, split="test")
+    results = _inferred(tmp_path)
+
+    assert results["v4"]["splits"] == ["test"]
+    assert "latent_ap50" not in results["summary"][BASE]["val"]
+    assert "latent_ap50" not in results["paired"]["inference"]["val"]
+    assert all(m["split"] == "test" for m in results["v4"]["missing"])
+
+
+def test_without_any_v4_file_the_results_stay_as_they_were(tmp_path: Path) -> None:
+    _synthetic_tree(tmp_path)
+    results = _inferred(tmp_path, rope=0.02)
+
+    assert "v4" not in results
+    assert results["metrics"] == list(agg.METRICS)
+    for split in agg.SPLITS:
+        assert set(results["paired"]["summary"][split]) == set(agg.METRICS)
+        assert set(results["paired"]["inference"][split]) == set(agg.METRICS)
+        assert set(results["paired"]["per_fold_seed"][split]) == set(agg.METRICS)
+        assert set(results["paired"]["per_fold"][split]["0"]) == {*agg.METRICS, "seeds"}
+        assert set(results["per_fold"][BASE][split]["0"]) == {*agg.METRICS, "num_gt", "seeds"}
+    assert "Latent" not in agg.render_markdown(results)
+
+
+def test_markdown_reports_the_v4_metrics_and_their_inference(tmp_path: Path) -> None:
+    _v4_tree(tmp_path)
+    _write_v4(tmp_path, TREAT, 4, 42, "test", _v4(None, None, None))
+    markdown = agg.render_markdown(_inferred(tmp_path, rope=0.02))
+
+    section = markdown[markdown.index("## Latent-window metrics"):markdown.index("## Missing runs")]
+    assert f"#### {BASE}" in section and f"#### {TREAT}" in section
+    assert "| fold | seeds | Latent AP50 | Latent AP30 | Face AUROC |" in section
+    assert f"Paired difference {TREAT} − {BASE}" in section
+    assert "| split | metric | n | mean Δ |" in section
+    assert "| test | Latent AP50 | 5 |" in section
+    assert "| test | Face AUROC | 5 |" in section
+    assert "null" in section  # the fold 4 run with no value
+    assert "significant" not in section.lower()
+
+
+def test_main_writes_the_v4_block_and_stays_deterministic(tmp_path: Path) -> None:
+    reports = tmp_path / "reports"
+    _v4_tree(reports)
+    spec = _write_spec(tmp_path)
+    argv = ["--reports-root", str(reports), "--seeds", "42", "1337", "--fold-spec", str(spec), "--rope", "0.02"]
+    assert agg.main(argv) == 0
+    data = json.loads((reports / "kfold_results.json").read_text())
+    assert data["paired"]["inference"]["test"]["latent_ap50"]["n_folds"] == 5
+    assert data["v4"]["metrics"] == list(agg.V4_METRICS)
+    assert "## Latent-window metrics" in (reports / "kfold_results.md").read_text()
+    first = (reports / "kfold_results.json").read_bytes(), (reports / "kfold_results.md").read_bytes()
+    assert agg.main(argv) == 0
+    assert ((reports / "kfold_results.json").read_bytes(), (reports / "kfold_results.md").read_bytes()) == first
+
+
+def _v4_fold_meta(sizes: dict[int, tuple[int, int]] = SIZES) -> dict:
+    """The shape `scripts/make_v4_folds.py` writes to folds_meta.json: folds keyed by id, sizes under `splits`."""
+    return {
+        "folds": {
+            str(k): {
+                "splits": {
+                    "test": {"images": te, "damage_boxes": 1, "mangos": 1, "negatives": 1},
+                    "train": {"images": tr, "damage_boxes": 1, "mangos": 1, "negatives": 1},
+                    "val": {"images": 7, "damage_boxes": 1, "mangos": 1, "negatives": 1},
+                },
+                "test": f"lot{k + 1}",
+                "train": [],
+                "val": f"lot{(k + 1) % 5 + 1}",
+            }
+            for k, (te, tr) in sizes.items()
+        },
+        "num_images": 0,
+    }
+
+
+def test_load_fold_spec_reads_the_v4_folds_meta(tmp_path: Path) -> None:
+    path = tmp_path / "folds_meta.json"
+    path.write_text(json.dumps(_v4_fold_meta()))
+    rows = agg.load_fold_spec(path)
+    assert [r["fold"] for r in rows] == [0, 1, 2, 3, 4]
+    assert rows[2]["num_test"] == SIZES[2][0]
+    assert rows[2]["num_train"] == SIZES[2][1]
+    assert rows[2]["num_val"] == 7
+    assert rows[2]["test"] == "lot3"
+    assert fi.test_train_ratio(rows) == pytest.approx(fi.test_train_ratio(_spec_rows()))
+
+
+def test_main_takes_the_v4_folds_meta_through_fold_spec(tmp_path: Path) -> None:
+    reports = tmp_path / "reports"
+    _synthetic_tree(reports)
+    spec = tmp_path / "folds_meta.json"
+    spec.write_text(json.dumps(_v4_fold_meta()))
+    assert agg.main(["--reports-root", str(reports), "--seeds", "42", "1337", "--fold-spec", str(spec)]) == 0
+    entry = json.loads((reports / "kfold_results.json").read_text())["paired"]["inference"]["test"]["ap50"]
+    assert entry["test_train_ratio"] == pytest.approx(0.3)
+
+
+@pytest.mark.parametrize(
+    "folds",
+    [
+        {},
+        {"0": 1},
+        {"0": {"splits": {"test": {"images": 5}}}},                             # no train size
+        {"x": {"splits": {"test": {"images": 5}, "train": {"images": 9}}}},     # not a fold id
+    ],
+)
+def test_load_fold_spec_rejects_a_keyed_folds_block_it_cannot_read(tmp_path: Path, folds: dict) -> None:
+    path = tmp_path / "bad.json"
+    path.write_text(json.dumps({"folds": folds}))
+    with pytest.raises(ValueError, match="bad.json"):
+        agg.load_fold_spec(path)
+
+
+def test_load_fold_spec_returns_a_list_spec_as_written(tmp_path: Path) -> None:
+    path = _write_spec(tmp_path)
+    assert agg.load_fold_spec(path) == _spec_rows()

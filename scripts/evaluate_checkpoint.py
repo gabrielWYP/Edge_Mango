@@ -13,6 +13,21 @@ no optimizer step) over the chosen split that accumulates per-class,
 per-level positive-anchor counts via `YOLOv8Loss`'s non-destructive
 instrumentation, written to `<output-dir>/assigner_stats.csv`.
 
+With `--save-predictions`, also writes `<output-dir>/predictions.jsonl`, the
+raw predictions AP is computed from (decoded at `eval_conf_threshold`, not at
+the `conf_threshold` operating point), one JSON per image:
+
+    {"stem": "mango_rgb_1792861156",
+     "boxes": [{"class": 1, "confidence": 0.87, "xyxy": [x1, y1, x2, y2]}, ...]}
+
+`stem` is the RGB image stem and `boxes` is empty when nothing was decoded.
+`xyxy` is normalized to the SOURCE RGB image, the frame of the YOLO label files
+(`labels/<split>/<stem>.txt` after converting cxcywh to xyxy): the letterbox and
+the ROI crop of the model input are undone. A box reaching the letterbox padding
+can fall slightly outside [0, 1]. `scripts/v4_metrics.py` compares these boxes
+with the label files; under `roi_crop` the labels `crop_to_roi` drops for the
+model input (under half visible) are still in those files, so they count there.
+
 Usage:
     # Step A — NMS-corrected baseline re-evaluation (no training).
     python scripts/evaluate_checkpoint.py --config configs/training_student.yaml \\
@@ -23,6 +38,10 @@ Usage:
     python scripts/evaluate_checkpoint.py --config configs/training_student.yaml \\
         --checkpoint checkpoints/student/best_model.pt --split train \\
         --assigner-stats --override assigner_center_radius=0.0
+
+    # Per-image predictions next to metrics.json, for scripts/v4_metrics.py.
+    python scripts/evaluate_checkpoint.py --config configs/experiment/twostream.yaml \\
+        --checkpoint runs/best_model.pt --split test --output-dir reports/eval --save-predictions
 """
 
 from __future__ import annotations
@@ -34,6 +53,8 @@ import math
 import sys
 from pathlib import Path
 
+import cv2
+import numpy as np
 import torch
 
 # Ensure project root is importable
@@ -42,7 +63,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src.models.master.master_model import MasterModel
 from src.models.student.student_model import StudentModel, strip_legacy_kd_adapter_keys
 from src.training.config import TrainingConfig
-from src.training.dataset import YOLODataset, build_dataloader, collate_fn
+from src.training.dataset import YOLODataset, build_dataloader, collate_fn, letterbox
 from src.training.fusion_modes import (
     FUSION_MODE_CROSS_ATTENTION,
     accepted_arch_versions,
@@ -54,6 +75,7 @@ from src.training.fusion_modes import (
 )
 from src.training.loop import Trainer
 from src.training.neck_norm import check_norm_compatible, neck_norm_from_checkpoint
+from src.training.roi_crop import MANGO_CLASS_ID, crop_to_roi
 from src.training.strides import (
     CROSS_ATTENTION_HEAD_STRIDES,
     resolve_active_strides,
@@ -65,6 +87,8 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+PREDICTIONS_FILENAME = "predictions.jsonl"
 
 
 def parse_args() -> argparse.Namespace:
@@ -93,13 +117,23 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--save-predictions", action="store_true",
+        help=(
+            f"Also write <output-dir>/{PREDICTIONS_FILENAME}: one JSON per image with its stem and "
+            "its raw predicted boxes, xyxy normalized to the source RGB frame of the label files."
+        ),
+    )
+    parser.add_argument(
         "--output-dir", type=str, default="reports/damage-map-audit/eval",
-        help="Directory to write metrics.json / assigner_stats.csv.",
+        help=f"Directory to write metrics.json / assigner_stats.csv / {PREDICTIONS_FILENAME}.",
     )
     parser.add_argument(
         "--device", type=str, default=None, help="Device: cuda or cpu (default: auto-detect).",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.save_predictions and args.assigner_stats:
+        parser.error("--save-predictions needs the mAP evaluation, which --assigner-stats replaces.")
+    return args
 
 
 def _apply_overrides(config: TrainingConfig, overrides: list[str]) -> None:
@@ -481,6 +515,63 @@ def _gt_instance_counts(dataset: YOLODataset) -> dict[int, int]:
     return dataset.get_class_counts()
 
 
+def _to_source_frame(boxes: torch.Tensor, dataset: YOLODataset, pair: dict) -> torch.Tensor:
+    """Map decoded boxes of one image to xyxy normalized to its source RGB image.
+
+    `boxes` is `(P, 4)` cxcywh normalized to the model input: the letterboxed
+    image, after the ROI crop when the dataset crops. `crop_to_roi` does not
+    return its window, so it runs here on images holding their own x and y
+    coordinates: the window is the dataset's by construction, and `letterbox`
+    likewise gives the dataset's scale and padding, so neither can drift.
+    """
+    height, width = cv2.imread(str(pair["rgb_path"])).shape[:2]
+    x_min, y_min, crop_height, crop_width = 0, 0, height, width
+    if dataset.roi_crop:
+        gt_boxes, gt_labels = dataset._load_labels(pair["label_path"])
+        xs = np.broadcast_to(np.arange(width), (height, width))
+        ys = np.broadcast_to(np.arange(height)[:, None], (height, width))
+        xs_crop, ys_crop, _, _ = crop_to_roi(
+            xs, ys, gt_boxes, gt_labels, roi_class=MANGO_CLASS_ID, margin=dataset.roi_crop_margin,
+        )
+        x_min, y_min = int(xs_crop[0, 0]), int(ys_crop[0, 0])
+        crop_height, crop_width = xs_crop.shape
+    _, scale, pad_x, pad_y = letterbox(np.zeros((crop_height, crop_width), np.uint8), dataset.image_size)
+
+    cx, cy, w, h = (boxes.double() * dataset.image_size).unbind(-1)
+    x1 = (cx - w / 2 - pad_x) / scale + x_min
+    y1 = (cy - h / 2 - pad_y) / scale + y_min
+    x2 = (cx + w / 2 - pad_x) / scale + x_min
+    y2 = (cy + h / 2 - pad_y) / scale + y_min
+    return torch.stack([x1 / width, y1 / height, x2 / width, y2 / height], dim=-1)
+
+
+def _prediction_line(stem: str, boxes_xyxy: torch.Tensor, scores: torch.Tensor, labels: torch.Tensor) -> str:
+    """One line of predictions.jsonl (format in the module docstring)."""
+    return json.dumps({
+        "stem": stem,
+        "boxes": [
+            {"class": label, "confidence": score, "xyxy": [round(value, 6) for value in box]}
+            for box, score, label in zip(boxes_xyxy.tolist(), scores.tolist(), labels.tolist())
+        ],
+    })
+
+
+def _evaluate_saving_predictions(trainer: Trainer, dataset: YOLODataset, path: Path) -> dict:
+    """`trainer.evaluate()`, writing predictions.jsonl along the way (whole file or none)."""
+    pairs = {pair["image_id"]: pair for pair in dataset.pairs}
+    partial = path.with_name(path.name + ".partial")
+    with partial.open("w") as handle:
+        def write_line(image_id: int, boxes: torch.Tensor, scores: torch.Tensor, labels: torch.Tensor) -> None:
+            pair = pairs[image_id]
+            source_boxes = _to_source_frame(boxes, dataset, pair)
+            handle.write(_prediction_line(pair["rgb_path"].stem, source_boxes, scores, labels) + "\n")
+
+        metrics = trainer.evaluate(prediction_sink=write_line)
+    partial.replace(path)
+    logger.info("Predictions written to %s", path)
+    return metrics
+
+
 def main() -> int:
     args = parse_args()
 
@@ -534,7 +625,12 @@ def main() -> int:
         return 0
 
     trainer = Trainer(model=model, config=config, train_loader=None, val_loader=loader)
-    metrics = {**trainer.evaluate(), **_roi_crop_provenance(config)}
+    evaluated = (
+        _evaluate_saving_predictions(trainer, dataset, output_dir / PREDICTIONS_FILENAME)
+        if args.save_predictions
+        else trainer.evaluate()
+    )
+    metrics = {**evaluated, **_roi_crop_provenance(config)}
 
     metrics_path = output_dir / "metrics.json"
     metrics_path.write_text(json.dumps(metrics, indent=2, default=str))
