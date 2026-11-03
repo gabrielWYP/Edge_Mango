@@ -43,6 +43,27 @@ Every command and outcome is appended to `<reports-root>/runner.log`.
 Order is fold-major (then seed, then arm), so both arms of a fold are done
 before the next fold starts and paired comparisons become available early.
 
+Arms of plan-experimental E1 and E2: `configs/experiment/v4_<arm>.yaml`, on the
+folds of `scripts/make_v4_folds.py` (see `V4_ARMS` for what each arm runs with;
+exact commands in `docs/tesis/runbook-v4.md`). A v4 arm differs from the above in:
+
+  * its name is the one in the plan (`maestro_rgb`), for the run and report dirs;
+  * the data comes from `--dataset` (default: the parent of `--folds-dir`), with
+    `nir_mean` / `nir_std` of the fold from `<folds-dir>/folds_meta.json`, for
+    `--nir-variant` and the `frame` or `roi` view of the arm's `roi_crop`;
+  * a student trains with `src.training.train --model student` or, with a teacher,
+    `src.training.kd_train`, and is evaluated with `--model student`, RGB only;
+  * a student distills from the teacher of the same fold and seed. Teachers in
+    `--arms` train first whatever the order given. Any other teacher must already be
+    complete, under the same settings, or the runner stops before anything runs;
+    there is no fallback;
+  * each evaluation also writes `predictions.jsonl`, followed by a step that runs
+    `scripts/v4_metrics.py` into `metrics_v4.json`, with its own
+    `metrics_v4_complete.json` identity marker;
+  * the identity also covers `folds_meta.json` and, for a KD run, the bytes of the
+    teacher checkpoint (a retrained teacher stops its students) and the evaluation
+    config.
+
 Usage:
     python scripts/run_kfold.py --machine configs/machines/rtx3080.yaml
     python scripts/run_kfold.py --machine configs/machines/rtx3080.yaml --dry-run
@@ -89,6 +110,19 @@ EVAL_MARKER = "eval_complete.json"
 # The protocol shared by every arm: no early stopping, select on damage AP50.
 PROTOCOL_OVERRIDES = ("patience=1000", "selection_metric=damage_ap50")
 
+FOLDS_META = "folds_meta.json"
+PREDICTIONS = "predictions.jsonl"
+METRICS_V4 = "metrics_v4.json"
+METRICS_V4_MARKER = "metrics_v4_complete.json"
+NIR_VARIANTS = ("nir", "nir_clahe")
+DEFAULT_NIR_VARIANT = "nir"
+V4_CONFIG_PREFIX = "v4_"
+# `evaluate_checkpoint.py` loads a TrainingConfig, which refuses the KD keys, so
+# every student is scored with the config of the student without a teacher.
+V4_STUDENT_EVAL_CONFIG = "v4_est_etiquetas.yaml"
+# In the identity of a KD run on a dry run whose plan trains the teacher first.
+TEACHER_PENDING = "pending"
+
 _FOLD_DIR_RE = re.compile(r"fold_(\d+)")
 
 
@@ -109,6 +143,42 @@ class RunnerOptions:
     reports_root: Path
     dry_run: bool = False
     extra_overrides: list[str] = field(default_factory=list)
+    dataset: Path | None = None
+    nir_variant: str = DEFAULT_NIR_VARIANT
+
+
+@dataclass(frozen=True)
+class V4Arm:
+    """What an arm of the plan runs with, besides its config file.
+
+    It is here and not in the config because TrainingConfig and KDConfig refuse
+    unknown keys, and `modality_ablation` is an override shared by the steps of the arm.
+    """
+
+    trainer: str  # "master", "student" or "kd"
+    modality_ablation: str | None = None
+    teacher: str | None = None  # the arm this one distills from
+
+
+V4_ARMS = {
+    "maestro_rgbnir": V4Arm("master"),
+    "maestro_rgb": V4Arm("master", modality_ablation="nir_const"),
+    "maestro_nir": V4Arm("master", modality_ablation="rgb_const"),
+    "est_etiquetas": V4Arm("student"),
+    # The teacher has to see the constant NIR it was trained on.
+    "est_kd_rgb": V4Arm("kd", modality_ablation="nir_const", teacher="maestro_rgb"),
+    "est_kd_rgbnir": V4Arm("kd", teacher="maestro_rgbnir"),
+}
+
+
+@dataclass(frozen=True)
+class V4Folds:
+    """The dataset and per-fold NIR stats of the v4 arms, checked before anything runs."""
+
+    dataset: Path
+    nir_variant: str
+    nir_stats: dict[int, dict[str, dict[str, float]]]  # fold -> view -> {"mean", "std"}
+    meta_sha256: str
 
 
 # --------------------------------------------------------------------------
@@ -117,8 +187,28 @@ class RunnerOptions:
 
 
 def arm_name(config: str | Path) -> str:
-    """`configs/experiment/twostream_roi_crop.yaml` -> `twostream_roi_crop`."""
-    return Path(config).stem
+    """`configs/experiment/twostream_roi_crop.yaml` -> `twostream_roi_crop`.
+
+    A config of the plan takes the name in the plan: `v4_maestro_rgb.yaml` -> `maestro_rgb`.
+    """
+    stem = Path(config).stem
+    name = stem.removeprefix(V4_CONFIG_PREFIX)
+    return name if name in V4_ARMS else stem
+
+
+def v4_arm(config: str | Path) -> V4Arm | None:
+    """The arm of a `v4_*` config, None for any other config.
+
+    An unknown `v4_*` config stops the runner: run as a plain arm, it would train on
+    the data and NIR stats of its file, with no teacher and no ablation.
+    """
+    stem = Path(config).stem
+    if not stem.startswith(V4_CONFIG_PREFIX):
+        return None
+    try:
+        return V4_ARMS[stem.removeprefix(V4_CONFIG_PREFIX)]
+    except KeyError:
+        raise RunnerError(f"{stem} is not an arm of the plan; V4_ARMS has: {', '.join(V4_ARMS)}.") from None
 
 
 def parse_int_list(text: str) -> list[int]:
@@ -152,6 +242,35 @@ def report_run_dir(reports_root: Path, arm: str, fold: int, seed: int) -> Path:
     return Path(reports_root) / arm / f"fold{fold}_seed{seed}"
 
 
+def load_v4_folds(options: RunnerOptions, folds: Sequence[int]) -> V4Folds:
+    """Read `folds_meta.json` and check that the folds were built from the dataset."""
+    folds_dir = Path(options.folds_dir)
+    dataset = Path(options.dataset) if options.dataset is not None else folds_dir.parent
+    meta_path = folds_dir / FOLDS_META
+    hint = "The v4 arms need the folds of scripts/make_v4_folds.py."
+    try:
+        meta = json.loads(meta_path.read_text())
+    except (OSError, ValueError) as error:
+        raise RunnerError(f"Cannot read {meta_path}: {error}. {hint}") from None
+    nir_stats = {}
+    for fold in folds:
+        try:
+            views = meta["folds"][str(fold)]["nir_stats"][options.nir_variant]
+            nir_stats[fold] = {
+                view: {"mean": views[view]["mean"], "std": views[view]["std"]} for view in ("frame", "roi")
+            }
+        except (KeyError, TypeError):
+            raise RunnerError(
+                f"{meta_path} has no nir_stats of fold {fold} and variant {options.nir_variant}. {hint}"
+            ) from None
+    index = dataset / "index.csv"
+    if not index.is_file():
+        raise RunnerError(f"{index} not found: --dataset must be the output of scripts/build_v4_dataset.py.")
+    if meta.get("index_sha256") != _file_sha256(index):
+        raise RunnerError(f"{folds_dir} was built from another {index}. Rebuild it with scripts/make_v4_folds.py.")
+    return V4Folds(dataset, options.nir_variant, nir_stats, _file_sha256(meta_path))
+
+
 # --------------------------------------------------------------------------
 # Commands
 # --------------------------------------------------------------------------
@@ -160,6 +279,26 @@ def report_run_dir(reports_root: Path, arm: str, fold: int, seed: int) -> Path:
 def data_overrides(fold_path: Path) -> list[str]:
     """Point the dataset at one materialized fold (labels copied per split)."""
     return [f"labels_dir={Path(fold_path) / 'labels'}", f"split_manifest={Path(fold_path) / 'splits.json'}"]
+
+
+def crop_view(config: Path, extra_overrides: Sequence[str]) -> str:
+    """The `folds_meta.json` view of an arm: `roi` with its `roi_crop` on, else `frame`."""
+    roi_crop = (yaml.safe_load(Path(config).read_text()) or {}).get("roi_crop", False)
+    for token in extra_overrides:
+        if token.startswith("roi_crop="):
+            roi_crop = token.split("=", 1)[1].lower() in ("true", "1", "yes")
+    return "roi" if roi_crop else "frame"
+
+
+def v4_overrides(spec: V4Arm, config: Path, fold: int, v4: V4Folds, extra_overrides: Sequence[str]) -> list[str]:
+    """Data, NIR normalization and ablation of one arm on one fold, the same on all its steps."""
+    stats = v4.nir_stats[fold][crop_view(config, extra_overrides)]
+    ablation = [f"modality_ablation={spec.modality_ablation}"] if spec.modality_ablation else []
+    return [
+        f"rgb_dir={v4.dataset / 'rgb'}", f"nir_dir={v4.dataset / v4.nir_variant}",
+        f"nir_homography_path={v4.dataset / 'homographies' / 'identity.npy'}",
+        f"nir_mean={stats['mean']}", f"nir_std={stats['std']}", *ablation,
+    ]
 
 
 def build_train_command(
@@ -171,12 +310,45 @@ def build_train_command(
     seed: int,
     epochs: int | None,
     extra_overrides: list[str],
+    model: str = "master",
+    arm_overrides: Sequence[str] = (),
 ) -> list[str]:
     cmd = [
         python, "-m", "src.training.train",
-        "--config", str(config), "--machine", str(machine), "--model", "master",
+        "--config", str(config), "--machine", str(machine), "--model", model,
+        "--override",
+        f"seed={seed}", *PROTOCOL_OVERRIDES, *data_overrides(fold_path), f"output_dir={run_path}", *arm_overrides,
+    ]
+    if epochs is not None:
+        cmd.append(f"epochs={epochs}")
+    return cmd + list(extra_overrides)
+
+
+def build_kd_command(
+    python: str,
+    config: Path,
+    machine: Path,
+    fold_path: Path,
+    run_path: Path,
+    teacher_checkpoint: Path,
+    seed: int,
+    epochs: int | None,
+    extra_overrides: Sequence[str],
+    arm_overrides: Sequence[str] = (),
+) -> list[str]:
+    """Distill one student. `kd_train.py` has no `--machine`, so the profile goes as overrides.
+
+    All but `batch_size`: KDTrainer has no gradient accumulation, so here it is the batch
+    of each optimizer step and comes from the config, equal to `effective_batch`. With the
+    batch of a smaller profile, a KD arm would take more steps than `est_etiquetas`.
+    """
+    profile = [token for token in machine_overrides(machine) if not token.startswith("batch_size=")]
+    cmd = [
+        python, "-m", "src.training.kd_train",
+        "--config", str(config),
         "--override",
         f"seed={seed}", *PROTOCOL_OVERRIDES, *data_overrides(fold_path), f"output_dir={run_path}",
+        f"teacher_checkpoint={teacher_checkpoint}", *profile, *arm_overrides,
     ]
     if epochs is not None:
         cmd.append(f"epochs={epochs}")
@@ -207,20 +379,34 @@ def build_eval_command(
     output_dir: Path,
     machine_overrides: Sequence[str] = (),
     extra_overrides: Sequence[str] = (),
+    model: str = "master",
+    save_predictions: bool = False,
 ) -> list[str]:
     """Score `checkpoint` on `split` of one fold.
 
     `output_dir=<scratch_dir>` redirects the Trainer that `evaluate_checkpoint.py`
     builds (it creates its output dir and a TensorBoard `logs/` on construction)
     away from the experiment file's `checkpoints/<arm>`; `--output-dir` receives
-    `metrics.json`.
+    `metrics.json` and, with `save_predictions`, `predictions.jsonl`.
     """
     return [
         python, "scripts/evaluate_checkpoint.py",
         "--config", str(config), "--checkpoint", str(checkpoint),
-        "--split", split, "--model", "master", "--output-dir", str(output_dir),
+        "--split", split, "--model", model, "--output-dir", str(output_dir),
+        *(["--save-predictions"] if save_predictions else []),
         "--override",
         *data_overrides(fold_path), f"output_dir={scratch_dir}", *machine_overrides, *extra_overrides,
+    ]
+
+
+def build_v4_metrics_command(
+    python: str, predictions: Path, index: Path, labels_dir: Path, output: Path,
+) -> list[str]:
+    """Stratified metrics of one evaluation, from its `predictions.jsonl`."""
+    return [
+        python, "scripts/v4_metrics.py",
+        "--predictions", str(predictions), "--index", str(index),
+        "--labels-dir", str(labels_dir), "--output", str(output),
     ]
 
 
@@ -253,10 +439,13 @@ def _identity(parts: dict[str, str]) -> dict[str, str]:
     return {**parts, "sha256": _digest(parts)}
 
 
-def run_identity(command: Sequence[str], config: Path, machine: Path, fold_path: Path) -> dict[str, str]:
+def run_identity(
+    command: Sequence[str], config: Path, machine: Path, fold_path: Path, extra: dict[str, str] | None = None,
+) -> dict[str, str]:
     """Digest of each input that determines a training run, plus their overall `sha256`.
 
     The fold is `splits.json` plus every file under `labels/` (path and bytes), sorted.
+    `extra` holds the digests of the inputs only some arms have.
     """
     fold_path = Path(fold_path)
     files = [fold_path / "splits.json", *sorted(p for p in (fold_path / "labels").rglob("*") if p.is_file())]
@@ -265,11 +454,18 @@ def run_identity(command: Sequence[str], config: Path, machine: Path, fold_path:
         "config": _file_sha256(config),
         "machine": _file_sha256(machine),
         "fold": _digest([[p.relative_to(fold_path).as_posix(), _file_sha256(p)] for p in files]),
+        **(extra or {}),
     })
 
 
-def eval_identity(run_sha256: str, split: str, command: Sequence[str]) -> dict[str, str]:
-    return _identity({"run": run_sha256, "split": split, "command": _digest(list(command))})
+def eval_identity(
+    run_sha256: str, split: str, command: Sequence[str], extra: dict[str, str] | None = None,
+) -> dict[str, str]:
+    return _identity({"run": run_sha256, "split": split, "command": _digest(list(command)), **(extra or {})})
+
+
+def metrics_identity(eval_sha256: str, command: Sequence[str]) -> dict[str, str]:
+    return _identity({"eval": eval_sha256, "command": _digest(list(command))})
 
 
 def require_identity(marker: Path, current: dict[str, str], key: str) -> None:
@@ -300,6 +496,10 @@ def mark_train_complete(run_path: Path, command: list[str], identity: dict[str, 
         "returncode": 0,
     }
     (Path(run_path) / COMPLETE_MARKER).write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+
+
+def _write_identity(marker: Path, identity: dict[str, str]) -> None:
+    Path(marker).write_text(json.dumps({"identity": identity}, indent=2, sort_keys=True) + "\n")
 
 
 def move_aside_incomplete(run_path: Path) -> Path | None:
@@ -385,11 +585,86 @@ def _run_step(key: str, cmd: list[str], options: RunnerOptions, log: _RunLog, ex
     log.write("OK", key, "exit code 0")
 
 
+def plan_train(
+    config: Path, fold: int, seed: int, options: RunnerOptions, v4: V4Folds | None,
+) -> tuple[list[str], dict[str, str]]:
+    """The train command of one arm, fold and seed, and the identity a resume must find."""
+    fold_path = Path(options.folds_dir) / f"fold_{fold}"
+    run = run_path(options.checkpoints_root, arm_name(config), fold, seed)
+    spec = v4_arm(config)
+    if spec is None:
+        cmd = build_train_command(
+            options.python, config, options.machine, fold_path, run, seed,
+            options.epochs, options.extra_overrides,
+        )
+        return cmd, run_identity(cmd, config, options.machine, fold_path)
+
+    arm_overrides = v4_overrides(spec, config, fold, v4, options.extra_overrides)
+    extra = {"folds_meta": v4.meta_sha256}
+    if spec.teacher is None:
+        cmd = build_train_command(
+            options.python, config, options.machine, fold_path, run, seed,
+            options.epochs, options.extra_overrides, model=spec.trainer, arm_overrides=arm_overrides,
+        )
+    else:
+        teacher_run = run_path(options.checkpoints_root, spec.teacher, fold, seed)
+        cmd = build_kd_command(
+            options.python, config, options.machine, fold_path, run, teacher_run / CHECKPOINT, seed,
+            options.epochs, options.extra_overrides, arm_overrides,
+        )
+        extra["teacher"] = (
+            _file_sha256(teacher_run / CHECKPOINT) if is_train_complete(teacher_run) else TEACHER_PENDING
+        )
+    return cmd, run_identity(cmd, config, options.machine, fold_path, extra)
+
+
+def plan_eval(
+    config: Path, split: str, fold: int, seed: int, options: RunnerOptions, v4: V4Folds | None,
+    profile: Sequence[str], run_sha256: str,
+) -> tuple[list[str], dict[str, str]]:
+    """The evaluation command of one arm, fold, seed and split, and its identity."""
+    fold_path = Path(options.folds_dir) / f"fold_{fold}"
+    arm = arm_name(config)
+    run = run_path(options.checkpoints_root, arm, fold, seed)
+    out = report_run_dir(options.reports_root, arm, fold, seed) / split
+    spec = v4_arm(config)
+    if spec is None:
+        cmd = build_eval_command(
+            options.python, config, run / CHECKPOINT, split, fold_path,
+            run / f"eval_{split}", out, profile, options.extra_overrides,
+        )
+        return cmd, eval_identity(run_sha256, split, cmd)
+
+    eval_config = Path(config).with_name(V4_STUDENT_EVAL_CONFIG) if spec.teacher else config
+    cmd = build_eval_command(
+        options.python, eval_config, run / CHECKPOINT, split, fold_path, run / f"eval_{split}", out, profile,
+        [*v4_overrides(spec, config, fold, v4, options.extra_overrides), *options.extra_overrides],
+        model="master" if spec.trainer == "master" else "student", save_predictions=True,
+    )
+    extra = {"eval_config": _file_sha256(eval_config)} if spec.teacher else None
+    return cmd, eval_identity(run_sha256, split, cmd, extra)
+
+
+def require_teacher(config: Path, fold: int, seed: int, options: RunnerOptions, v4: V4Folds) -> None:
+    """Return only if the teacher of this fold and seed finished, under the current settings."""
+    teacher = v4_arm(config).teacher
+    key = f"{arm_name(config)}/fold{fold}/seed{seed}/train"
+    run = run_path(options.checkpoints_root, teacher, fold, seed)
+    if not is_train_complete(run):
+        raise RunnerError(
+            f"{key}: the teacher checkpoint {run / CHECKPOINT} is missing or its run did not finish "
+            f"(no {COMPLETE_MARKER}). Train {teacher} on this fold and seed first, with the same "
+            "--folds-dir, --nir-variant and --checkpoints-root, or add it to --arms."
+        )
+    _, identity = plan_train(Path(config).with_name(f"{V4_CONFIG_PREFIX}{teacher}.yaml"), fold, seed, options, v4)
+    require_identity(run / COMPLETE_MARKER, identity, key)
+
+
 def run_kfold(options: RunnerOptions, execute=None) -> dict[str, str]:
     """Run (or resume) every fold x seed x arm. Returns `{step key: status}`.
 
     Status is `ran`, `skipped` or `dry-run`. Raises `RunnerError` at the first
-    failed step.
+    failed step, or before any step when a v4 arm cannot run.
     """
     execute = execute or _execute
     available = discover_folds(options.folds_dir)
@@ -399,6 +674,17 @@ def run_kfold(options: RunnerOptions, execute=None) -> dict[str, str]:
             raise RunnerError(
                 f"Requested fold {fold} is not in {options.folds_dir} (available: {available})."
             )
+
+    specs = {config: v4_arm(config) for config in options.arms}
+    v4 = load_v4_folds(options, folds) if any(specs.values()) else None
+    # Within a fold and seed, distilling arms go after every teacher of this plan.
+    arms = sorted(options.arms, key=lambda config: bool(specs[config] and specs[config].teacher))
+    planned = {arm_name(config) for config in arms}
+    for config, spec in specs.items():
+        if spec is not None and spec.teacher is not None and spec.teacher not in planned:
+            for fold in folds:
+                for seed in options.seeds:
+                    require_teacher(config, fold, seed, options, v4)
 
     log = _RunLog(None if options.dry_run else Path(options.reports_root) / "runner.log")
     eval_machine_overrides = machine_overrides(options.machine)
@@ -412,18 +698,17 @@ def run_kfold(options: RunnerOptions, execute=None) -> dict[str, str]:
     for fold in folds:
         fold_path = Path(options.folds_dir) / f"fold_{fold}"
         for seed in options.seeds:
-            for config in options.arms:
+            for config in arms:
                 arm = arm_name(config)
+                spec = specs[config]
                 base = f"{arm}/fold{fold}/seed{seed}"
                 run = run_path(options.checkpoints_root, arm, fold, seed)
                 reports = report_run_dir(options.reports_root, arm, fold, seed)
 
                 train_key = f"{base}/train"
-                cmd = build_train_command(
-                    options.python, config, options.machine, fold_path, run, seed,
-                    options.epochs, options.extra_overrides,
-                )
-                identity = run_identity(cmd, config, options.machine, fold_path)
+                if spec is not None and spec.teacher is not None and not options.dry_run:
+                    require_teacher(config, fold, seed, options, v4)
+                cmd, identity = plan_train(config, fold, seed, options, v4)
                 if is_train_complete(run):
                     require_identity(run / COMPLETE_MARKER, identity, train_key)
                     skip(train_key, f"{COMPLETE_MARKER} found")
@@ -449,21 +734,47 @@ def run_kfold(options: RunnerOptions, execute=None) -> dict[str, str]:
                 for split in EVAL_SPLITS:
                     key = f"{base}/eval_{split}"
                     out = reports / split
-                    cmd = build_eval_command(
-                        options.python, config, run / CHECKPOINT, split, fold_path,
-                        run / f"eval_{split}", out, eval_machine_overrides, options.extra_overrides,
+                    cmd, eval_id = plan_eval(
+                        config, split, fold, seed, options, v4, eval_machine_overrides, identity["sha256"],
                     )
-                    eval_id = eval_identity(identity["sha256"], split, cmd)
+                    outputs = ("metrics.json", PREDICTIONS) if spec is not None else ("metrics.json",)
+                    evaluated = False
                     if (out / "metrics.json").is_file():
                         require_identity(out / EVAL_MARKER, eval_id, key)
+                    if all((out / name).is_file() for name in outputs):
                         skip(key, "metrics.json found")
+                    else:
+                        evaluated = True
+                        if not options.dry_run:
+                            # The v4 metrics of the predictions about to be replaced.
+                            (out / METRICS_V4).unlink(missing_ok=True)
+                        _run_step(key, cmd, options, log, execute)
+                        if not options.dry_run:
+                            for name in outputs:
+                                if not (out / name).is_file():
+                                    log.write("FAILED", key, f"exit code 0 but no {name}")
+                                    raise RunnerError(f"{key} exited 0 but wrote no {name} in {out}.")
+                            _write_identity(out / EVAL_MARKER, eval_id)
+                        summary[key] = "dry-run" if options.dry_run else "ran"
+
+                    if spec is None:
+                        continue
+                    key = f"{base}/metrics_{split}"
+                    cmd = build_v4_metrics_command(
+                        options.python, out / PREDICTIONS, v4.dataset / "index.csv",
+                        fold_path / "labels" / split, out / METRICS_V4,
+                    )
+                    metrics_id = metrics_identity(eval_id["sha256"], cmd)
+                    if not evaluated and (out / METRICS_V4).is_file():
+                        require_identity(out / METRICS_V4_MARKER, metrics_id, key)
+                        skip(key, f"{METRICS_V4} found")
                         continue
                     _run_step(key, cmd, options, log, execute)
-                    if not options.dry_run and not (out / "metrics.json").is_file():
-                        log.write("FAILED", key, "exit code 0 but no metrics.json")
-                        raise RunnerError(f"{key} exited 0 but wrote no metrics.json in {out}.")
                     if not options.dry_run:
-                        (out / EVAL_MARKER).write_text(json.dumps({"identity": eval_id}, indent=2, sort_keys=True) + "\n")
+                        if not (out / METRICS_V4).is_file():
+                            log.write("FAILED", key, f"exit code 0 but no {METRICS_V4}")
+                            raise RunnerError(f"{key} exited 0 but wrote no {METRICS_V4} in {out}.")
+                        _write_identity(out / METRICS_V4_MARKER, metrics_id)
                     summary[key] = "dry-run" if options.dry_run else "ran"
     return summary
 
@@ -492,9 +803,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="Train and evaluate every fold x arm x seed, resumably.",
     )
     parser.add_argument("--folds-dir", default=None,
-                        help=f"Output of make_grouped_folds.py (default: <repo>/{DEFAULT_FOLDS_DIR}).")
+                        help=f"Output of make_grouped_folds.py or, for the v4 arms, make_v4_folds.py "
+                             f"(default: <repo>/{DEFAULT_FOLDS_DIR}).")
     parser.add_argument("--arms", nargs="+", default=None,
-                        help="Experiment configs to compare (default: " + " ".join(DEFAULT_ARMS) + ").")
+                        help="Experiment configs to compare (default: " + " ".join(DEFAULT_ARMS) + "). "
+                             "configs/experiment/v4_*.yaml are the arms of plan E1 and E2; teachers train "
+                             "first whatever the order given.")
+    parser.add_argument("--dataset", default=None,
+                        help="v4 arms only: output of build_v4_dataset.py, with rgb/, nir/, nir_clahe/, "
+                             "homographies/ and index.csv (default: the parent of --folds-dir).")
+    parser.add_argument("--nir-variant", choices=NIR_VARIANTS, default=DEFAULT_NIR_VARIANT,
+                        help="v4 arms only: NIR images and per-fold NIR stats to use (default: %(default)s). "
+                             "Give each variant its own --checkpoints-root and --reports-root.")
     parser.add_argument("--folds", type=parse_int_list, default=None,
                         help="Comma-separated fold indices to run, e.g. 0,1 (default: every fold found).")
     parser.add_argument("--seeds", nargs="+", type=int, default=[42], help="Seeds (default: 42).")
@@ -536,6 +856,8 @@ def main(argv: list[str] | None = None) -> int:
             reports_root=_dir(args.reports_root, DEFAULT_REPORTS_ROOT),
             dry_run=args.dry_run,
             extra_overrides=args.extra_override,
+            dataset=Path(args.dataset).resolve() if args.dataset is not None else None,
+            nir_variant=args.nir_variant,
         )
         with _interrupt_on_termination():
             summary = run_kfold(options)
