@@ -153,6 +153,7 @@ posición conocida en el recorte. Por eso esta versión hace lo siguiente:
 - **Combinaciones logísticas.** Se calibran con permutaciones de las etiquetas de zona dentro del lote, porque el AUROC agrupado de scores leave-one-out queda bajo 0.5 aunque no haya señal. Las permutaciones reproducen el sorteo del protocolo.
 
 Cuando existan las cajas, la región de impacto pasa a ser la caja y los controles, la zona control de la sección 2.
+Esa versión ya existe: `scripts/e0_detectability.py --mode boxes --dataset <dataset v4>`. Registra con la alineación ECC del script, no con SIFT + RANSAC; la diferencia se declara en los límites de su informe.
 Resultado preliminar del lote 1: [`reports/e0-detectability/`](../../reports/e0-detectability/README.md).
 
 ### E1. Maestro: ¿aporta el NIR? (H1)
@@ -342,6 +343,8 @@ inferencia confirmatoria es solo la de nivel lote.
 | 7 | Flag de ablación de modalidad (`nir_const` / `rgb_const`) en el dataset o el modelo | E1, E2 |
 | 8 | Persistencia de predicciones por imagen y métricas estratificadas por hora, zona y procedencia | Sección 7 |
 | 9 | AUROC por cara en `aggregate_kfold.py` | Sección 7 |
+
+Estado al 2026-11-02: los puntos 1 a 9 tienen su código y pruebas, y los comandos están en [`runbook-v4.md`](runbook-v4.md). Falta generar `configs/folds/v4_lot_5fold.json` con las etiquetas finales.
 
 ---
 

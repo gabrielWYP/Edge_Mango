@@ -50,6 +50,7 @@ from scripts.make_grouped_folds import (  # noqa: E402
     Lot,
     assign_folds,
     count_damage_boxes,
+    dump_json,
     fold_manifests,
     local_date,
     stem_timestamp,
@@ -214,6 +215,30 @@ def make_v4_folds(
     return meta
 
 
+def write_fold_spec(meta: dict, path: Path) -> None:
+    """Write the fold assignment and sizes that `aggregate_kfold.py --fold-spec` reads."""
+    folds = [
+        {
+            "fold": int(index),
+            "num_test": fold["splits"]["test"]["images"],
+            "num_train": fold["splits"]["train"]["images"],
+            "num_val": fold["splits"]["val"]["images"],
+            "test": fold["test"],
+            "train": fold["train"],
+            "val": fold["val"],
+        }
+        for index, fold in sorted(meta["folds"].items(), key=lambda item: int(item[0]))
+    ]
+    spec = {
+        "folds": folds,
+        "index_sha256": meta["index_sha256"],
+        "labels_sha256": meta["labels_sha256"],
+        "schema_version": meta["schema_version"],
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(dump_json(spec), encoding="utf-8")
+
+
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--dataset", type=Path, required=True, help="output of build_v4_dataset")
@@ -221,6 +246,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--output-dir", type=Path, default=None, help=f"default <dataset>/{DEFAULT_OUTPUT_SUBDIR}"
     )
     parser.add_argument("--workers", type=int, default=8)
+    parser.add_argument(
+        "--fold-spec",
+        type=Path,
+        default=None,
+        help="also write the fold assignment here, e.g. configs/folds/v4_lot_5fold.json",
+    )
     return parser.parse_args(argv)
 
 
@@ -228,6 +259,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     args = parse_args(argv)
     meta = make_v4_folds(args.dataset, args.output_dir, args.workers)
+    if args.fold_spec is not None:
+        write_fold_spec(meta, args.fold_spec)
     for lot_id, lot in meta["lots"].items():
         logger.info(
             "%s %s: %d images, %d mangos, %d damage boxes, %d negatives",

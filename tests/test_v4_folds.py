@@ -13,6 +13,8 @@ import pytest
 from scripts import make_v4_folds as mvf
 from scripts.make_grouped_folds import LeakageError, dump_json
 from src.training.dataset import YOLODataset
+from scripts.aggregate_kfold import load_fold_spec
+from scripts.make_v4_folds import main as make_v4_folds_main
 
 DAY = 86400
 LOT_START = {1: 1792861156, 2: 1792861156 + DAY, 3: 1792861156 + 3 * DAY}  # lots 1-2 back to back
@@ -121,3 +123,28 @@ def test_nir_stats_come_from_the_train_split_of_each_variant(dataset: Path) -> N
                 assert stats[view]["mean"] == pytest.approx(value * inside, abs=1e-6)
                 std = value * np.sqrt(inside * (1 - inside))
                 assert stats[view]["std"] == pytest.approx(std, abs=1e-6)
+
+
+def test_the_fold_spec_is_written_for_the_aggregator(dataset: Path, tmp_path: Path) -> None:
+    spec_path = tmp_path / "configs" / "v4_lot_5fold.json"
+    assert make_v4_folds_main(["--dataset", str(dataset), "--workers", "1", "--fold-spec", str(spec_path)]) == 0
+
+    meta = json.loads((dataset / "folds_lot" / "folds_meta.json").read_text())
+    spec = json.loads(spec_path.read_text())
+    assert spec["index_sha256"] == meta["index_sha256"]
+    assert spec["labels_sha256"] == meta["labels_sha256"]
+    entries = load_fold_spec(spec_path)
+    assert [entry["fold"] for entry in entries] == sorted(int(k) for k in meta["folds"])
+    for entry in entries:
+        fold = meta["folds"][str(entry["fold"])]
+        assert (entry["test"], entry["val"], entry["train"]) == (fold["test"], fold["val"], fold["train"])
+        for split in ("test", "train", "val"):
+            assert entry[f"num_{split}"] == fold["splits"][split]["images"]
+
+
+def test_no_fold_spec_is_written_unless_asked(dataset: Path, tmp_path: Path, monkeypatch) -> None:
+    cwd = tmp_path / "cwd"
+    cwd.mkdir()
+    monkeypatch.chdir(cwd)
+    assert make_v4_folds_main(["--dataset", str(dataset), "--workers", "1"]) == 0
+    assert list(cwd.iterdir()) == []
