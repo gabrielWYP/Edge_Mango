@@ -6,6 +6,7 @@ baked into the files, so training runs with ``nir_homography_path=<out>/homograp
 
     <out>/rgb/mango_rgb_<ts>.jpg     symlink to news/rgb_wb/ (white balance corrected) or news/rgb/
     <out>/nir/mango_nir_<ts>.png     gray NIR (B + R) / 2, warped into the RGB frame with inv(H)
+                                     plus the residual shift of the photo
     <out>/nir_clahe/mango_nir_<ts>.png  the CLAHE annotation view (``enhance_nir``), same warp
     <out>/labels/mango_rgb_<ts>.txt  YOLO labels in the RGB frame: 0 mango, 1 damage
     <out>/homographies/identity.npy
@@ -18,6 +19,12 @@ no plausible mango is found is excluded as ``mango_mask_failed``.
 NIR line artifacts (``nir_lines``) are detected on the full NIR frame. Those whose pixels,
 mapped into the RGB frame, overlap the mango box are interpolated before both NIR variants are
 made; the rest are left. Every line is listed in ``nir_lines.csv``.
+
+The homography does not align the fruit, so ``residual_shift="fruit"`` adds one translation per
+photo on top of it (``v4_residual``). It moves both NIR variants, the boxes drawn on the NIR and
+the position where the line rule above looks; boxes drawn on the RGB and the mango box stay.
+``index.csv`` holds the shift of each photo and ``report.json`` the summary per lot and moment.
+``residual_shift="none"`` leaves the homography alone and skips the measurement.
 """
 
 from __future__ import annotations
@@ -47,6 +54,14 @@ from src.data_pipeline.nir_lines import (
     interpolate_lines,
     line_corners,
 )
+from src.data_pipeline.v4_residual import (
+    NO_SHIFT,
+    FruitMatch,
+    ResidualShift,
+    measure_fruit_match,
+    residual_params,
+    resolve_shifts,
+)
 from src.data_pipeline.v4_selection import (
     DRAWN_FROM_HOUR,
     LATENT_HOURS,
@@ -70,6 +85,7 @@ MASK_DOWNSCALE = 4
 MANGO_AREA_RANGE = (0.01, 0.5)  # plausible fraction of the frame covered by the mango box
 NIR_BORDER_VALUE = 0  # registered NIR pixels with no source
 PNG_COMPRESSION = 6
+RESIDUAL_MODES = ("fruit", "none")
 INDEX_FIELDS = (
     "stem",
     "timestamp",
@@ -101,6 +117,10 @@ INDEX_FIELDS = (
     "damage_in_mango",
     "nir_lines",
     "nir_lines_interpolated",
+    "residual_dx",
+    "residual_dy",
+    "residual_corr",
+    "residual_source",
 )
 EXCLUSION_FIELDS = (
     "timestamp",
@@ -135,18 +155,27 @@ def yolo_line(cls: int, box: np.ndarray) -> str:
     )
 
 
-def mango_box(rgb_path: Path) -> np.ndarray | None:
-    """Bounding box of the mango mask in full-resolution pixels, or None if implausible."""
+def fruit_mask(rgb_path: Path) -> np.ndarray | None:
+    """The mango mask of the 1/4-scale RGB (0/255), or None if implausible."""
     small = cv2.imread(str(rgb_path), cv2.IMREAD_REDUCED_COLOR_4)
     if small is None or small.shape[:2] != (RGB_SIZE[1] // 4, RGB_SIZE[0] // 4):
         raise ValueError(f"{rgb_path}: unreadable or not {RGB_SIZE[0]}x{RGB_SIZE[1]}")
     mask = rgb_mango_mask(small)
     if not mask.any():
         return None
-    x, y, w, h = cv2.boundingRect(mask)
+    _, _, w, h = cv2.boundingRect(mask)
     area = w * h / (small.shape[0] * small.shape[1])
     if not MANGO_AREA_RANGE[0] <= area <= MANGO_AREA_RANGE[1]:
         return None
+    return mask
+
+
+def mango_box(rgb_path: Path) -> np.ndarray | None:
+    """Bounding box of the mango mask in full-resolution pixels, or None if implausible."""
+    mask = fruit_mask(rgb_path)
+    if mask is None:
+        return None
+    x, y, w, h = cv2.boundingRect(mask)
     return np.array([x, y, x + w, y + h], dtype=np.float64) * MASK_DOWNSCALE
 
 
@@ -161,11 +190,17 @@ def raw_nir(bgr: np.ndarray) -> np.ndarray:
     return np.clip(np.rint(nir_gray(bgr)), 0, 255).astype(np.uint8)
 
 
-def registered_nir(gray: np.ndarray, H_rgb_to_nir: np.ndarray) -> np.ndarray:
-    """Warp a full NIR-frame gray image into the RGB frame."""
+def registered_nir(
+    gray: np.ndarray, H_rgb_to_nir: np.ndarray, shift: tuple[float, float] = (0.0, 0.0)
+) -> np.ndarray:
+    """Warp a full NIR-frame gray image into the RGB frame, then move it by ``shift``.
+
+    Both go in one matrix, so the image is resampled once.
+    """
+    translation = np.array([[1, 0, shift[0]], [0, 1, shift[1]], [0, 0, 1]], dtype=np.float64)
     return cv2.warpPerspective(
         gray,
-        np.linalg.inv(H_rgb_to_nir),
+        translation @ np.linalg.inv(H_rgb_to_nir),
         RGB_SIZE,
         flags=cv2.INTER_LINEAR,
         borderMode=cv2.BORDER_CONSTANT,
@@ -178,15 +213,41 @@ def overlaps(a: np.ndarray, b: np.ndarray) -> bool:
     return bool(a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3])
 
 
-def bake_photo(job: tuple[Photo, Path, Path, Path]) -> tuple[dict, list[dict]] | None:
+def shifted_box(box: np.ndarray, shift: ResidualShift) -> np.ndarray:
+    """Move a [x0, y0, x1, y1] box of the RGB frame by the residual shift, clipped to the image."""
+    moved = box + np.array([shift.dx, shift.dy, shift.dx, shift.dy])
+    return np.clip(moved, 0, np.tile(RGB_SIZE, 2))
+
+
+def _rgb_source(photo: Photo, data_root: Path) -> Path:
+    sub = "rgb_wb" if photo.wb_corrected else "rgb"
+    return data_root / "news" / sub / f"mango_rgb_{photo.capture.timestamp}.jpg"
+
+
+def measure_photo(job: tuple[Photo, Path, Path]) -> FruitMatch | None:
+    """Match the fruit of one photo with its NIR warped by the homography; None if no mango."""
+    photo, data_root, repo_root = job
+    rgb_src = _rgb_source(photo, data_root)
+    mask = fruit_mask(rgb_src)
+    if mask is None:
+        return None
+    H = load_homography(repo_root / photo.homography)
+    bgr = read_nir(data_root / "news" / "nir" / f"mango_nir_{photo.capture.timestamp}.jpg")
+    rgb_gray = cv2.imread(str(rgb_src), cv2.IMREAD_GRAYSCALE)
+    return measure_fruit_match(rgb_gray, registered_nir(raw_nir(bgr), H), mask)
+
+
+def bake_photo(
+    job: tuple[Photo, Path, Path, Path, ResidualShift],
+) -> tuple[dict, list[dict]] | None:
     """Write the RGB link, registered NIRs and labels of one photo.
 
     Returns the index row and one row per NIR line artifact, or None if no mango is found.
     """
-    photo, data_root, repo_root, out_dir = job
+    photo, data_root, repo_root, out_dir, shift = job
     c, label = photo.capture, photo.label
     stem = f"mango_rgb_{c.timestamp}"
-    rgb_src = data_root / "news" / ("rgb_wb" if photo.wb_corrected else "rgb") / f"{stem}.jpg"
+    rgb_src = _rgb_source(photo, data_root)
     H = load_homography(repo_root / photo.homography)
     mango = mango_box(rgb_src)
     if mango is None:
@@ -207,9 +268,15 @@ def bake_photo(job: tuple[Photo, Path, Path, Path]) -> tuple[dict, list[dict]] |
         "n_damage": 0,
         "provenance": photo.provenance,
         **dict(zip(("mango_x0", "mango_y0", "mango_x1", "mango_y1"), np.round(mango, 1))),
+        "residual_dx": shift.dx,
+        "residual_dy": shift.dy,
+        "residual_corr": shift.corr,
+        "residual_source": shift.source,
     }
     if label is not None:
         boxes = [box_in_rgb_frame(corners, label.view, H) for corners in label.corners]
+        if label.view == "nir":
+            boxes = [shifted_box(box, shift) for box in boxes]
         if any(b[2] <= b[0] or b[3] <= b[1] for b in boxes):
             raise ValueError(f"capture {c.timestamp}: a damage box falls outside the RGB frame")
         lines += [yolo_line(DAMAGE_CLASS, b) for b in boxes]
@@ -239,7 +306,7 @@ def bake_photo(job: tuple[Photo, Path, Path, Path]) -> tuple[dict, list[dict]] |
     crossing = [
         line
         for line in nir_lines
-        if overlaps(box_in_rgb_frame(line_corners(line), "nir", H), mango)
+        if overlaps(shifted_box(box_in_rgb_frame(line_corners(line), "nir", H), shift), mango)
     ]
     bgr = interpolate_lines(bgr, crossing)
     row |= {"nir_lines": len(nir_lines), "nir_lines_interpolated": len(crossing)}
@@ -257,7 +324,7 @@ def bake_photo(job: tuple[Photo, Path, Path, Path]) -> tuple[dict, list[dict]] |
     # zero border would leak into its tiles.
     for sub, gray in (("nir", raw_nir(bgr)), ("nir_clahe", enhance_nir(bgr))):
         nir_out = out_dir / sub / f"mango_nir_{c.timestamp}.png"
-        nir = registered_nir(gray, H)
+        nir = registered_nir(gray, H, (shift.dx, shift.dy))
         if not cv2.imwrite(str(nir_out), nir, [cv2.IMWRITE_PNG_COMPRESSION, PNG_COMPRESSION]):
             raise OSError(f"cannot write {nir_out}")
     (out_dir / "labels" / f"{stem}.txt").write_text("".join(lines), encoding="utf-8")
@@ -275,6 +342,30 @@ def _write_csv(path: Path, fields: tuple[str, ...], rows: list[dict]) -> None:
         writer.writerows({k: ("" if v is None else v) for k, v in row.items()} for row in rows)
 
 
+def _map_jobs(function, jobs: list, workers: int) -> list:
+    if workers > 1:
+        with ProcessPoolExecutor(workers) as pool:
+            return list(pool.map(function, jobs, chunksize=4))
+    return [function(job) for job in jobs]
+
+
+def _residual_shifts(
+    photos: list[Photo], data_root: Path, repo_root: Path, workers: int
+) -> tuple[list[ResidualShift | None], dict]:
+    """The shift of every photo (None if no mango) and the report block, per lot and moment.
+
+    Every photo is measured before any is baked: a photo that falls back needs the others.
+    """
+    jobs = [(photo, data_root, repo_root) for photo in photos]
+    matches = _map_jobs(measure_photo, jobs, workers)
+    keys = [(lot_number(p.capture.jornada), hour_label(p.capture.ronda_h)) for p in photos]
+    shifts, summary = resolve_shifts(keys, matches)
+    report: dict[str, dict] = {}
+    for (lot, moment), values in sorted(summary.items()):
+        report.setdefault(f"lot{lot}", {})[moment] = values
+    return shifts, {lot: dict(sorted(group.items())) for lot, group in report.items()}
+
+
 def build_dataset(
     data_root: Path,
     labels_path: Path,
@@ -284,8 +375,11 @@ def build_dataset(
     repo_root: Path,
     workers: int = 1,
     tolerance_path: Path | None = None,
+    residual_shift: str = "fruit",
 ) -> dict:
     """Build the dataset under ``out_dir`` (must be new or empty) and return the report."""
+    if residual_shift not in RESIDUAL_MODES:
+        raise ValueError(f"residual_shift must be one of {RESIDUAL_MODES}, got {residual_shift!r}")
     data_root, out_dir = Path(data_root), Path(out_dir)
     if out_dir.exists() and any(out_dir.iterdir()):
         raise FileExistsError(f"{out_dir} is not empty; pick a new output folder")
@@ -308,12 +402,15 @@ def build_dataset(
     for sub in ("rgb", "nir", "nir_clahe", "labels", "homographies"):
         (out_dir / sub).mkdir(parents=True, exist_ok=True)
     np.save(out_dir / "homographies" / "identity.npy", np.eye(3))
-    jobs = [(photo, data_root, Path(repo_root), out_dir) for photo in photos]
-    if workers > 1:
-        with ProcessPoolExecutor(workers) as pool:
-            results = list(pool.map(bake_photo, jobs, chunksize=4))
-    else:
-        results = [bake_photo(job) for job in jobs]
+    shifts: list[ResidualShift | None] = [NO_SHIFT] * len(photos)
+    residual: dict[str, dict] = {}
+    if residual_shift == "fruit":
+        shifts, residual = _residual_shifts(photos, data_root, Path(repo_root), workers)
+    jobs = [
+        (photo, data_root, Path(repo_root), out_dir, shift or NO_SHIFT)
+        for photo, shift in zip(photos, shifts)
+    ]
+    results = _map_jobs(bake_photo, jobs, workers)
     rows, line_rows = [], []
     for photo, result in zip(photos, results):
         if result is None:
@@ -376,12 +473,17 @@ def build_dataset(
             f"{list(MANGO_AREA_RANGE)}",
             "latent_hours": list(LATENT_HOURS),
             "drawn_from_hour": DRAWN_FROM_HOUR,
+            "residual_shift": {
+                "mode": residual_shift,
+                **(residual_params() if residual_shift == "fruit" else {}),
+            },
         },
         "num_included": len(rows),
         "num_excluded": len(excluded),
         "included": {lot: dict(sorted(c.items())) for lot, c in sorted(included.items())},
         "excluded": {lot: dict(sorted(c.items())) for lot, c in sorted(excluded_counts.items())},
         "nir_lines": {lot: dict(sorted(c.items())) for lot, c in sorted(nir_line_counts.items())},
+        "residual": residual,
         "sin_bruise_faces": sorted(map(list, sin_bruise_faces(labels))),
         "annotation_conflicts": conflicts,
         "damage_mostly_outside_mango": sorted(

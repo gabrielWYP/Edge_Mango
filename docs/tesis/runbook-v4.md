@@ -14,6 +14,11 @@ python scripts/build_v4_dataset.py --output data/cache/v4_captura_v3 --workers 8
 python scripts/make_v4_folds.py --dataset data/cache/v4_captura_v3 --fold-spec configs/folds/v4_lot_5fold.json
 ```
 
+Build one dataset with one Python environment: the NIR PNGs and the residual shift differ slightly between OpenCV
+versions. The build takes about 14 GB and 15 minutes on 8 workers; keep `--output` out of `/tmp`, which is a 16 GB
+tmpfs on this machine. `--residual-shift fruit` is the default, see
+[`docs/findings/2026-11-01-rgb-nir-residual`](../findings/2026-11-01-rgb-nir-residual/README.md).
+
 The second command writes `data/cache/v4_captura_v3/folds_lot/`, with the per-fold NIR stats in `folds_meta.json`,
 and `configs/folds/v4_lot_5fold.json`, the fold spec of the pre-registration. Commit that file with the final labels.
 `--output` must be a new or empty folder. Regenerating changes the identity of every run, so later commands

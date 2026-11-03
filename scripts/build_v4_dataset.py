@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the v4 training dataset from captura_v3 (lots 1-3) with the NIR registered per lot.
+"""Build the v4 training dataset from captura_v3 (lots 1-5) with the NIR registered per lot.
 
 See `src/data_pipeline/v4_dataset.py` for the layout and the inclusion rules. Train on it with
 
@@ -8,6 +8,9 @@ See `src/data_pipeline/v4_dataset.py` for the layout and the inclusion rules. Tr
 
 plus the fold labels and manifest (`labels_dir`, `split_manifest`) built from `<out>/labels`.
 Use `nir_dir=<out>/nir_clahe` for the CLAHE NIR, with its own `nir_mean`/`nir_std`.
+
+By default each photo gets a translation on top of its homography, measured on the fruit, and
+`report.json` holds the residual per lot and moment; `--residual-shift none` leaves it out.
 
 Typical use (a linked worktree reads the untracked data of the primary checkout):
 
@@ -25,7 +28,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from scripts.export_aligned_corpus import primary_checkout_root  # noqa: E402
-from src.data_pipeline.v4_dataset import build_dataset  # noqa: E402
+from src.data_pipeline.v4_dataset import RESIDUAL_MODES, build_dataset  # noqa: E402
 
 DEFAULT_DATA_ROOT = "data/cache/captura_v3"
 DEFAULT_OUTPUT = "data/cache/v4_captura_v3"
@@ -74,6 +77,13 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help=f"new or empty folder (default: <primary checkout>/{DEFAULT_OUTPUT})",
     )
     parser.add_argument("--workers", type=int, default=1, help="parallel processes")
+    parser.add_argument(
+        "--residual-shift",
+        choices=RESIDUAL_MODES,
+        default="fruit",
+        help="fruit: add a per-photo translation measured on the fruit to the NIR and to the "
+        "boxes drawn on it; none: the homography alone (default: fruit)",
+    )
     return parser.parse_args(argv)
 
 
@@ -90,6 +100,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             out_dir=args.output or primary / DEFAULT_OUTPUT,
             repo_root=PROJECT_ROOT,
             workers=args.workers,
+            residual_shift=args.residual_shift,
         )
     except (FileNotFoundError, FileExistsError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -99,6 +110,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"  {lot} included: {counts}")
     for lot, counts in report["excluded"].items():
         print(f"  {lot} excluded: {counts}")
+    for lot, moments in report["residual"].items():
+        for moment, values in moments.items():
+            name = moment if moment == "sano" else f"+{moment} h"
+            print(
+                f"  {lot} {name} residual: {values['median_dx']:+.0f}, "
+                f"{values['median_dy']:+.0f} px, "
+                f"accepted {values['accepted']}, fallback {values['fallback']}"
+                + (f", NOT MEASURED {values['unmeasured']}" if values["unmeasured"] else "")
+            )
     if report["damage_mostly_outside_mango"]:
         print(
             f"  damage boxes mostly outside the mango box: {report['damage_mostly_outside_mango']}"
