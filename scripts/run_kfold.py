@@ -488,10 +488,18 @@ def require_identity(marker: Path, current: dict[str, str], key: str) -> None:
     )
 
 
+def _git(*args: str) -> str:
+    return subprocess.run(
+        ["git", *args], cwd=PROJECT_ROOT, capture_output=True, text=True, check=True
+    ).stdout.strip()
+
+
 def mark_train_complete(run_path: Path, command: list[str], identity: dict[str, str]) -> None:
     payload = {
         "command": command,
+        "commit": _git("rev-parse", "HEAD"),
         "completed_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "dirty": bool(_git("status", "--porcelain", "--untracked-files=no")),
         "identity": identity,
         "returncode": 0,
     }

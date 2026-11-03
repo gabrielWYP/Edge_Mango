@@ -7,6 +7,7 @@ callable, replaced here by a fake that writes the files a real run would.
 from __future__ import annotations
 
 import json
+import subprocess
 import os
 import shlex
 import signal
@@ -547,3 +548,15 @@ def test_eval_is_skipped_only_with_a_matching_eval_complete_marker(tmp_path: Pat
     with pytest.raises(rk.RunnerError, match=r"eval_val.*no identity"):
         rk.run_kfold(options, executor)
     assert executor.calls == []
+
+
+def test_the_complete_marker_records_the_commit_of_the_run(tmp_path: Path) -> None:
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=rk.PROJECT_ROOT, capture_output=True, text=True, check=True
+    ).stdout.strip()
+
+    rk.mark_train_complete(tmp_path, ["py"], {"sha256": "x"})
+
+    marker = json.loads((tmp_path / rk.COMPLETE_MARKER).read_text())
+    assert marker["commit"] == head
+    assert isinstance(marker["dirty"], bool)
