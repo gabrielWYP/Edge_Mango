@@ -645,8 +645,9 @@ First hour whose AUROC interval stays above 0.5 from there on (uncorrected).
 
 - The box of a moment reaches `sano` through a rigid ECC alignment of a fruit placed by hand; the plan describes
   SIFT + RANSAC, and residual 3D pose differences add noise to both regions.
-- Boxes before +10 h are projected and can be larger than the real bruise (plan 3.2), which dilutes the mean of
-  the box in early hours.
+- Most boxes of the latent hours were drawn by hand on the NIR view (plan 3.2), so the region measured here
+  was chosen looking at that modality, which can favor the NIR. They can also be larger than the real bruise,
+  which dilutes the mean of the box in early hours.
 - The NIR comes as the dataset holds it, so any residual of its RGB-NIR registration moves the bruise inside the
   NIR crop while the box stays put.
 - Intervals are descriptive (plan section 8.4): they resample mangos inside each lot, not lots, and are not

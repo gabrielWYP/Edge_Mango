@@ -25,8 +25,7 @@ def make_task(
     box: dict | None,
     view: str = "nir",
     created_at: str = "2026-10-28T20:40:40Z",
-    visible: tuple[str, str] = ("yes", "yes"),
-) -> dict:
+    visible: tuple[str, str] = ("yes", "yes"), origin: str = "manual") -> dict:
     """A Label Studio task with one annotation; ``box`` holds pixel x, y, w, h (and rotation)."""
     result = [
         {
@@ -49,7 +48,7 @@ def make_task(
                 "to_name": view,
                 "original_width": width,
                 "original_height": height,
-                "origin": "manual",
+                "origin": origin,
                 "value": {
                     "x": box["x"] / width * 100,
                     "y": box["y"] / height * 100,

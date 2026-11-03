@@ -63,7 +63,6 @@ from src.data_pipeline.v4_residual import (
     resolve_shifts,
 )
 from src.data_pipeline.v4_selection import (
-    DRAWN_FROM_HOUR,
     LATENT_HOURS,
     RGB_SIZE,
     VIEW_SIZES,
@@ -472,7 +471,6 @@ def build_dataset(
             "mango_box": f"rgb_mango_mask on the 1/{MASK_DOWNSCALE} RGB, area fraction in "
             f"{list(MANGO_AREA_RANGE)}",
             "latent_hours": list(LATENT_HOURS),
-            "drawn_from_hour": DRAWN_FROM_HOUR,
             "residual_shift": {
                 "mode": residual_shift,
                 **(residual_params() if residual_shift == "fruit" else {}),

@@ -113,7 +113,7 @@ class TestSelectPhotos:
             "",
             "dibujada",
             "dibujada",
-            "proyectada",
+            "dibujada",
         ]
         assert {e.capture.timestamp: e.reason for e in excluded} == {
             3: "out_of_tolerance",
@@ -139,6 +139,23 @@ class TestSelectPhotos:
         assert {e.capture.timestamp: e.reason for e in excluded} == {
             2: "out_of_tolerance",
             3: "out_of_tolerance",
+        }
+
+    def test_provenance_comes_from_how_the_box_was_annotated(self) -> None:
+        metas = [make_meta(1, ronda_h=2), make_meta(2, ronda_h=8), make_meta(3, ronda_h=12)]
+        box = {"x": 1, "y": 1, "w": 10, "h": 10}
+        tasks = [
+            make_task(metas[0], box),
+            make_task(metas[1], box, origin="prediction"),
+            make_task(metas[2], box, origin="prediction-changed"),
+        ]
+        labels, _ = parse_tasks(tasks)
+        photos, _ = select_photos(metas, labels, {}, set(), RULES)
+
+        assert {p.capture.timestamp: p.provenance for p in photos} == {
+            1: "dibujada",
+            2: "proyectada",
+            3: "proyectada",
         }
 
     def test_late_photos_are_excluded_without_an_exception(self) -> None:
