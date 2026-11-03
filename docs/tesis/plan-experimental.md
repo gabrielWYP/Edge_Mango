@@ -285,6 +285,8 @@ Se sigue el skill [`experiment-statistics`](../../.claude/skills/experiment-stat
 ```
 H1:          baseline = maestro_rgb,  treatment = maestro_rgbnir
 H2:          baseline = est_kd_rgb,   treatment = est_kd_rgbnir
+NIR:         variante nir_clahe en los brazos de E1 y E2
+Recorte:     al mango con rgb_mango_mask, margen 0.10 y jitter 0.5 en train, en los seis brazos (el brazo NIR recibe la ventana desde RGB)
 Metric:      test damage AP50 en ventana latente (t ∈ {0,2,4,6} + sano), media sobre semillas por fold
 ROPE:        ±0.02 AP50
 Threshold:   P(right) >= 0.95
@@ -345,7 +347,7 @@ inferencia confirmatoria es solo la de nivel lote.
 | 8 | Persistencia de predicciones por imagen y métricas estratificadas por hora, zona y procedencia | Sección 7 |
 | 9 | AUROC por cara en `aggregate_kfold.py` | Sección 7 |
 
-Estado al 2026-11-02: los puntos 1 a 9 tienen su código y pruebas, y los comandos están en [`runbook-v4.md`](runbook-v4.md). Falta generar `configs/folds/v4_lot_5fold.json` con las etiquetas finales.
+Estado al 2026-11-02: los puntos 1 a 9 tienen su código y pruebas, y los comandos están en [`runbook-v4.md`](runbook-v4.md). `configs/folds/v4_lot_5fold.json` ya está generado con las etiquetas finales.
 
 ---
 
@@ -355,3 +357,4 @@ Estado al 2026-11-02: los puntos 1 a 9 tienen su código y pruebas, y los comand
 | :-- | :-- | :-- | :-- |
 | 2026-10-25 | Versión inicial | — | Antes |
 | 2026-11-02 | La ventana latente pasa de t ∈ {0, 2, 4} a t ∈ {0, 2, 4, 6}, y el daño desarrollado queda en t ∈ {8, 10, 12}. La ronda +4 h de los lotes 4 y 5 se incluye aunque esté fuera de tolerancia (regla 1 de 3.1). | Decisión del autor. Las fotos +4 h fuera de tolerancia (lote 4: +19.3 a +32.3 min; lote 5: +12.1 a +14.2 min) siguen en la misma franja. | Antes de E1 y E2. E0 preliminar del lote 1 ya estaba visto. |
+| 2026-11-02 | El NIR de E1 y E2 es la variante CLAHE y las imágenes se recortan al mango en los seis brazos (sección 8.1). E0 sigue midiendo sobre el NIR sin procesar. El recorte depende del fondo controlado de la captura. | Decisión del autor, antes de entrenar. | Antes |

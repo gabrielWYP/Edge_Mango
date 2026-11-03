@@ -18,8 +18,8 @@ the old file exits 0 and lists the pending tasks as `unlabeled` in its report.
 
 ```bash
 python scripts/build_v4_dataset.py --labels data/labels/captura_v3_lots1-5_12h_0h.json \
-    --output data/cache/v4_captura_v3 --workers 8
-python scripts/make_v4_folds.py --dataset data/cache/v4_captura_v3 --fold-spec configs/folds/v4_lot_5fold.json
+    --output data/cache/v4_captura_v3_final --workers 8
+python scripts/make_v4_folds.py --dataset data/cache/v4_captura_v3_final --fold-spec configs/folds/v4_lot_5fold.json
 ```
 
 Build one dataset with one Python environment: the NIR PNGs and the residual shift differ slightly between OpenCV
@@ -27,7 +27,7 @@ versions. The build takes about 14 GB and 15 minutes on 8 workers; keep `--outpu
 tmpfs on this machine. `--residual-shift fruit` is the default, see
 [`docs/findings/2026-11-01-rgb-nir-residual`](../findings/2026-11-01-rgb-nir-residual/README.md).
 
-The second command writes `data/cache/v4_captura_v3/folds_lot/`, with the per-fold NIR stats in `folds_meta.json`,
+The second command writes `data/cache/v4_captura_v3_final/folds_lot/`, with the per-fold NIR stats in `folds_meta.json`,
 and `configs/folds/v4_lot_5fold.json`, the fold spec of the pre-registration. Commit that file with the final labels.
 `--output` must be a new or empty folder. Regenerating changes the identity of every run, so later commands
 stop on old runs instead of reusing them: use new roots, or delete the old ones.
@@ -38,15 +38,15 @@ Check the plan, then train the first seed.
 
 ```bash
 python scripts/run_kfold.py --machine configs/machines/rtx3080.yaml \
-    --folds-dir data/cache/v4_captura_v3/folds_lot --nir-variant nir \
-    --checkpoints-root checkpoints/v4/nir --reports-root reports/v4/nir \
+    --folds-dir data/cache/v4_captura_v3_final/folds_lot --nir-variant nir_clahe \
+    --checkpoints-root checkpoints/v4/nir_clahe --reports-root reports/v4/nir_clahe \
     --arms configs/experiment/v4_maestro_rgbnir.yaml configs/experiment/v4_maestro_rgb.yaml \
            configs/experiment/v4_maestro_nir.yaml \
     --seeds 42 --dry-run
 
 python scripts/run_kfold.py --machine configs/machines/rtx3080.yaml \
-    --folds-dir data/cache/v4_captura_v3/folds_lot --nir-variant nir \
-    --checkpoints-root checkpoints/v4/nir --reports-root reports/v4/nir \
+    --folds-dir data/cache/v4_captura_v3_final/folds_lot --nir-variant nir_clahe \
+    --checkpoints-root checkpoints/v4/nir_clahe --reports-root reports/v4/nir_clahe \
     --arms configs/experiment/v4_maestro_rgbnir.yaml configs/experiment/v4_maestro_rgb.yaml \
            configs/experiment/v4_maestro_nir.yaml \
     --seeds 42
@@ -56,8 +56,8 @@ Then the remaining seeds of the pre-registration (section 8.1). The seed 42 step
 
 ```bash
 python scripts/run_kfold.py --machine configs/machines/rtx3080.yaml \
-    --folds-dir data/cache/v4_captura_v3/folds_lot --nir-variant nir \
-    --checkpoints-root checkpoints/v4/nir --reports-root reports/v4/nir \
+    --folds-dir data/cache/v4_captura_v3_final/folds_lot --nir-variant nir_clahe \
+    --checkpoints-root checkpoints/v4/nir_clahe --reports-root reports/v4/nir_clahe \
     --arms configs/experiment/v4_maestro_rgbnir.yaml configs/experiment/v4_maestro_rgb.yaml \
            configs/experiment/v4_maestro_nir.yaml \
     --seeds 42 1337 2024
@@ -67,8 +67,8 @@ python scripts/run_kfold.py --machine configs/machines/rtx3080.yaml \
 
 ```bash
 python scripts/run_kfold.py --machine configs/machines/rtx3080.yaml \
-    --folds-dir data/cache/v4_captura_v3/folds_lot --nir-variant nir \
-    --checkpoints-root checkpoints/v4/nir --reports-root reports/v4/nir \
+    --folds-dir data/cache/v4_captura_v3_final/folds_lot --nir-variant nir_clahe \
+    --checkpoints-root checkpoints/v4/nir_clahe --reports-root reports/v4/nir_clahe \
     --arms configs/experiment/v4_est_etiquetas.yaml configs/experiment/v4_est_kd_rgb.yaml \
            configs/experiment/v4_est_kd_rgbnir.yaml \
     --seeds 42 1337 2024
@@ -84,12 +84,12 @@ five folds and three seeds it plans 90 trainings and 450 steps: each training is
 ## 4. Results
 
 ```bash
-python scripts/aggregate_kfold.py --reports-root reports/v4/nir \
-    --fold-spec data/cache/v4_captura_v3/folds_lot/folds_meta.json \
+python scripts/aggregate_kfold.py --reports-root reports/v4/nir_clahe \
+    --fold-spec data/cache/v4_captura_v3_final/folds_lot/folds_meta.json \
     --arms maestro_rgb maestro_rgbnir --baseline maestro_rgb --treatment maestro_rgbnir \
     --seeds 42 1337 2024 --rope 0.02
-python scripts/plan_seeds.py --metric latent_ap50 --results reports/v4/nir/kfold_results.json \
-    --fold-spec data/cache/v4_captura_v3/folds_lot/folds_meta.json
+python scripts/plan_seeds.py --metric latent_ap50 --results reports/v4/nir_clahe/kfold_results.json \
+    --fold-spec data/cache/v4_captura_v3_final/folds_lot/folds_meta.json
 ```
 
 The aggregator overwrites `kfold_results.json` under `--reports-root`, so copy it before aggregating H2 the same
@@ -98,15 +98,17 @@ way: `--arms est_kd_rgb est_kd_rgbnir --baseline est_kd_rgb --treatment est_kd_r
 `plan_seeds.py --results` needs at least 2 seeds in the file. Section 8.2 reads it after the first seed of E1, when
 it cannot run yet, so the first estimate of the number of seeds comes after the second seed.
 
-## The raw vs CLAHE choice
+## The NIR variant
 
-`--nir-variant` picks the NIR images and the per-fold stats together. The default is `nir`, and the choice is
-still open. For CLAHE, run sections 2 to 4 with its own roots, because the two variants would otherwise collide
-in the same run folders:
+The plan pre-registers `nir_clahe` for E1 and E2 (section 8.1), so the commands above use it. `--nir-variant` picks
+the NIR images and the per-fold stats together. A run on the raw NIR is exploratory and needs its own roots, because
+the two variants would otherwise collide in the same run folders:
 
 ```bash
---nir-variant nir_clahe --checkpoints-root checkpoints/v4/nir_clahe --reports-root reports/v4/nir_clahe
+--nir-variant nir --checkpoints-root checkpoints/v4/nir --reports-root reports/v4/nir
 ```
+
+E0 measures intensity, so it always reads the raw NIR.
 
 ## What the configs fix
 

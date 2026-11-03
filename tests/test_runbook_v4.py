@@ -20,3 +20,10 @@ def test_the_seed_plan_reads_the_primary_metric() -> None:
 def test_a_batch_override_is_not_suggested_for_the_students_alone() -> None:
     text = RUNBOOK.read_text(encoding="utf-8")
     assert "same `--extra-override` in E1" in text
+
+
+def test_the_commands_use_the_pre_registered_nir_variant() -> None:
+    text = RUNBOOK.read_text(encoding="utf-8")
+    variants = re.findall(r"--nir-variant (\S+) \\", text)
+    assert variants and set(variants) == {"nir_clahe"}
+    assert set(re.findall(r"--reports-root (\S+) \\", text)) == {"reports/v4/nir_clahe"}
