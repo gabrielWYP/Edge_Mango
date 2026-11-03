@@ -2,18 +2,24 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pytest
+import yaml
 
 from src.data_pipeline.v4_selection import (
     box_in_rgb_frame,
     homography_for,
+    load_homography_rules,
     parse_tasks,
     rect_corners,
     select_photos,
 )
-from tests.annotation.synthetic import make_meta
+from tests.annotation.synthetic import JORNADA_1, make_meta
 from tests.data_pipeline.v4_synth import H_SHIFT, JORNADA_3, RULES, make_task
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 class TestGeometry:
@@ -46,11 +52,26 @@ class TestHomographyFor:
 class TestParseTasks:
     def test_newest_annotation_wins_and_is_reported(self) -> None:
         meta = make_meta(1)
-        task = make_task(meta, {"x": 1, "y": 1, "w": 10, "h": 10}, annotation_id=5)
-        task["annotations"].append(make_task(meta, None, annotation_id=7)["annotations"][0])
+        task = make_task(meta, {"x": 1, "y": 1, "w": 10, "h": 10}, created_at="2026-10-28T20:40:40Z")
+        task["annotations"].append(
+            make_task(meta, None, created_at="2026-10-28T20:41:00Z")["annotations"][0]
+        )
         labels, conflicts = parse_tasks([task])
-        assert labels[1].annotation_id == 7 and labels[1].corners == []
-        assert conflicts == [{"task_id": 1, "timestamp": 1, "annotation_ids": [5, 7], "used": 7}]
+        assert labels[1].created_at == "2026-10-28T20:41:00Z" and labels[1].corners == []
+        assert conflicts == [
+            {
+                "timestamp": 1,
+                "created_at": ["2026-10-28T20:40:40Z", "2026-10-28T20:41:00Z"],
+                "used": "2026-10-28T20:41:00Z",
+            }
+        ]
+
+    def test_tasks_carry_no_database_ids(self) -> None:
+        """The canonical labels file holds no Label Studio ids, because they repeat across projects."""
+        task = make_task(make_meta(1), {"x": 1, "y": 1, "w": 10, "h": 10})
+        assert "id" not in task and "id" not in task["annotations"][0]
+        labels, conflicts = parse_tasks([task])
+        assert list(labels) == [1] and conflicts == []
 
     def test_boxes_on_both_views_are_rejected(self) -> None:
         meta = make_meta(1)
@@ -77,11 +98,11 @@ class TestSelectPhotos:
             make_meta(9, ronda_h=10),  # SIFT not confirmed
         ]
         tasks = [
-            make_task(m, box, task_id=m["timestamp"])
+            make_task(m, box)
             for m in metas
             if m["timestamp"] in (2, 3, 5, 8, 9)
         ]
-        tasks.append(make_task(metas[5], box, task_id=6, visible=("no", "no")))
+        tasks.append(make_task(metas[5], box, visible=("no", "no")))
         labels, _ = parse_tasks(tasks)
         photos, excluded = select_photos(metas, labels, {9: "sift"}, {2}, RULES)
 
@@ -101,6 +122,30 @@ class TestSelectPhotos:
             9: "identity_unconfirmed",
         }
 
+    def test_tolerance_exception_keeps_a_late_round_and_is_scoped_to_it(self) -> None:
+        box = {"x": 1, "y": 1, "w": 10, "h": 10}
+        metas = [
+            make_meta(1, ronda_h=4, en_tolerancia=False),
+            make_meta(2, ronda_h=8, en_tolerancia=False),
+            make_meta(3, ronda_h=4, en_tolerancia=False, mango_id=9),
+        ]
+        labels, _ = parse_tasks([make_task(m, box) for m in metas])
+        exceptions = [{"jornada": JORNADA_1, "ronda_h": 4, "mangos": [metas[0]["mango_id"]]}]
+        photos, excluded = select_photos(
+            metas, labels, {}, set(), RULES, tolerance_exceptions=exceptions
+        )
+        assert [p.capture.timestamp for p in photos] == [1]
+        assert {e.capture.timestamp: e.reason for e in excluded} == {
+            2: "out_of_tolerance",
+            3: "out_of_tolerance",
+        }
+
+    def test_late_photos_are_excluded_without_an_exception(self) -> None:
+        meta = make_meta(1, ronda_h=4, en_tolerancia=False)
+        labels, _ = parse_tasks([make_task(meta, {"x": 1, "y": 1, "w": 10, "h": 10})])
+        photos, excluded = select_photos([meta], labels, {}, set(), RULES)
+        assert photos == [] and excluded[0].reason == "out_of_tolerance"
+
     def test_task_slot_must_match_the_meta(self) -> None:
         meta = make_meta(1, ronda_h=12)
         task = make_task(meta, {"x": 1, "y": 1, "w": 10, "h": 10})
@@ -108,3 +153,32 @@ class TestSelectPhotos:
         labels, _ = parse_tasks([task])
         with pytest.raises(ValueError, match="slot"):
             select_photos([meta], labels, {}, set(), RULES)
+
+
+class TestRepositoryConfigs:
+    """The committed configs cover the five captura_v3 lots."""
+
+    def test_every_lot_has_a_homography_rule_with_its_matrix_on_disk(self) -> None:
+        rules = load_homography_rules(REPO_ROOT / "configs/data/v4_homographies.yaml")
+        assert sorted(rules) == [
+            "lote1-20261024",
+            "lote2-20261025",
+            "lote3-20261027",
+            "lote4-20261031",
+            "lote5-20261101",
+        ]
+        for lot_rules in rules.values():
+            for rule in lot_rules:
+                assert np.load(REPO_ROOT / rule["matrix"]).shape == (3, 3)
+
+    def test_the_wrong_face_of_lot_4_is_excluded_by_identity(self) -> None:
+        config = yaml.safe_load(
+            (REPO_ROOT / "configs/data/v4_identity_exclusions.yaml").read_text(encoding="utf-8")
+        )
+        assert 1793488780 in {entry["timestamp"] for entry in config["exclusions"]}
+
+    def test_tolerance_exceptions_are_empty_until_the_plan_adds_them(self) -> None:
+        config = yaml.safe_load(
+            (REPO_ROOT / "configs/data/v4_tolerance_exceptions.yaml").read_text(encoding="utf-8")
+        )
+        assert config["exceptions"] == []

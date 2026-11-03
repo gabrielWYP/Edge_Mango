@@ -1,5 +1,10 @@
 # Photos whose mango/face identity the SIFT audit (auditar_sift.py) did not confirm
 # (docs/tesis/plan-experimental.md, section 3.1 rule 3). Each entry: {timestamp: <int>, reason: <text>}.
-# Lots 1-3: the audits in jornadas/*/observaciones_lote{1,2,3}.json confirmed every photo kept in
-# news/, so the list is empty. Append entries; never remove one without a note in the PR.
-exclusions: []
+# Lots 1-3 and 5: the audits in jornadas/*/observaciones_lote{1,2,3,5}.json confirmed every photo kept
+# in news/. Lot 4: one photo below. Append entries; never remove one without a note in the PR.
+exclusions:
+  - timestamp: 1793488780
+    reason: >-
+      Lot 4 mango 92 face 2 +8 h, probably face 4 photographed as face 2: it does not show the
+      stem visible at sano..+6 h and +10 h, SIFT 11 inliers with 92-4 +6 h, 0 with 92-2 +6 h
+      (observaciones_lote4.json, revision_8h).

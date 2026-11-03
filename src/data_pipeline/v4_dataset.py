@@ -89,8 +89,7 @@ INDEX_FIELDS = (
     "rotated",
     "visible_rgb",
     "visible_nir",
-    "task_id",
-    "annotation_id",
+    "annotation_created_at",
     "mango_x0",
     "mango_y0",
     "mango_x1",
@@ -212,7 +211,7 @@ def bake_photo(job: tuple[Photo, Path, Path, Path]) -> tuple[dict, list[dict]] |
     if label is not None:
         boxes = [box_in_rgb_frame(corners, label.view, H) for corners in label.corners]
         if any(b[2] <= b[0] or b[3] <= b[1] for b in boxes):
-            raise ValueError(f"task {label.task_id}: a damage box falls outside the RGB frame")
+            raise ValueError(f"capture {c.timestamp}: a damage box falls outside the RGB frame")
         lines += [yolo_line(DAMAGE_CLASS, b) for b in boxes]
         union = np.array([*np.min(boxes, axis=0)[:2], *np.max(boxes, axis=0)[2:]])
         inter = np.clip(
@@ -225,8 +224,7 @@ def bake_photo(job: tuple[Photo, Path, Path, Path]) -> tuple[dict, list[dict]] |
             "rotated": int(label.rotated),
             "visible_rgb": label.visible_rgb,
             "visible_nir": label.visible_nir,
-            "task_id": label.task_id,
-            "annotation_id": label.annotation_id,
+            "annotation_created_at": label.created_at,
             **dict(
                 zip(
                     ("damage_x0", "damage_y0", "damage_x1", "damage_y1"),
@@ -285,6 +283,7 @@ def build_dataset(
     out_dir: Path,
     repo_root: Path,
     workers: int = 1,
+    tolerance_path: Path | None = None,
 ) -> dict:
     """Build the dataset under ``out_dir`` (must be new or empty) and return the report."""
     data_root, out_dir = Path(data_root), Path(out_dir)
@@ -298,7 +297,13 @@ def build_dataset(
     entries = yaml.safe_load(Path(identity_path).read_text(encoding="utf-8"))["exclusions"] or []
     identity = {int(e["timestamp"]): str(e["reason"]) for e in entries}
     rules = load_homography_rules(rules_path)
-    photos, excluded = select_photos(metas, labels, identity, load_wb_timestamps(data_root), rules)
+    tolerance_exceptions = []
+    if tolerance_path is not None:
+        tolerance_config = yaml.safe_load(Path(tolerance_path).read_text(encoding="utf-8"))
+        tolerance_exceptions = tolerance_config["exceptions"] or []
+    photos, excluded = select_photos(
+        metas, labels, identity, load_wb_timestamps(data_root), rules, tolerance_exceptions
+    )
 
     for sub in ("rgb", "nir", "nir_clahe", "labels", "homographies"):
         (out_dir / sub).mkdir(parents=True, exist_ok=True)
@@ -344,6 +349,7 @@ def build_dataset(
                 "path": str(identity_path),
                 "sha256": _sha256(identity_path),
             },
+            "tolerance_exceptions": tolerance_exceptions,
             "matrices": {m: _sha256(Path(repo_root) / m) for m in matrices},
             "num_metas": len(metas),
         },

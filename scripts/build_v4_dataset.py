@@ -29,9 +29,10 @@ from src.data_pipeline.v4_dataset import build_dataset  # noqa: E402
 
 DEFAULT_DATA_ROOT = "data/cache/captura_v3"
 DEFAULT_OUTPUT = "data/cache/v4_captura_v3"
-DEFAULT_LABELS = PROJECT_ROOT / "data/labels/captura_v3_lots1-3_12h_0h.json"
+DEFAULT_LABELS = PROJECT_ROOT / "data/labels/captura_v3_lots1-5_12h_0h.json"
 DEFAULT_RULES = PROJECT_ROOT / "configs/data/v4_homographies.yaml"
 DEFAULT_IDENTITY = PROJECT_ROOT / "configs/data/v4_identity_exclusions.yaml"
+DEFAULT_TOLERANCE = PROJECT_ROOT / "configs/data/v4_tolerance_exceptions.yaml"
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -61,6 +62,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="photos whose SIFT identity was not confirmed (YAML)",
     )
     parser.add_argument(
+        "--tolerance-exceptions",
+        type=Path,
+        default=DEFAULT_TOLERANCE,
+        help="rounds whose late photos are kept against inclusion rule 1 (YAML)",
+    )
+    parser.add_argument(
         "--output",
         type=Path,
         default=None,
@@ -79,6 +86,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             labels_path=args.labels,
             rules_path=args.homographies,
             identity_path=args.identity_exclusions,
+            tolerance_path=args.tolerance_exceptions,
             out_dir=args.output or primary / DEFAULT_OUTPUT,
             repo_root=PROJECT_ROOT,
             workers=args.workers,

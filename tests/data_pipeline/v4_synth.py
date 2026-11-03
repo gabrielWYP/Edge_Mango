@@ -23,8 +23,7 @@ def make_task(
     meta: dict,
     box: dict | None,
     view: str = "nir",
-    task_id: int = 1,
-    annotation_id: int = 1,
+    created_at: str = "2026-10-28T20:40:40Z",
     visible: tuple[str, str] = ("yes", "yes"),
 ) -> dict:
     """A Label Studio task with one annotation; ``box`` holds pixel x, y, w, h (and rotation)."""
@@ -63,7 +62,6 @@ def make_task(
     data = {k: meta[k] for k in ("timestamp", "mango_id", "cara", "ronda_h")}
     data["jornada"] = meta["jornada"]["id"]
     return {
-        "id": task_id,
         "data": data,
-        "annotations": [{"id": annotation_id, "result": result}],
+        "annotations": [{"created_at": created_at, "result": result}],
     }

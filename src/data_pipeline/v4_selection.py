@@ -35,8 +35,7 @@ DRAWN_FROM_HOUR = 10  # boxes at t >= 10 h were drawn; earlier ones were project
 class TaskLabel:
     """The damage annotation of one Label Studio task (one capture)."""
 
-    task_id: int
-    annotation_id: int
+    created_at: str
     slot: Slot
     view: str | None  # "rgb" or "nir"; None when the task has no box
     corners: list[np.ndarray]  # (4, 2) edge-based pixel corners in ``view``
@@ -127,14 +126,13 @@ def parse_tasks(tasks: list[dict]) -> tuple[dict[int, TaskLabel], list[dict]]:
         done = [a for a in task["annotations"] if not a.get("was_cancelled")]
         if not done:
             continue
-        annotation = max(done, key=lambda a: a["id"])
+        annotation = max(done, key=lambda a: a["created_at"])
         if len(done) > 1:
             conflicts.append(
                 {
-                    "task_id": task["id"],
                     "timestamp": data["timestamp"],
-                    "annotation_ids": sorted(a["id"] for a in done),
-                    "used": annotation["id"],
+                    "created_at": sorted(a["created_at"] for a in done),
+                    "used": annotation["created_at"],
                 }
             )
         choices, corners, views, origins, rotated = {}, [], set(), [], False
@@ -145,19 +143,20 @@ def parse_tasks(tasks: list[dict]) -> tuple[dict[int, TaskLabel], list[dict]]:
                 view = result["to_name"]
                 size = (result["original_width"], result["original_height"])
                 if size != VIEW_SIZES[view]:
-                    raise ValueError(f"task {task['id']}: {view} box on a {size} image")
+                    raise ValueError(f"capture {data['timestamp']}: {view} box on a {size} image")
                 corners.append(rect_corners(result["value"], *size))
                 views.add(view)
                 origins.append(result.get("origin") or "")
                 rotated |= bool(result["value"].get("rotation"))
         if len(views) > 1:
-            raise ValueError(f"task {task['id']}: damage boxes on both the RGB and the NIR view")
+            raise ValueError(
+                f"capture {data['timestamp']}: damage boxes on both the RGB and the NIR view"
+            )
         timestamp = int(data["timestamp"])
         if timestamp in labels:
             raise ValueError(f"two Label Studio tasks for capture {timestamp}")
         labels[timestamp] = TaskLabel(
-            task_id=task["id"],
-            annotation_id=annotation["id"],
+            created_at=annotation["created_at"],
             slot=Slot(data["jornada"], data["mango_id"], data["cara"], data["ronda_h"]),
             view=views.pop() if views else None,
             corners=corners,
@@ -179,12 +178,23 @@ def sin_bruise_faces(labels: dict[int, TaskLabel]) -> set[tuple[str, int, int]]:
     }
 
 
+def _tolerance_excepted(capture: Capture, exceptions: list[dict]) -> bool:
+    """True when a rule (jornada, ronda_h and optionally mangos) keeps this late photo."""
+    return any(
+        rule["jornada"] == capture.jornada
+        and rule["ronda_h"] == capture.ronda_h
+        and ("mangos" not in rule or capture.mango_id in rule["mangos"])
+        for rule in exceptions
+    )
+
+
 def select_photos(
     metas: list[dict],
     labels: dict[int, TaskLabel],
     identity_exclusions: dict[int, str],
     wb_timestamps: set[int],
     rules: dict[str, list[dict]],
+    tolerance_exceptions: list[dict] | None = None,
 ) -> tuple[list[Photo], list[Exclusion]]:
     """Apply the inclusion rules to every meta; return the kept photos and the exclusions."""
     excluded: list[Exclusion] = []
@@ -203,7 +213,7 @@ def select_photos(
         raise ValueError(f"Label Studio tasks for captures with no meta: {unknown[:10]}")
     for ts, label in labels.items():
         if by_ts[ts].slot != label.slot:
-            raise ValueError(f"task {label.task_id}: slot {label.slot} != meta {by_ts[ts].slot}")
+            raise ValueError(f"capture {ts}: task slot {label.slot} != meta {by_ts[ts].slot}")
 
     kept, dropped = resolve_slots(candidates)
     excluded += [
@@ -215,7 +225,9 @@ def select_photos(
         label = labels.get(capture.timestamp)
         face = (capture.jornada, capture.mango_id, capture.cara)
         reason = ""
-        if capture.en_tolerancia is False:
+        if capture.en_tolerancia is False and not _tolerance_excepted(
+            capture, tolerance_exceptions or []
+        ):
             reason = "out_of_tolerance"
         elif capture.timestamp in identity_exclusions:
             reason = "identity_unconfirmed"

@@ -14,3 +14,7 @@ lots:
     # Closing pair, from 75-2 +6 h (15:32:35) on.
     - matrix: calibracion/captura_v3/lote3-20261027/matriz_homografia_aruco_3264x2448_lote3_20261027_final_centros.npy
       min_timestamp: 1793133155
+  lote4-20261031:
+    - matrix: calibracion/captura_v3/lote4-20261031/matriz_homografia_aruco_3264x2448_lote4_20261031_centros.npy
+  lote5-20261101:
+    - matrix: calibracion/captura_v3/lote5-20261101/matriz_homografia_aruco_3264x2448_lote5_20261101_centros.npy
