@@ -87,3 +87,7 @@ checkpoints/**/.partial/
 # outputs; binaries and metadata sidecars embed local paths and timestamps.
 /.venv-export/
 /exports/
+
+# Per-image predictions of the v4 evaluations (about 3 GB per run set) and TensorBoard logs
+reports/**/predictions.jsonl
+checkpoints/**/logs/

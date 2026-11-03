@@ -7,10 +7,18 @@ crash or a Ctrl-C, re-run the same command and the finished steps are skipped.
 Use the same flags in E1 and E2. A student only distills from a teacher trained on the same fold and seed, with
 the same machine profile, `--nir-variant`, `--epochs` and `--extra-override`; anything else stops the runner.
 
+`python` below is the interpreter of the training environment: `myLinuxVenv/bin/python` on the lab machine.
+
 ## 1. Regenerate the dataset and the folds
 
+First update the labels file the build reads: export the Label Studio project with all its tasks and replace only the
+tasks that changed, matching by `timestamp`
+([`captura-v3-label-studio.md`](../annotation/captura-v3-label-studio.md)). Nothing warns about stale labels: a build on
+the old file exits 0 and lists the pending tasks as `unlabeled` in its report.
+
 ```bash
-python scripts/build_v4_dataset.py --output data/cache/v4_captura_v3 --workers 8
+python scripts/build_v4_dataset.py --labels data/labels/captura_v3_lots1-5_12h_0h.json \
+    --output data/cache/v4_captura_v3 --workers 8
 python scripts/make_v4_folds.py --dataset data/cache/v4_captura_v3 --fold-spec configs/folds/v4_lot_5fold.json
 ```
 
@@ -80,7 +88,7 @@ python scripts/aggregate_kfold.py --reports-root reports/v4/nir \
     --fold-spec data/cache/v4_captura_v3/folds_lot/folds_meta.json \
     --arms maestro_rgb maestro_rgbnir --baseline maestro_rgb --treatment maestro_rgbnir \
     --seeds 42 1337 2024 --rope 0.02
-python scripts/plan_seeds.py --results reports/v4/nir/kfold_results.json \
+python scripts/plan_seeds.py --metric latent_ap50 --results reports/v4/nir/kfold_results.json \
     --fold-spec data/cache/v4_captura_v3/folds_lot/folds_meta.json
 ```
 
@@ -111,6 +119,6 @@ Changing any of these changes the identity of the runs that used it.
 | Student budget | 80 epochs, warmup 3, no early stopping, in all three student arms | `v4_est_*.yaml`, `run_kfold.py` |
 | KD batch | 8 per optimizer step, whatever the machine profile says, because `KDTrainer` has no gradient accumulation | `v4_est_kd_*.yaml` |
 
-If a KD run does not fit in memory, `--extra-override batch_size=4` lowers its batch, along with the batch of every
-other command of that run. The KD arms then take twice the optimizer steps of `est_etiquetas`, which affects the
-exploratory comparisons against that arm. Use it in both KD arms so that H2 stays paired.
+If a KD run does not fit in memory, lower the batch of every arm with the same `--extra-override` in E1 and E2
+(`batch_size=4`). The teacher identity includes that flag, so adding it only for the students stops the runner: a
+change at that point means training the teachers again.
