@@ -45,8 +45,8 @@ H1 y H2 se prueban en **secuencia fija** (sección 8.3): H2 solo se evalúa como
 
 | Término | Definición |
 | :-- | :-- |
-| **Daño latente** | Fotos con `fase = post_impacto` y `ronda_h ∈ {0, 2, 4}`. **t = 6 h no es latente.** |
-| **Daño desarrollado** | `ronda_h ∈ {6, 8, 10, 12}`. |
+| **Daño latente** | Fotos con `fase = post_impacto` y `ronda_h ∈ {0, 2, 4, 6}`. |
+| **Daño desarrollado** | `ronda_h ∈ {8, 10, 12}`. |
 | **Sano** | `fase = sano`: la misma cara antes del impacto. Es el negativo pareado de esa cara. |
 | **Unidad de análisis** | El **lote** (5 lotes, n = 5 en la inferencia). El **mango** (`mango_id` 1-125, 25 por lote) es la unidad de agrupación dentro del lote; las caras y los momentos son medidas repetidas. |
 | **Zona de impacto** | La zona sorteada por cara (`centro`, `superior`, `inferior`, `izquierda`, `derecha`; `capture/protocolo.py`), guardada en los metadatos (`impacto.zona`). |
@@ -59,6 +59,7 @@ H1 y H2 se prueban en **secuencia fija** (sección 8.3): H2 solo se evalúa como
 ### 3.1 Reglas de inclusión (se aplican antes de cualquier experimento)
 
 1. Solo fotos con `impacto.en_tolerancia = true` (±10 min). Las retomas tardías fuera de tolerancia se excluyen y se cuentan.
+   **Excepción:** la ronda +4 h de los lotes 4 y 5 se incluye completa, porque sigue en la misma franja de la ronda: lote 4, 100 fotos (+19.3 a +32.3 min, 4.32-4.54 h reales); lote 5, 12 fotos de los mangos 123-125 (+12.1 a +14.2 min, 4.20-4.24 h reales). En el análisis usa las horas reales (`impacto.horas_desde_impacto`), no 4 h nominal.
 2. Las fotos movidas a `descartes/` (reinicios, correcciones) no entran.
 3. La identidad mango/cara se verifica con la auditoría SIFT (`auditar_sift.py`, ver las observaciones de cada lote). Una foto cuya identidad no se confirma se excluye.
 4. Los artefactos de línea horizontal en el NIR (CSI) se interpolan si cruzan el mango y se dejan si están solo en el fondo. Se reporta cuántos hay por lote.
@@ -135,8 +136,8 @@ con la mediana por mango y el rango entre lotes.
 
 | Resultado | Frase |
 | :-- | :-- |
-| AUROC NIR > AUROC RGB en t ∈ {0, 2, 4} y AUROC RGB > control negativo | "En la ventana latente el NIR distingue el daño con más contraste que el RGB, y el RGB conserva una señal débil." Sostiene la premisa de la destilación. |
-| AUROC RGB ≈ control negativo en t < 6 | "En la ventana latente el RGB no contiene señal de intensidad o textura local." H2 se espera negativa; queda abierta solo por features espaciales que el proxy no ve (E6). |
+| AUROC NIR > AUROC RGB en t ∈ {0, 2, 4, 6} y AUROC RGB > control negativo | "En la ventana latente el NIR distingue el daño con más contraste que el RGB, y el RGB conserva una señal débil." Sostiene la premisa de la destilación. |
+| AUROC RGB ≈ control negativo en t ≤ 6 | "En la ventana latente el RGB no contiene señal de intensidad o textura local." H2 se espera negativa; queda abierta solo por features espaciales que el proxy no ve (E6). |
 | AUROC NIR ≈ AUROC RGB | "El NIR no adelanta la detección con este setup." H1 se espera débil; revisar exposición NIR (EV −3) y registro. |
 | El control negativo se aleja de 0.5 | Hay deriva de captura. Se reporta y todos los análisis por cara usan diferencia de diferencias. |
 
@@ -173,7 +174,7 @@ de E2.
 
 **Salidas.** Tabla por fold de la sección 8; curva de AP por hora (t = 0 … 12) para los tres brazos.
 
-**Lectura adicional.** Se espera que la ganancia del NIR se concentre en t < 6 y se reduzca después, cuando el
+**Lectura adicional.** Se espera que la ganancia del NIR se concentre en t ≤ 6 y se reduzca después, cuando el
 daño ya es visible en RGB. Si la ganancia es igual a toda hora, el NIR aporta, pero no específicamente sobre lo
 latente; se escribe así.
 
@@ -201,14 +202,14 @@ la mejora viene del NIR. Solo se corre si H2 sale positiva.
 
 **Salida central de la tesis.** Figura: AP (y AUROC por cara) contra horas desde el impacto, con una curva por
 modelo: `maestro_rgb`, `maestro_rgbnir`, `est_etiquetas`, `est_kd_rgb`, `est_kd_rgbnir`. La hipótesis completa
-se lee ahí: curvas separadas en t < 6 h y convergiendo después.
+se lee ahí: curvas separadas en t ≤ 6 h y convergiendo después.
 
 ### E3. Generalización temporal (exploratorio)
 
 | Brazo | Entrena con | Evalúa en |
 | :-- | :-- | :-- |
 | `t_todo` | todos los momentos (= `maestro_rgbnir` de E1) | latente |
-| `t_visible` | solo t ≥ 6 h (+ `sano`) | latente |
+| `t_visible` | solo t ≥ 8 h (+ `sano`) | latente |
 
 Se repite para el estudiante `est_kd_rgbnir` si el costo lo permite. Pregunta: ¿el modelo necesita ejemplos de
 daño latente o lo generaliza desde el visible? Si `t_visible` ≈ `t_todo`, basta etiquetar daño visible; si cae,
@@ -239,7 +240,7 @@ arquitectura tras ver resultados = exploratorio, sección 9).
 
 Regresión ridge desde las features del estudiante `est_etiquetas` (o del `maestro_rgb`) a las features de la rama
 NIR de `maestro_rgbnir`, en la región de la caja de daño, entrenada leave-one-lot-out. R² por hora. Si el R² es
-alto en t < 6, la información que aporta el NIR existe en el RGB y la destilación tiene de dónde sacarla; si es
+alto en t ≤ 6, la información que aporta el NIR existe en el RGB y la destilación tiene de dónde sacarla; si es
 ≈ 0, explica un H2 negativo.
 
 ---
@@ -263,9 +264,9 @@ Las semillas se confirman con `scripts/plan_seeds.py` después de la primera tan
 
 | Rol | Métrica |
 | :-- | :-- |
-| **Primaria** | AP50 de daño (`ap50_class_1`) sobre las fotos de la **ventana latente** (t ∈ {0, 2, 4}) más las `sano` del lote de test, en el lote de test. |
+| **Primaria** | AP50 de daño (`ap50_class_1`) sobre las fotos de la **ventana latente** (t ∈ {0, 2, 4, 6}) más las `sano` del lote de test, en el lote de test. |
 | Secundaria 1 | AP30 de daño en latente (el bruise es amorfo y la caja proyectada es una cota superior, 3.2). |
-| Secundaria 2 | AUROC por cara: "¿esta cara tiene daño?", con `sano` como negativo y t ∈ {0, 2, 4} como positivo; score = máxima confianza de daño en la cara. Pareada por diseño. |
+| Secundaria 2 | AUROC por cara: "¿esta cara tiene daño?", con `sano` como negativo y t ∈ {0, 2, 4, 6} como positivo; score = máxima confianza de daño en la cara. Pareada por diseño. |
 | Descriptivas | AP50 por hora (t = 0 … 12), AP50 en desarrollado, AP por zona de impacto, AP por procedencia de la caja, FP por imagen en `sano`. |
 
 El mAP de dos clases no se usa: la clase mango satura y no refleja el daño.
@@ -282,7 +283,7 @@ Se sigue el skill [`experiment-statistics`](../../.claude/skills/experiment-stat
 ```
 H1:          baseline = maestro_rgb,  treatment = maestro_rgbnir
 H2:          baseline = est_kd_rgb,   treatment = est_kd_rgbnir
-Metric:      test damage AP50 en ventana latente (t ∈ {0,2,4} + sano), media sobre semillas por fold
+Metric:      test damage AP50 en ventana latente (t ∈ {0,2,4,6} + sano), media sobre semillas por fold
 ROPE:        ±0.02 AP50
 Threshold:   P(right) >= 0.95
 Seeds:       42, 1337, 2024
@@ -349,3 +350,4 @@ inferencia confirmatoria es solo la de nivel lote.
 | Fecha | Cambio | Motivo | ¿Antes o después de ver test? |
 | :-- | :-- | :-- | :-- |
 | 2026-10-25 | Versión inicial | — | Antes |
+| 2026-11-02 | La ventana latente pasa de t ∈ {0, 2, 4} a t ∈ {0, 2, 4, 6}, y el daño desarrollado queda en t ∈ {8, 10, 12}. La ronda +4 h de los lotes 4 y 5 se incluye aunque esté fuera de tolerancia (regla 1 de 3.1). | Decisión del autor. Las fotos +4 h fuera de tolerancia (lote 4: +19.3 a +32.3 min; lote 5: +12.1 a +14.2 min) siguen en la misma franja. | Antes de E1 y E2. E0 preliminar del lote 1 ya estaba visto. |
