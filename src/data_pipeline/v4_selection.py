@@ -27,7 +27,7 @@ from src.annotation.captura_v3_tasks import Capture, Slot, _parse_capture, resol
 
 RGB_SIZE = (3264, 2448)  # (width, height)
 VIEW_SIZES = {"rgb": RGB_SIZE, "nir": (3280, 2464)}
-LATENT_HOURS = (0, 2, 4)
+LATENT_HOURS = (0, 2, 4, 6)
 DRAWN_FROM_HOUR = 10  # boxes at t >= 10 h were drawn; earlier ones were projected back (3.2)
 
 

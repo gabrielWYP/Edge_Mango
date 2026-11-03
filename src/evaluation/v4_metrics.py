@@ -26,7 +26,7 @@ fold reports the same keys.
 Per-face AUROC. One photo is one look at one face at one moment: the positives are the latent
 window photos, the negatives the `sano` photos, and the score of a photo is the maximum damage
 confidence on it, 0 when it has no damage prediction. Pooling a face's latent photos into their
-maximum is deliberately not done: a face has up to three latent photos and one `sano` photo, so a
+maximum is deliberately not done: a face has up to four latent photos and one `sano` photo, so a
 detector with no signal would score P(max of 3 > 1) = 0.75 instead of 0.5. The design is paired
 because the two groups come from the same faces; `n_paired_faces` counts those holding both.
 

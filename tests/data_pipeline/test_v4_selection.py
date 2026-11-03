@@ -9,6 +9,7 @@ import pytest
 import yaml
 
 from src.data_pipeline.v4_selection import (
+    LATENT_HOURS,
     box_in_rgb_frame,
     homography_for,
     load_homography_rules,
@@ -177,8 +178,14 @@ class TestRepositoryConfigs:
         )
         assert 1793488780 in {entry["timestamp"] for entry in config["exclusions"]}
 
-    def test_tolerance_exceptions_are_empty_until_the_plan_adds_them(self) -> None:
+    def test_tolerance_exceptions_are_the_rounds_of_the_plan(self) -> None:
         config = yaml.safe_load(
             (REPO_ROOT / "configs/data/v4_tolerance_exceptions.yaml").read_text(encoding="utf-8")
         )
-        assert config["exceptions"] == []
+        assert config["exceptions"] == [
+            {"jornada": "lote4-20261031", "ronda_h": 4},
+            {"jornada": "lote5-20261101", "ronda_h": 4, "mangos": [123, 124, 125]},
+        ]
+
+    def test_the_latent_window_is_the_one_of_the_plan(self) -> None:
+        assert LATENT_HOURS == (0, 2, 4, 6)
