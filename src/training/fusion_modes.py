@@ -40,6 +40,20 @@ FUSION_MODES: tuple[str, ...] = (FUSION_MODE_EARLY, FUSION_MODE_CROSS_ATTENTION)
 
 DEFAULT_FUSION_MODE: str = FUSION_MODE_EARLY
 
+# Modality ablation arms of plan E1: one modality replaced by a constant (0
+# after normalization) in `YOLODataset` output, same model and parameters.
+MODALITY_ABLATION_NONE = "none"
+MODALITY_ABLATION_NIR_CONST = "nir_const"
+MODALITY_ABLATION_RGB_CONST = "rgb_const"
+
+MODALITY_ABLATIONS: tuple[str, ...] = (
+    MODALITY_ABLATION_NONE,
+    MODALITY_ABLATION_NIR_CONST,
+    MODALITY_ABLATION_RGB_CONST,
+)
+
+DEFAULT_MODALITY_ABLATION: str = MODALITY_ABLATION_NONE
+
 # Checkpoint state_dict schema version per fusion mode (fusion-redesign D-C).
 ARCH_VERSION_BY_FUSION_MODE: dict[str, int] = {
     FUSION_MODE_CROSS_ATTENTION: 1,
@@ -202,6 +216,36 @@ def validate_fusion_ablation(
             "fusion_pos_encoding=True requires fusion_attention=True: with no "
             "cross-modal attention there is no query/key to encode position "
             "into, and the flag would be silently ignored."
+        )
+
+
+def validate_modality_ablation(modality_ablation: str) -> None:
+    """Raise `ValueError` unless `modality_ablation` is an accepted arm.
+
+    The arms of plan E1 (`docs/tesis/plan-experimental.md`) keep the same model
+    and replace one modality with a constant in `YOLODataset` output, so they
+    add no state_dict key and strict loading can never catch a typo.
+    """
+    if modality_ablation not in MODALITY_ABLATIONS:
+        raise ValueError(
+            f"Invalid modality_ablation {modality_ablation!r}. "
+            f"Must be one of: {list(MODALITY_ABLATIONS)}"
+        )
+
+
+def validate_kd_modality_ablation(modality_ablation: str) -> None:
+    """Raise `ValueError` unless a KD run can use `modality_ablation`.
+
+    `nir_const` is `est_kd_rgb`: the student reads RGB and its teacher gets the
+    blanked NIR. `rgb_const` would blank the student's only input.
+    """
+    validate_modality_ablation(modality_ablation)
+    if modality_ablation == MODALITY_ABLATION_RGB_CONST:
+        raise ValueError(
+            f"modality_ablation='{MODALITY_ABLATION_RGB_CONST}' cannot be used for "
+            "knowledge distillation: RGB is the student's only input, so the student "
+            f"would train on a constant image. Use '{MODALITY_ABLATION_NIR_CONST}' "
+            f"(teacher without NIR) or '{MODALITY_ABLATION_NONE}'."
         )
 
 

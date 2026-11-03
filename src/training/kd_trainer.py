@@ -42,6 +42,7 @@ from .fusion_modes import (
     fusion_attention_from_checkpoint,
     fusion_pos_encoding_from_checkpoint,
     use_nir_from_checkpoint,
+    validate_kd_modality_ablation,
 )
 from .kd_config import KDConfig
 from .kd_loss import KDLoss
@@ -83,6 +84,10 @@ class KDTrainer(Trainer):
         train_loader: DataLoader,
         val_loader: DataLoader,
     ):
+        # First, so a refused run leaves no output directory behind. The
+        # teacher's NIR is blanked by the dataset, so `nir_const` needs nothing
+        # here.
+        validate_kd_modality_ablation(config.modality_ablation)
         super().__init__(model, config, train_loader, val_loader)
 
         # Student → teacher adapters (FitNets regressors). Trainer-owned,
@@ -136,6 +141,15 @@ class KDTrainer(Trainer):
             )
 
         checkpoint = torch.load(str(ckpt_path), map_location="cpu", weights_only=False)
+
+        # The ablation adds no state_dict key: a teacher of another arm would load and
+        # silently see the wrong input, which is the control of plan E2.
+        recorded = (checkpoint.get("config") or {}).get("modality_ablation", "none")
+        if recorded != config.modality_ablation:
+            raise ValueError(
+                f"Teacher checkpoint {ckpt_path} was trained with modality_ablation={recorded}, "
+                f"but this run has modality_ablation={config.modality_ablation}."
+            )
 
         # `fusion_mode` decides the teacher's whole state_dict schema: a
         # cross-attention checkpoint shares no key with an early-fusion

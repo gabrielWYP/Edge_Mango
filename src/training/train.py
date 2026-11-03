@@ -4,6 +4,7 @@ CLI entry point for MasterModel training.
 Usage:
     python -m src.training.train --config configs/training.yaml
     python -m src.training.train --config configs/training.yaml --override batch_size=4
+    python -m src.training.train --config configs/training.yaml --override modality_ablation=nir_const
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.training.config import TrainingConfig
 from src.training.dataset import YOLODataset, build_dataloader, collate_fn, build_weighted_sampler
+from src.training.fusion_modes import DEFAULT_MODALITY_ABLATION
 from src.training.loop import Trainer
 from src.training.machine import apply_machine_profile, experiment_sha256, load_machine_profile
 from src.training.run_artifacts import (
@@ -63,7 +65,10 @@ def parse_args() -> argparse.Namespace:
         "--override",
         nargs="*",
         default=[],
-        help="Override config values: key=value pairs.",
+        help=(
+            "Override config values: key=value pairs. modality_ablation=nir_const|rgb_const "
+            "replaces that modality with a constant (plan E1)."
+        ),
     )
     parser.add_argument(
         "--versioned-run",
@@ -194,6 +199,8 @@ def main():
             else ""
         )
     )
+    if config.modality_ablation != DEFAULT_MODALITY_ABLATION:
+        print(f"  modality_ablation: {config.modality_ablation}")
     if run_experiment_sha256:
         print(f"  experiment_sha256: {run_experiment_sha256}")
 
@@ -214,6 +221,7 @@ def main():
         roi_crop=config.roi_crop,
         roi_crop_margin=config.roi_crop_margin,
         roi_crop_jitter=config.roi_crop_jitter,
+        modality_ablation=config.modality_ablation,
     )
 
     val_dataset = YOLODataset(
@@ -230,6 +238,7 @@ def main():
         roi_crop=config.roi_crop,
         roi_crop_margin=config.roi_crop_margin,
         roi_crop_jitter=config.roi_crop_jitter,
+        modality_ablation=config.modality_ablation,
     )
 
     print(f"Dataset: {len(train_dataset)} train, {len(val_dataset)} val images")

@@ -15,10 +15,12 @@ import yaml
 
 from .fusion_modes import (
     DEFAULT_FUSION_MODE,
+    DEFAULT_MODALITY_ABLATION,
     FUSION_MODE_CROSS_ATTENTION,
     validate_fusion_ablation,
     validate_fusion_mode,
     validate_fusion_pos_encoding,
+    validate_modality_ablation,
 )
 from .ema import DEFAULT_EMA_DECAY, DEFAULT_EMA_TAU, validate_ema
 from .machine import derive_grad_accum_steps
@@ -147,6 +149,15 @@ class TrainingConfig:
             `fusion_attention=False`; read back from the checkpoint like
             `fusion_attention` (absent -> True). Only valid with
             fusion_mode="cross_attention"; ignored for model_type="student".
+        modality_ablation: "none" (default) | "nir_const" | "rgb_const". The
+            modality ablation of plan E1: `YOLODataset` replaces NIR
+            (`maestro_rgb`) or RGB (`maestro_nir`) with a constant, 0 after
+            normalization, on every split, with labels, the other modality and
+            the model parameters unchanged. Applies to the data, so a KD teacher
+            sees it too: `nir_const` is the teacher of `est_kd_rgb`, and
+            `KDTrainer` refuses `rgb_const` because RGB is the student's only
+            input. Adds no state_dict key and is not read back from a
+            checkpoint: pass the arm the checkpoint was trained with.
         head_strides: MasterModel FPN/head pyramid strides, finest-first.
             Default `[4, 8, 16, 32]` includes the reconnected P2 level
             (fusion-redesign D-3). The single source of truth for
@@ -337,6 +348,9 @@ class TrainingConfig:
     # default, so every existing config and checkpoint is arm A.
     fusion_attention: bool = True
     use_nir: bool = True
+    # Modality ablation arms of plan E1 (src/training/fusion_modes.py). Applied
+    # by YOLODataset, for every model_type; "none" keeps both modalities.
+    modality_ablation: str = DEFAULT_MODALITY_ABLATION
 
     # Training schedule (D-4, fusion-redesign) — MasterModel only.
     schedule: str = "end_to_end"
@@ -386,6 +400,7 @@ class TrainingConfig:
         # Unlike head_strides this needs no student exemption — the default
         # is valid for both model types.
         validate_fusion_mode(self.fusion_mode)
+        validate_modality_ablation(self.modality_ablation)
         validate_roi_crop(self.roi_crop_margin, self.roi_crop_jitter)
         validate_neck_norm(self.neck_norm, self.neck_gn_groups)
         validate_ema(self.ema, self.ema_decay, self.ema_tau)

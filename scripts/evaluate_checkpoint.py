@@ -190,6 +190,27 @@ _LEGACY_ROI_CROP = False
 _LEGACY_ROI_CROP_MARGIN = 0.10
 
 
+def _check_modality_ablation_binding(
+    checkpoint_path: str, checkpoint_config: dict | None, config: TrainingConfig,
+) -> None:
+    """Raise unless the eval config blanks the modality the checkpoint was trained without.
+
+    The ablation adds no state_dict key, so `strict=True` cannot catch a mismatch and
+    the metrics of an arm would silently come from another arm's input. A recorded
+    config without the key predates the flag and counts as `none`; a checkpoint with
+    no recorded config cannot be checked.
+    """
+    if checkpoint_config is None:
+        return
+    trained = checkpoint_config.get("modality_ablation", "none")
+    if trained != config.modality_ablation:
+        raise ValueError(
+            f"Checkpoint at {checkpoint_path} was trained with modality_ablation={trained}, "
+            f"but the eval config has modality_ablation={config.modality_ablation}. "
+            f"Pass --override modality_ablation={trained}."
+        )
+
+
 def _check_roi_crop_binding(
     checkpoint_path: str, checkpoint_config: dict | None, config: TrainingConfig,
 ) -> None:
@@ -279,6 +300,7 @@ def _build_eval_dataset(config: TrainingConfig, split: str) -> YOLODataset:
         roi_crop=config.roi_crop,
         roi_crop_margin=config.roi_crop_margin,
         roi_crop_jitter=0.0,
+        modality_ablation=config.modality_ablation,
     )
 
 
@@ -383,6 +405,9 @@ def _load_model(model_type: str, checkpoint_path: str, config: TrainingConfig, d
     # The checkpoint is already in hand: bind the eval crop to the trained one
     # before any model is built or any weight loaded.
     _check_roi_crop_binding(
+        checkpoint_path, checkpoint.get("config") if is_checkpoint_dict else None, config,
+    )
+    _check_modality_ablation_binding(
         checkpoint_path, checkpoint.get("config") if is_checkpoint_dict else None, config,
     )
 
