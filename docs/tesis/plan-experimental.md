@@ -307,8 +307,10 @@ H1:          baseline = est_rgb,  treatment = est_nir
 H2:          baseline = kd_rgb,   treatment = kd_nir
 Secundaria:  baseline = est_rgb,  treatment = kd_nir
 Sensibilidad: las mismas comparaciones sin las fotos latentes con visible_rgb = yes (146 de 1987), porque ahí la marca ya se veía en RGB
-Variante:    se fija el 2026-11-04 con la validación de los pilotos, antes de leer test
-Épocas:      se fijan el 2026-11-04 con la validación de los pilotos, antes de leer test
+Variante:    nano, fijada el 2026-11-04 (sección 11)
+Épocas:      se fijan con la validación de los pilotos, antes de leer test
+Clase mango: se decide con la validación de los pilotos, antes de leer test (sección 11)
+EMA:         se decide con la validación de los pilotos, antes de leer test (sección 11)
 NIR:         variante nir_clahe en los brazos de E1 y E2
 Recorte:     al mango con rgb_mango_mask, margen 0.10 y jitter 0.5 en train, en los cuatro brazos (el brazo NIR recibe la ventana desde RGB)
 Metric:      test damage AP50 en ventana latente (t ∈ {0,2,4,6} + sano), media sobre semillas por fold
@@ -387,3 +389,6 @@ Estado al 2026-11-02: los puntos 1 a 9 tienen su código y pruebas, y los comand
 | 2026-11-03 | Se declara el criterio de anotación por color y hendidura, y se agrega un análisis de sensibilidad sin las fotos latentes con `visible_rgb = yes`. | Aclaración del autor, que anotó las cajas. | Antes |
 | 2026-11-03 | Brazo exploratorio de E2: `configs/kd_training_twostream_regions.yaml` (PKD balanceado por región, solo P3 y P4 del FPN y la cabeza). H1, H2 y sus brazos no cambian. | Auditoría sobre el corpus preliminar (`reports/kd-feature-audit/`): el fondo concentra más del 90 % del error de imitación y el backbone casi no depende del NIR. | Antes (v4); la auditoría no usa test |
 | 2026-11-04 | Sin cambios al diseño. Se declara que, al consolidar los resultados, se imprimieron en la sesión de trabajo los resultados de test del fold 0, semilla 42, de `maestro_rgbnir`, `est_nir` y `est_rgb`, que el evaluador del runner había generado de forma automática. Variante y épocas se siguen fijando solo con validación. | Transparencia del pre-registro. | Exposición parcial de test antes de fijar variante y épocas; los demás folds y los brazos KD siguen sin correr |
+| 2026-11-04 | Se fija la variante `nano`, sin pilotarla frente a `wide`. | Decisión del autor: es el modelo que describe el plan y tiene menos de la mitad de parámetros (3.0 M frente a 6.9 M). No se basa en resultados de test. | Después de la exposición parcial de test |
+| 2026-11-04 | Pilotos solo en validación: `est_rgb` y `est_nir`, `nano`, fold 0, 3 semillas y 80 épocas, con y sin la clase mango. Regla para quitarla: el AP50 latente medio de validación debe mejorar en ambos brazos, comparando medias de 3 semillas y nunca la diferencia entre brazos. | Decisión del autor: el mango consume pérdida y anclas en una tarea ya resuelta. No se basa en resultados de test. | Después de la exposición parcial de test |
+| 2026-11-04 | Se corrige el warm-up, cuya primera época entrenaba con el LR completo. Se agrega una prueba con EMA (`ema_decay=0.9994`) y warm-up corregido, sobre la condición de mango que resulte de los pilotos. Si EMA se adopta, se aplica igual a todos los brazos. | Decisión del autor tras ver saltos del AP50 de daño en validación. El warm-up afecta a todas las corridas anteriores. No se basa en resultados de test. | Después de la exposición parcial de test |

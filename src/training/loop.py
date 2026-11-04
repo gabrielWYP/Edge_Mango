@@ -356,10 +356,12 @@ class Trainer:
                 return (epoch + 1) / warmup_epochs
             return 1.0
 
-        warmup_scheduler = LambdaLR(optimizer, warmup_lambda)
+        # The cosine first: building a scheduler sets the learning rate, and the last one
+        # built wins. The other way round, the first epoch would train at the full rate.
         cosine_scheduler = CosineAnnealingWarmRestarts(
             optimizer, T_0=max(1, total_epochs - warmup_epochs), T_mult=2
         )
+        warmup_scheduler = LambdaLR(optimizer, warmup_lambda)
 
         start_epoch = 1
         if self._resume_state is not None:

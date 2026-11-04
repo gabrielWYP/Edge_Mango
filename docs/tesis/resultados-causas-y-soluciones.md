@@ -16,7 +16,7 @@ Este documento reúne lo medido y no reemplaza al [plan experimental](plan-exper
 
 | Pregunta | Respuesta hoy | Fuerza de la evidencia |
 | :-- | :-- | :-- |
-| ¿El NIR detecta mejor que el RGB con el mismo modelo? (H1) | En validación del fold 0, `est_nir` duplica a `est_rgb`. Sin los demás folds no se puede generalizar. | Muy débil: un fold, una semilla y validación |
+| ¿El NIR detecta mejor que el RGB con el mismo modelo? (H1) | En validación del fold 0, `est_nir` casi duplica a `est_rgb`, también en los primeros pilotos con `nano` (AP50 latente de 0.269 frente a 0.145 y 0.156). Sin los demás folds no se puede generalizar. | Muy débil: un fold, validación y pilotos incompletos |
 | ¿La destilación transfiere el NIR al estudiante RGB? (H2) | Sin datos sobre v4. | Ninguna |
 | ¿Destilar ayudó en v3? | Sin conclusión: la diferencia media es positiva en test y negativa en validación. | Débil: split aleatorio, tres semillas |
 | ¿El RGB y el NIR ven el daño latente sin deep learning? (E0) | Los dos dan AUROC cercano a 0.55-0.60, sin ventaja clara del NIR. | Descriptiva: intervalos sin remuestreo de lotes y controles que no siempre cubren 0.5 |
@@ -77,6 +77,38 @@ La corrección de iluminación no mejoró la señal latente de RGB+NIR (0.589 or
 
 Estos valores no se usan como inferencia: son un solo fold. Los resultados de test de v4 se omiten a propósito (ver [Estado y pendientes](#estado-y-pendientes)).
 
+### v4: pilotos con `nano`, fold 0, solo validación (corte del 2026-11-04, 17:30)
+
+Los pilotos entrenan `est_rgb` y `est_nir` con 3 semillas (42, 1337, 2024) y 80 épocas, primero con la clase mango y luego sin ella (`ignore_classes=[0]`). No generan ninguna evaluación en test. En este corte terminaron 3 de 12 corridas, todas con mango, así que estas filas no permiten comparar medias entre brazos.
+
+| Corrida | AP50 latente | AP30 latente | AP50 desarrollado | AUROC por cara | FP por imagen sana | Mejor AP50 de daño (época) | Media de las últimas 10 épocas |
+| :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- |
+| `est_nir`, semilla 42 | 0.269 | 0.335 | 0.221 | 0.679 | 4.72 | 0.244 (65) | 0.216 |
+| `est_rgb`, semilla 42 | 0.145 | 0.227 | 0.135 | 0.607 | 6.20 | 0.139 (74) | 0.120 |
+| `est_rgb`, semilla 1337 | 0.156 | 0.206 | 0.123 | 0.574 | 8.24 | 0.139 (56) | 0.107 |
+
+Las métricas de las primeras columnas vienen de `metrics_v4.json` y evalúan `best_model.pt`. El mejor AP50 de daño cubre todas las horas y, al ser el máximo de 80 épocas sobre una métrica ruidosa, es optimista.
+
+**AP50 de daño por zona de impacto:**
+
+| Corrida | Centro (160 cajas) | Izquierda (98) | Derecha (145) | Inferior (149) | Superior (140) |
+| :-- | :-- | :-- | :-- | :-- | :-- |
+| `est_nir`, semilla 42 | 0.80 | 0.53 | 0.14 | 0.08 | 0.05 |
+| `est_rgb`, semilla 42 | 0.43 | 0.56 | 0.06 | 0.04 | 0.02 |
+| `est_rgb`, semilla 1337 | 0.26 | 0.68 | 0.08 | 0.03 | 0.02 |
+
+La diferencia entre zonas es grande y aún no tiene causa. Una hipótesis por comprobar es que el modelo aproveche el oscurecimiento del centro de la fruta, que E0 observó haya o no golpe; no explica el resultado de la izquierda.
+
+**Velocidad medida (`est_rgb`, `nano`, RTX 6000 Ada, con caché de píxeles):**
+
+| Corridas a la vez | Segundos por época, por corrida | Épocas por minuto, en total |
+| :-- | :-- | :-- |
+| 1 | 57 | 1.05 |
+| 3 | 88 | 2.05 |
+| 6 | 169 | 2.13 |
+
+Son medidas de pocas épocas iniciales, y otros procesos compartieron la máquina durante parte de las de 1 y 6 corridas. El rendimiento casi no sube después de 3 corridas. Los pilotos, con 3 a la vez, pasan de unos 89 s en la primera época a unos 66 s por época después (2.7 épocas por minuto), sin causa aislada.
+
 ## Problemas, causas y soluciones
 
 **Estado de la causa:** *demostrada* significa medida y verificada con el arreglo; *probable* significa que hay evidencia pero sin aislarla; *hipótesis* significa que aún no se puso a prueba.
@@ -87,7 +119,7 @@ Estos valores no se usan como inferencia: son un solo fold. Los resultados de te
 | :-- | :-- | :-- | :-- | :-- |
 | Cajas de daño falsas | `convert_nir_labels.py` conservaba cajas de `NIRSegmenter` (de 320 a 243 cajas) | Demostrada | Conversión corregida (`4f360b4`) | Aplicada |
 | Fuga entre splits | Fotos repetidas; 6 de 16 grupos de una misma cara cruzaban el split | Demostrada | Folds por lote; todas las fotos de un mango van al mismo lado | Aplicada en v4 |
-| El modelo puede aprender dónde suele estar el daño | 85 % de los centros de caja en el 50 % central de la imagen | Probable | Zonas de impacto sorteadas en `captura_v3` | Aplicada; falta reportar AP por zona |
+| El modelo puede aprender dónde suele estar el daño | 85 % de los centros de caja en el 50 % central de la imagen | Probable | Zonas de impacto sorteadas en `captura_v3` | Aplicada; AP por zona medido en los primeros pilotos, con diferencias grandes aún sin explicar |
 | NIR y RGB desalineados | Offset sin corregir en v3; residual de 20-98 px por lote con solo homografía en v4 | Demostrada; paralaje como hipótesis | Registro por lote y corrección por foto; distancia caja-bruise de 148-163 px a 19-22 px en los lotes 4-5 | Aplicada; la validación no es independiente porque la misma referencia eligió el método |
 | Etiquetas latentes sesgadas hacia el NIR | Cerca del 97 % de las cajas de t ≤ 6 h se dibujó sobre la vista NIR | Demostrada como sesgo; su efecto en AP es desconocido | Declararlo, estratificar por procedencia y análisis sin `visible_rgb = yes` | Declarado; H1 positivo cuenta como evidencia débil |
 | Artefactos de línea en el NIR | Contacto CSI marginal | Probable | Interpolar las líneas que cruzan el mango | Aplicada en v4 |
@@ -102,7 +134,16 @@ Estos valores no se usan como inferencia: son un solo fold. Los resultados de te
 | El maestro detecta casi solo desde el NIR | Medido por ablación en validación del fold 0 | Demostrada en un fold | Comparar directamente NIR y RGB con modelos chicos | Aplicada: es la nueva H1 |
 | Entrenamiento inestable; 3 de 5 folds eligieron una época con la clase mango colapsada | BatchNorm con microlotes | Inestabilidad demostrada; BatchNorm como hipótesis | GroupNorm + EMA | Implementado, sin LOLO estabilizado reportado |
 | Corridas truncadas por ruido de validación | Early stopping activo | Probable | `patience=1000`: todos los brazos entrenan las mismas épocas | Aplicada |
-| Muchos falsos positivos de baja confianza | Meseta de scores; NMS mejora como máximo +0.020 | Probable | Reportar también AP30 y FP en `sano` | Pendiente de medir en v4 |
+| Muchos falsos positivos de baja confianza | Meseta de scores; NMS mejora como máximo +0.020 | Probable | Reportar también AP30 y FP en `sano` | Medido en los primeros pilotos: 4.7 a 8.2 FP por imagen sana |
+| Validación muy lenta: 186 s de unos 250 s por época | `compute_map` repetía el IoU por predicción en cada umbral, en Python | Demostrada | Calcular el IoU una vez por predicción (PR #83) | Aplicada: 0.82 s, con resultado idéntico sobre predicciones reales |
+| Paso de entrenamiento lento con la GPU esperando | El bucle de conflictos del asignador tomaba cerca del 60 % del paso | Demostrada | Asignación sin bucle por ancla (PR #85) | Aplicada: pérdida idéntica en 80 de 80 batches reales |
+| Carga de datos como límite con varias corridas | Decodificar fotos completas en cada lectura | Demostrada | Caché de la ventana del mango sin pérdida (PR #85) | Aplicada: tensores idénticos en 1906 de 1906 muestras y en 60 de 60 con aumentos sembrados |
+| Un corte perdía el entrenamiento completo | Los runners apartaban el run interrumpido y entrenaban desde cero | Demostrada | `resume_state.pt` por época y `--resume` en los runners (PR #84 y #85) | Aplicada: `kill -9` real reanudado desde la época 2, también en paralelo con caché. Idéntico a un run sin cortes solo verificado en un modelo mínimo en CPU |
+| El runner evaluaba en test antes del pre-registro | La evaluación en test iba siempre tras entrenar | Demostrada | `--val-only` en `run_small_arms.py` (PR #85) | Aplicada en los pilotos |
+| La primera época del warm-up entrenaba con el LR completo | El último scheduler creado fija el LR, y el coseno se creaba después del warm-up | Demostrada con un test sobre `Trainer` | Crear primero el coseno | Aplicada en `main`. Afecta a todas las corridas anteriores, incluidos los pilotos con mango y sin mango. Efecto en AP sin medir |
+| El AP50 de daño salta entre épocas mientras la pérdida baja de forma estable | Probablemente ruido del gradiente con batch 8 y ruido de medición del AP50; `ema=False` en los pilotos | Probable, aporte de cada causa sin medir | EMA en una prueba aparte | Pendiente de medir |
+| Con `ema_decay=0.99`, EMA casi no suavizaría | El valor se calibró para 15-21 pasos por época; ahora son 297, y 100 pasos son 0.3 épocas | Demostrada por cálculo | Probar `ema_decay=0.9994`, unas 5.6 épocas | Decidido para la prueba, sin resultados |
+| El mango consume pérdida y anclas en una tarea ya resuelta | Tras 6 épocas: 18.3 % de la pérdida y 6.7 % de las anclas que corresponderían al daño | Medido; efecto en AP desconocido | Pilotos con y sin mango | En curso |
 
 ### Destilación
 
@@ -176,8 +217,12 @@ El cambio se decidió el 2026-11-03, antes de leer test, y está registrado en l
 
 | Decisión | Dato disponible | Regla |
 | :-- | :-- | :-- |
-| Variante `wide` o `nano` | Validación de `est_rgb`: 0.0879 (wide) y 0.1005 (nano, mejor valor durante entrenamiento). La evaluación final de nano no terminó. | Fijar con validación y escribirlo en la sección 8.1 |
-| Número de épocas | Con 50 épocas, `est_rgb` wide aún sube en la última etapa | Igual que la fila anterior |
+| Número de épocas | Los pilotos eligen su mejor época entre la 56 y la 74 de 80, con un LR que ya casi llega a 0 al final | Fijar con las curvas de validación de los pilotos y escribirlo en la sección 8.1 |
+| Quitar la clase mango | Pilotos en curso | Adoptarlo solo si el AP50 latente medio de validación mejora en **ambos** brazos, comparando medias de 3 semillas y nunca la diferencia entre brazos |
+| Activar EMA | Prueba pendiente: 6 corridas con EMA (`ema_decay=0.9994`) y warm-up corregido. Cambian las dos cosas a la vez, así que su efecto no se separa | Fijar con validación antes del pre-registro, igual en todos los brazos |
+| Número de semillas | La sección 8.1 dice una semilla; se está planificando con 3 | Actualizar la sección 8.1 antes de leer test |
+
+La variante `nano` quedó fijada el 2026-11-04, sin pilotarla frente a `wide`: es el modelo que describe el plan y tiene menos de la mitad de parámetros (3.0 M frente a 6.9 M).
 
 ### Corridas
 
@@ -185,12 +230,14 @@ El cambio se decidió el 2026-11-03, antes de leer test, y está registrado en l
 | :-- | :-- | :-- |
 | `est_rgb` wide | Terminado | Sin correr |
 | `est_nir` wide | Terminado | Sin correr |
-| `est_rgb` nano | Entrenado, evaluación incompleta | Sin correr |
+| `est_rgb`, `est_nir` nano, pilotos | Con mango: 3 de 6 terminadas el 2026-11-04 a las 17:30. Sin mango: sin empezar | Fuera del piloto |
 | `kd_rgb`, `kd_nir` | **Sin correr** | Sin correr |
 
-Las corridas de fold 0 tardaron unas 3 h por brazo (entre 218 y 260 s por época). Si ese tiempo se mantiene, los 20 entrenamientos llevan más de 2 días de GPU continua, sin contar las evaluaciones, y todavía falta medir cuánto tarda KD.
+Las primeras corridas de fold 0 tardaron unas 3 h por brazo (entre 218 y 260 s por época). Con los arreglos de velocidad, los pilotos tardan unos 90 min por cada grupo de 3 corridas de 80 épocas. A 2.7 épocas por minuto, 60 corridas de 80 épocas llevarían unas 30 h, sin contar las evaluaciones y sin medir aún cuánto tarda KD.
 
 La cola de KD (`queue4.sh`) no llegó a arrancar: su log está vacío y la máquina se reinició el 2026-11-04 a las 13:17.
+
+Los pilotos están en `~/edge_mango/runs/pilots/`, con una copia en `checkpoints/v4_pilots/` que Git ignora.
 
 ### Declaración sobre test
 
@@ -198,12 +245,14 @@ El 2026-11-04, al revisar los artefactos, se imprimieron en la sesión de trabaj
 
 ### Lista antes de escribir la discusión
 
-- [ ] Fijar variante y épocas solo con validación y commitear el pre-registro de la sección 8.1.
+- [ ] Fijar épocas, clase mango, EMA y semillas solo con validación, y commitear el pre-registro de la sección 8.1.
+- [ ] Explicar la diferencia de AP entre zonas de impacto.
+- [ ] Medir el tiempo de KD en paralelo.
 - [ ] Correr los cuatro brazos en los cinco folds con la misma configuración.
 - [ ] Generar las tablas con `scripts/aggregate_kfold.py` para H1, H2 y la secundaria.
 - [ ] Reportar los 5 deltas, el IC corregido, las tres probabilidades, k/5 y el sign-flip con su piso de 0.0625.
 - [ ] Repetir el análisis de sensibilidad sin `visible_rgb = yes`.
-- [ ] Corregir el docstring de `scripts/run_small_arms.py`: dice que H2 compara `kd_nir` con `est_rgb`, mientras que el plan lo define frente a `kd_rgb`.
+- [x] Corregir el docstring de `scripts/run_small_arms.py`, que definía mal la base de H2 (PR #85).
 
 ## Fuentes
 
