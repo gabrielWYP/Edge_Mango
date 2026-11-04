@@ -95,6 +95,8 @@ El diseño original proyectaba las cajas latentes desde t = 12 h, para que la et
 **Limitación que se declara.** Como las cajas latentes se eligieron mirando sobre todo el NIR, la evaluación puede favorecer a los brazos con NIR. Un resultado positivo en H1 no separa "el NIR detecta mejor" de "la etiqueta se hizo mirando el NIR", así que se reporta como evidencia débil. Un resultado negativo sigue siendo informativo, porque el sesgo juega a favor del NIR.
 Además, el bruise puede crecer entre t = 0 y t = 12 h y la caja puede ser mayor que el área real en t bajos. Por eso se reporta AP30 junto a AP50 (sección 7).
 
+**Criterio de anotación.** El daño se marcó por color y por forma: una hendidura puede verse por el reflejo de la luz, como zona clara y no solo oscura. En algunas fotos de la ventana latente esa marca ya se ve en RGB, según la respuesta `visible_rgb` de cada anotación: `yes` en 146 de 1987 fotos, `unsure` en 1488 y `no` en 353.
+
 ### 3.3 Folds
 
 - **Leave-one-lot-out**: el fold *k* prueba en el lote *k*, valida en otro lote (fijo y escrito en el archivo de folds) y entrena en los tres restantes (75 mangos).
@@ -304,6 +306,7 @@ Se sigue el skill [`experiment-statistics`](../../.claude/skills/experiment-stat
 H1:          baseline = est_rgb,  treatment = est_nir
 H2:          baseline = kd_rgb,   treatment = kd_nir
 Secundaria:  baseline = est_rgb,  treatment = kd_nir
+Sensibilidad: las mismas comparaciones sin las fotos latentes con visible_rgb = yes (146 de 1987), porque ahí la marca ya se veía en RGB
 Variante:    se fija el 2026-11-04 con la validación de los pilotos, antes de leer test
 Épocas:      se fijan el 2026-11-04 con la validación de los pilotos, antes de leer test
 NIR:         variante nir_clahe en los brazos de E1 y E2
@@ -381,3 +384,4 @@ Estado al 2026-11-02: los puntos 1 a 9 tienen su código y pruebas, y los comand
 | 2026-11-02 | El NIR de E1 y E2 es la variante CLAHE y las imágenes se recortan al mango en los seis brazos (sección 8.1). E0 sigue midiendo sobre el NIR sin procesar. El recorte depende del fondo controlado de la captura. | Decisión del autor, antes de entrenar. | Antes |
 | 2026-11-02 | La sección 3.2 pasa a las cajas anotadas en cada momento, y se declara que las latentes se dibujaron mirando sobre todo el NIR. La procedencia de la caja sale de cómo se anotó y no de la hora. | Decisión del autor tras ver E0 y la tabla de origen de las cajas. H1 positivo se reporta como evidencia débil. | Antes |
 | 2026-11-03 | H1 y H2 se reformulan: `est_nir` frente a `est_rgb` y `kd_nir` frente a `kd_rgb`, con una semilla y cinco folds, como evidencia preliminar. El maestro RGB+NIR queda como caso de estudio. | Decisión del autor: plazo y cómputo, y medidas en validación del fold 0. | Antes |
+| 2026-11-03 | Se declara el criterio de anotación por color y hendidura, y se agrega un análisis de sensibilidad sin las fotos latentes con `visible_rgb = yes`. | Aclaración del autor, que anotó las cajas. | Antes |
