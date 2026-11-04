@@ -1,0 +1,292 @@
+{
+  "meta": {
+    "teacher": "checkpoints/final_runs/20261014T223110Z/maestro/best_model_20261014T223110Z_mAP0p8687/best_model.pt",
+    "kd_student": "checkpoints/kd_pkd_experiment/kd_pkd/seed42/best_model.pt",
+    "control_student": "checkpoints/kd_pkd_experiment/student/seed42/best_model.pt",
+    "train_images": 188,
+    "val_images": 23,
+    "weights": {
+      "backbone": 1.0,
+      "fpn": 0.1,
+      "head_cls": 0.3,
+      "head_reg": 0.5
+    },
+    "kd_student_loss": "pkd"
+  },
+  "regions": {
+    "levels": {
+      "backbone/S3": {
+        "level": "backbone",
+        "kd_mse": 71.97692582503609,
+        "kd_error_share": {
+          "damage": 0.005798724646017675,
+          "fruit": 0.02848060400935792,
+          "background": 0.9657206713446244
+        },
+        "cell_share": {
+          "damage": 0.010081521739130435,
+          "fruit": 0.04736413043478261,
+          "background": 0.9425543478260869
+        },
+        "nir_sensitivity": {
+          "damage": 0.014712010095427464,
+          "fruit": 0.012390444046960913,
+          "background": 0.006592849922480948
+        }
+      },
+      "backbone/S4": {
+        "level": "backbone",
+        "kd_mse": 584.6901083241338,
+        "kd_error_share": {
+          "damage": 0.015342307883836882,
+          "fruit": 0.05411593668597097,
+          "background": 0.9305417554301921
+        },
+        "cell_share": {
+          "damage": 0.01532608695652174,
+          "fruit": 0.05434782608695652,
+          "background": 0.9303260869565217
+        },
+        "nir_sensitivity": {
+          "damage": 0.0019731254646079325,
+          "fruit": 0.0014464950702387433,
+          "background": 0.0015507218320024105
+        }
+      },
+      "fpn/P3": {
+        "level": "fpn",
+        "kd_mse": 0.35962924848594097,
+        "kd_error_share": {
+          "damage": 0.0019279341463543259,
+          "fruit": 0.012704559292000463,
+          "background": 0.9853675065616452
+        },
+        "cell_share": {
+          "damage": 0.007241847826086957,
+          "fruit": 0.04333559782608696,
+          "background": 0.9494225543478261
+        },
+        "nir_sensitivity": {
+          "damage": 4.79225214198302,
+          "fruit": 4.171511730892018,
+          "background": 0.9079827612018844
+        }
+      },
+      "fpn/P4": {
+        "level": "fpn",
+        "kd_mse": 0.3495174368892027,
+        "kd_error_share": {
+          "damage": 0.007038080247712224,
+          "fruit": 0.031911097177727984,
+          "background": 0.9610508225745598
+        },
+        "cell_share": {
+          "damage": 0.010081521739130435,
+          "fruit": 0.04736413043478261,
+          "background": 0.9425543478260869
+        },
+        "nir_sensitivity": {
+          "damage": 5.0455013560120605,
+          "fruit": 8.907112661615692,
+          "background": 0.815853463300567
+        }
+      },
+      "fpn/P5": {
+        "level": "fpn",
+        "kd_mse": 0.3969883776229361,
+        "kd_error_share": {
+          "damage": 0.012016246582893653,
+          "fruit": 0.01889087888381431,
+          "background": 0.9690928745332921
+        },
+        "cell_share": {
+          "damage": 0.01532608695652174,
+          "fruit": 0.05434782608695652,
+          "background": 0.9303260869565217
+        },
+        "nir_sensitivity": {
+          "damage": 0.6754882210764694,
+          "fruit": 0.30349576197451084,
+          "background": 0.02673086453608738
+        }
+      },
+      "head_cls/P3": {
+        "level": "head_cls",
+        "kd_mse": 66.33725193547166,
+        "kd_error_share": {
+          "damage": 0.0003789579183269433,
+          "fruit": 0.003655856230240635,
+          "background": 0.9959651858514325
+        },
+        "cell_share": {
+          "damage": 0.007241847826086957,
+          "fruit": 0.04333559782608696,
+          "background": 0.9494225543478261
+        },
+        "nir_sensitivity": {
+          "damage": 27.740636439554695,
+          "fruit": 15.622051659322,
+          "background": 0.8177982537166616
+        }
+      },
+      "head_cls/P4": {
+        "level": "head_cls",
+        "kd_mse": 16.07818065358245,
+        "kd_error_share": {
+          "damage": 0.0009631668175967328,
+          "fruit": 0.0073027068637255355,
+          "background": 0.9917341263186777
+        },
+        "cell_share": {
+          "damage": 0.010081521739130435,
+          "fruit": 0.04736413043478261,
+          "background": 0.9425543478260869
+        },
+        "nir_sensitivity": {
+          "damage": 12.502653930469425,
+          "fruit": 11.910282715130876,
+          "background": 0.9518113734508902
+        }
+      },
+      "head_cls/P5": {
+        "level": "head_cls",
+        "kd_mse": 1.7693071109315623,
+        "kd_error_share": {
+          "damage": 0.029787793055810863,
+          "fruit": 0.054464217071428934,
+          "background": 0.9157479898727602
+        },
+        "cell_share": {
+          "damage": 0.01532608695652174,
+          "fruit": 0.05434782608695652,
+          "background": 0.9303260869565217
+        },
+        "nir_sensitivity": {
+          "damage": 0.2911425952071912,
+          "fruit": 0.15421903640335494,
+          "background": 0.07243229174404615
+        }
+      },
+      "head_reg/P3": {
+        "level": "head_reg",
+        "kd_mse": 4.316615917475327,
+        "kd_error_share": {
+          "damage": 0.010213299443154788,
+          "fruit": 0.05667092857818873,
+          "background": 0.9331157719786565
+        },
+        "cell_share": {
+          "damage": 0.007241847826086957,
+          "fruit": 0.04333559782608696,
+          "background": 0.9494225543478261
+        },
+        "nir_sensitivity": {
+          "damage": 0.5139990817128364,
+          "fruit": 0.5076421949686993,
+          "background": 0.31497192557578163
+        }
+      },
+      "head_reg/P4": {
+        "level": "head_reg",
+        "kd_mse": 25.480898970728337,
+        "kd_error_share": {
+          "damage": 0.014545361694116833,
+          "fruit": 0.041258986328211567,
+          "background": 0.9441956519776716
+        },
+        "cell_share": {
+          "damage": 0.010081521739130435,
+          "fruit": 0.04736413043478261,
+          "background": 0.9425543478260869
+        },
+        "nir_sensitivity": {
+          "damage": 0.4291808306780223,
+          "fruit": 0.3936652472646452,
+          "background": 0.18324513417801466
+        }
+      },
+      "head_reg/P5": {
+        "level": "head_reg",
+        "kd_mse": 12.352580562674481,
+        "kd_error_share": {
+          "damage": 0.011567953781623116,
+          "fruit": 0.06392254255176676,
+          "background": 0.9245095036666101
+        },
+        "cell_share": {
+          "damage": 0.01532608695652174,
+          "fruit": 0.05434782608695652,
+          "background": 0.9303260869565217
+        },
+        "nir_sensitivity": {
+          "damage": 0.3547979561389786,
+          "fruit": 0.3257424654786773,
+          "background": 0.0717879081191985
+        }
+      }
+    },
+    "weighted_kd_share": {
+      "backbone": 0.954974589356863,
+      "fpn": 0.00010724165344348732,
+      "head_cls": 0.024485556010672427,
+      "head_reg": 0.020432612979021138
+    }
+  },
+  "probes": {
+    "backbone/S3": {
+      "teacher": 0.9247831946560412,
+      "teacher_no_nir": 0.9179215984999414,
+      "control_student": 0.9193747802648542
+    },
+    "backbone/S4": {
+      "teacher": 0.9259432624113475,
+      "teacher_no_nir": 0.9205957446808511,
+      "control_student": 0.9162553191489362
+    },
+    "fpn/P3": {
+      "teacher": 0.9671180357288522,
+      "teacher_no_nir": 0.9235347499796068,
+      "control_student": 0.9173138102618484
+    },
+    "fpn/P4": {
+      "teacher": 0.9557365522090706,
+      "teacher_no_nir": 0.9181735614672448,
+      "control_student": 0.9200955115434196
+    },
+    "fpn/P5": {
+      "teacher": 0.877872340425532,
+      "teacher_no_nir": 0.8638439716312056,
+      "control_student": 0.9138723404255319
+    },
+    "head_cls/P3": {
+      "teacher": 0.957802430867118,
+      "teacher_no_nir": 0.9167958234766294,
+      "control_student": 0.9091453218043887
+    },
+    "head_cls/P4": {
+      "teacher": 0.952639751552795,
+      "teacher_no_nir": 0.9134360717215517,
+      "control_student": 0.9221024258760108
+    },
+    "head_cls/P5": {
+      "teacher": 0.9117730496453901,
+      "teacher_no_nir": 0.841063829787234,
+      "control_student": 0.9128794326241135
+    },
+    "head_reg/P3": {
+      "teacher": 0.9694000326290888,
+      "teacher_no_nir": 0.9229005220654214,
+      "control_student": 0.9189483236805612
+    },
+    "head_reg/P4": {
+      "teacher": 0.9526866283839213,
+      "teacher_no_nir": 0.9125981483651705,
+      "control_student": 0.9187771006679948
+    },
+    "head_reg/P5": {
+      "teacher": 0.9161985815602837,
+      "teacher_no_nir": 0.8449929078014184,
+      "control_student": 0.9149219858156028
+    }
+  }
+}
