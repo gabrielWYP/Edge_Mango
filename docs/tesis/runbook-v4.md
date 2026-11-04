@@ -9,10 +9,14 @@
 >     --fold-spec data/cache/v4_captura_v3_final/folds_lot/folds_meta.json \
 >     --arms est_rgb est_nir --baseline est_rgb --treatment est_nir
 > ```
+>
+> Re-run the same command after a crash: an interrupted training continues from its last finished epoch, or stops if
+> the settings changed (`--no-resume` trains it from scratch instead).
 
 The exact commands for [`plan-experimental.md`](plan-experimental.md), sections E1, E2, 6 and 8, from the
 dataset to the results. Run them from the repository root. Every `run_kfold.py` command is resumable: after a
-crash or a Ctrl-C, re-run the same command and the finished steps are skipped.
+crash or a Ctrl-C, re-run the same command: the finished steps are skipped and an interrupted training continues from
+its last finished epoch (`--no-resume` trains it from scratch instead).
 
 Use the same flags in E1 and E2. A student only distills from a teacher trained on the same fold and seed, with
 the same machine profile, `--nir-variant`, `--epochs` and `--extra-override`; anything else stops the runner.

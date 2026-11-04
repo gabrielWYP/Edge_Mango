@@ -311,6 +311,89 @@ def test_run_without_marker_is_retrained_and_its_stale_evals_are_dropped(tmp_pat
     assert json.loads((stale / "metrics.json").read_text()) == {}      # rewritten, not the stale one
 
 
+def _interrupt_a_run(tmp_path: Path, options) -> tuple[Path, dict]:
+    """Leave `run` as a killed training would, with the identity of `options`."""
+    run = tmp_path / "ckpt" / "twostream" / "fold0" / "seed42"
+    run.mkdir(parents=True)
+    (run / "best_model.pt").write_bytes(b"from an interrupted run")
+    (run / rk.RESUME_STATE).write_bytes(b"state")
+    _, identity = rk.plan_train(TWOSTREAM, 0, 42, options, None)
+    rk._write_identity(run / rk.STARTED_MARKER, identity)
+    return run, identity
+
+
+def test_the_runner_and_the_trainer_agree_on_the_resume_file_name() -> None:
+    from src.training.resume import RESUME_STATE
+
+    assert rk.RESUME_STATE == RESUME_STATE
+
+
+def test_interrupted_run_continues_from_its_state(tmp_path: Path) -> None:
+    options = _options(tmp_path, folds=[0], arms=[TWOSTREAM])
+    run, identity = _interrupt_a_run(tmp_path, options)
+    stale = tmp_path / "reports" / "twostream" / "fold0_seed42" / "val"
+    stale.mkdir(parents=True)
+    (stale / "metrics.json").write_text('{"stale": true}')
+
+    executor = FakeExecutor()
+    rk.run_kfold(options, executor)
+
+    train = executor.calls[0]
+    assert train[train.index("--resume") + 1] == str(run / rk.RESUME_STATE)
+    assert not list(run.parent.glob("seed42.interrupted-*"))
+    assert json.loads((stale / "metrics.json").read_text()) == {}
+    assert "RESUME" in (tmp_path / "reports" / "runner.log").read_text()
+    # The identity is that of the run: continuing it does not make it another run.
+    marker = json.loads((run / rk.COMPLETE_MARKER).read_text())
+    assert marker["identity"] == identity and "--resume" not in marker["command"]
+    assert not (run / rk.RESUME_STATE).exists()
+
+
+def test_state_from_other_settings_is_moved_aside_not_continued(tmp_path: Path) -> None:
+    options = _options(tmp_path, folds=[0], arms=[TWOSTREAM])
+    run, identity = _interrupt_a_run(tmp_path, options)
+    rk._write_identity(run / rk.STARTED_MARKER, {**identity, "sha256": "another"})
+
+    executor = FakeExecutor()
+    rk.run_kfold(options, executor)
+
+    assert "--resume" not in executor.calls[0]
+    assert (run.with_name("seed42.interrupted-1") / rk.RESUME_STATE).read_bytes() == b"state"
+
+
+def test_state_without_a_started_marker_is_not_continued(tmp_path: Path) -> None:
+    options = _options(tmp_path, folds=[0], arms=[TWOSTREAM])
+    run, _ = _interrupt_a_run(tmp_path, options)
+    (run / rk.STARTED_MARKER).unlink()
+
+    executor = FakeExecutor()
+    rk.run_kfold(options, executor)
+
+    assert "--resume" not in executor.calls[0]
+
+
+def test_no_resume_trains_from_scratch(tmp_path: Path) -> None:
+    options = _options(tmp_path, folds=[0], arms=[TWOSTREAM])
+    options.resume = False
+    run, _ = _interrupt_a_run(tmp_path, options)
+
+    executor = FakeExecutor()
+    rk.run_kfold(options, executor)
+
+    assert "--resume" not in executor.calls[0]
+    assert (run.with_name("seed42.interrupted-1") / rk.RESUME_STATE).is_file()
+
+
+def test_a_fresh_run_records_how_it_was_started(tmp_path: Path) -> None:
+    options = _options(tmp_path, folds=[0], arms=[TWOSTREAM])
+    executor = FakeExecutor()
+    rk.run_kfold(options, executor)
+
+    run = tmp_path / "ckpt" / "twostream" / "fold0" / "seed42"
+    started = json.loads((run / rk.STARTED_MARKER).read_text())["identity"]
+    assert started == json.loads((run / rk.COMPLETE_MARKER).read_text())["identity"]
+
+
 def test_only_the_missing_eval_is_rerun(tmp_path: Path) -> None:
     options = _options(tmp_path, folds=[0], arms=[ROI_CROP])
     rk.run_kfold(options, FakeExecutor())

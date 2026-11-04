@@ -130,6 +130,9 @@ class KDTrainer(Trainer):
         """Persist the adapters next to (not inside) `model_state_dict`."""
         return {"kd_adapters_state_dict": self.kd_adapters.state_dict()}
 
+    def _load_auxiliary_checkpoint_state(self, state: dict) -> None:
+        self.kd_adapters.load_state_dict(state["kd_adapters_state_dict"])
+
     @staticmethod
     def _student_teacher_adapters(student: StudentModel, teacher: StudentModel) -> nn.ModuleDict:
         """1x1 adapters between two students, with the channels each one really has."""

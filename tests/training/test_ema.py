@@ -607,6 +607,18 @@ def _kd_trainer(teacher_checkpoint, tmp_path, **config_kwargs) -> KDTrainer:
 
 
 class TestKDTrainer:
+    def test_resuming_restores_the_adapters(self, teacher_checkpoint, tmp_path):
+        trainer = _kd_trainer(teacher_checkpoint, tmp_path, ema=True)
+        trainer._validate = lambda epoch, phase: _val(0.1)
+        trainer._train_phase(phase=1, epochs=1, lr=1e-3)
+
+        again = _kd_trainer(teacher_checkpoint, tmp_path, ema=True)
+        again._load_resume_state(tmp_path / "resume_state.pt")
+
+        for key, value in trainer.kd_adapters.state_dict().items():
+            assert torch.equal(value, again.kd_adapters.state_dict()[key]), key
+        assert again.ema.updates == trainer.ema.updates == 2
+
     def test_default_has_no_ema(self, teacher_checkpoint, tmp_path):
         trainer = _kd_trainer(teacher_checkpoint, tmp_path)
         assert trainer.ema is None

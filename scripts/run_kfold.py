@@ -20,6 +20,7 @@ epochs, and `selection_metric=damage_ap50` selects the checkpoint on the damage
 class for both arms.
 
 Resumable: re-run the exact same command after a crash, a reboot or a Ctrl-C.
+An interrupted training continues from the epoch it finished last.
 
   * training is skipped only when `<run>/run_complete.json` exists (written
     after the training subprocess exits 0 and left `best_model.pt`) and the
@@ -29,10 +30,13 @@ Resumable: re-run the exact same command after a crash, a reboot or a Ctrl-C.
     machine files and the fold's content. A marker with another identity (other
     `--epochs`, `--extra-override`, machine, config or fold) stops the runner;
     it is never skipped nor overwritten;
-  * a run directory without that marker is an interrupted run. If it holds
-    weights it is moved aside to `<run>.interrupted-<n>` (a directory with only
-    TensorBoard logs is simply removed) and the run is trained from scratch;
-    its stale evaluations are dropped;
+  * a run directory without that marker is an interrupted run. It continues from
+    its `resume_state.pt` if `run_started.json` records the current identity (the
+    continuation is logged as RESUME in `runner.log` and listed in the checkpoint's
+    `resume_history`). Otherwise, or with `--no-resume`, a directory holding weights
+    is moved aside to `<run>.interrupted-<n>` (one with only TensorBoard logs is
+    simply removed) and the run is trained from scratch. Either way, its stale
+    evaluations are dropped;
   * an evaluation is skipped when its `metrics.json` exists and its
     `eval_complete.json` has the current identity (else the runner stops).
 
@@ -105,6 +109,9 @@ DEFAULT_REPORTS_ROOT = "reports/kfold_lot"
 
 EVAL_SPLITS = ("val", "test")
 CHECKPOINT = "best_model.pt"
+# Same name as `src.training.resume.RESUME_STATE`; this runner does not import torch.
+RESUME_STATE = "resume_state.pt"
+STARTED_MARKER = "run_started.json"
 COMPLETE_MARKER = "run_complete.json"
 EVAL_MARKER = "eval_complete.json"
 # The protocol shared by every arm: no early stopping, select on damage AP50.
@@ -145,6 +152,7 @@ class RunnerOptions:
     extra_overrides: list[str] = field(default_factory=list)
     dataset: Path | None = None
     nir_variant: str = DEFAULT_NIR_VARIANT
+    resume: bool = True
 
 
 @dataclass(frozen=True)
@@ -504,10 +512,24 @@ def mark_train_complete(run_path: Path, command: list[str], identity: dict[str, 
         "returncode": 0,
     }
     (Path(run_path) / COMPLETE_MARKER).write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    # Several times the size of the weights, and of no use from here on.
+    (Path(run_path) / RESUME_STATE).unlink(missing_ok=True)
 
 
 def _write_identity(marker: Path, identity: dict[str, str]) -> None:
     Path(marker).write_text(json.dumps({"identity": identity}, indent=2, sort_keys=True) + "\n")
+
+
+def resumable_state(run_path: Path, identity: dict[str, str]) -> Path | None:
+    """The `resume_state.pt` of an interrupted run, if it was started with `identity`."""
+    state = Path(run_path) / RESUME_STATE
+    if not state.is_file():
+        return None
+    try:
+        started = json.loads((Path(run_path) / STARTED_MARKER).read_text()).get("identity")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return state if isinstance(started, dict) and started.get("sha256") == identity["sha256"] else None
 
 
 def move_aside_incomplete(run_path: Path) -> Path | None:
@@ -529,6 +551,24 @@ def move_aside_incomplete(run_path: Path) -> Path | None:
     target = run_path.with_name(f"{run_path.name}.interrupted-{n}")
     run_path.rename(target)
     return target
+
+
+def prepare_training(
+    run_path: Path, identity: dict[str, str], resume: bool = True
+) -> tuple[Path | None, Path | None]:
+    """Get the directory of an unfinished run ready to train.
+
+    Returns `(state, aside)`: the `resume_state.pt` to continue from, or else the
+    place an interrupted run with weights was moved to, so it trains from scratch.
+    """
+    run_path = Path(run_path)
+    state = resumable_state(run_path, identity) if resume else None
+    if state is not None:
+        return state, None
+    aside = move_aside_incomplete(run_path)
+    run_path.mkdir(parents=True, exist_ok=True)
+    _write_identity(run_path / STARTED_MARKER, identity)
+    return None, aside
 
 
 # --------------------------------------------------------------------------
@@ -721,15 +761,20 @@ def run_kfold(options: RunnerOptions, execute=None) -> dict[str, str]:
                     require_identity(run / COMPLETE_MARKER, identity, train_key)
                     skip(train_key, f"{COMPLETE_MARKER} found")
                 else:
+                    step = cmd
                     if not options.dry_run:
-                        aside = move_aside_incomplete(run)
-                        if aside is not None:
+                        state, aside = prepare_training(run, identity, options.resume)
+                        if state is not None:
+                            logger.info("%s: continuing the interrupted run from %s", train_key, state)
+                            log.write("RESUME", train_key, f"continuing from {state}")
+                            # Not part of `cmd`: the identity is that of the run, not of this attempt.
+                            step = [*cmd, "--resume", str(state)]
+                        elif aside is not None:
                             logger.warning("%s: interrupted run moved to %s; training from scratch", train_key, aside)
                             log.write("ASIDE", train_key, f"interrupted run moved to {aside}")
                         # Evaluations of a previous checkpoint no longer describe this run.
                         shutil.rmtree(reports, ignore_errors=True)
-                        run.parent.mkdir(parents=True, exist_ok=True)
-                    _run_step(train_key, cmd, options, log, execute)
+                    _run_step(train_key, step, options, log, execute)
                     if not options.dry_run:
                         if not (run / CHECKPOINT).is_file():
                             log.write("FAILED", train_key, f"exit code 0 but no {CHECKPOINT}")
@@ -840,6 +885,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         help="Extra overrides appended to every train AND eval command (e.g. rgb_dir=... "
                              "nir_dir=...). Passed verbatim; commands run with the repo root as cwd, so "
                              "use absolute paths.")
+    parser.add_argument("--no-resume", action="store_true",
+                        help="Train interrupted runs from scratch instead of continuing them.")
     parser.add_argument("--dry-run", action="store_true", help="Print the commands without running them.")
     return parser.parse_args(argv)
 
@@ -866,6 +913,7 @@ def main(argv: list[str] | None = None) -> int:
             extra_overrides=args.extra_override,
             dataset=Path(args.dataset).resolve() if args.dataset is not None else None,
             nir_variant=args.nir_variant,
+            resume=not args.no_resume,
         )
         with _interrupt_on_termination():
             summary = run_kfold(options)
