@@ -95,6 +95,9 @@ class TrainingConfig:
         box_weight: Regression loss weight.
         cls_weight: Classification loss weight.
         class_weights: Per-class BCE weights [mango, danado].
+        ignore_classes: Class IDs the model does not learn or predict. `[0]` trains on damage
+            alone; the mango box still defines the crop.
+        pixel_cache_dir: Folder from `scripts/build_pixel_cache.py`, only for speed.
         warmup_epochs: Linear warmup epochs per phase.
         patience: Early stopping patience (epochs without mAP improvement).
         log_interval: Steps between TensorBoard logs.
@@ -235,6 +238,7 @@ class TrainingConfig:
     # every existing config and checkpoint keeps the student it has today.
     student_variant: str = "wide"
     student_pretrained_path: str = ""
+    pixel_cache_dir: str = ""
 
     roi_crop: bool = False
     roi_crop_margin: float = 0.10
@@ -258,6 +262,8 @@ class TrainingConfig:
     # openspec/specs/yolo-loss/spec.md and proposal.md Q2 for the full
     # inverse-frequency-vs-experimental-constant rationale.
     class_weights: list[float] = field(default_factory=lambda: [0.5, 1.5])
+    # Classes without ground truth in the loss and without predictions in the decode.
+    ignore_classes: list[int] = field(default_factory=list)
 
     # Decode (src/training/decode.py::decode_detections) — see training-loop spec.
     # `conf_threshold` is the deployment operating point: the visualizer's

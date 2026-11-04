@@ -133,6 +133,7 @@ class Trainer:
             assigner_center_radius=getattr(config, "assigner_center_radius", 0.0),
             assigner_level_ranges=getattr(config, "assigner_level_ranges", None),
             assigner_collect_stats=getattr(config, "assigner_collect_stats", False),
+            ignore_classes=config.ignore_classes,
         ).to(self.device)
 
         # Mixed precision: fp32 | fp16 | bf16 (src/training/precision.py).
@@ -877,6 +878,7 @@ class Trainer:
             per_class_candidates=config.decode_per_class,
             max_detections=config.max_detections,
             normalize=True,
+            ignore_classes=config.ignore_classes,
         )
         return boxes.cpu(), scores.cpu(), labels.cpu()
 

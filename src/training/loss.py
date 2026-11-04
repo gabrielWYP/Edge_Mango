@@ -356,8 +356,10 @@ class YOLOv8Loss(nn.Module):
         assigner_center_radius: float = 0.0,
         assigner_level_ranges: list[float] | None = None,
         assigner_collect_stats: bool = False,
+        ignore_classes: list[int] | None = None,
     ):
         super().__init__()
+        self.ignore_classes = list(ignore_classes or [])
         self.num_classes = num_classes
         self.box_weight = box_weight
         self.cls_weight = cls_weight
@@ -366,6 +368,10 @@ class YOLOv8Loss(nn.Module):
 
         if class_weights is None:
             class_weights = [1.0] * num_classes
+        class_weights = [
+            0.0 if cls_id in self.ignore_classes else weight
+            for cls_id, weight in enumerate(class_weights)
+        ]
         self.register_buffer(
             "class_weights", torch.tensor(class_weights, dtype=torch.float32)
         )
@@ -421,6 +427,8 @@ class YOLOv8Loss(nn.Module):
         predictions = [pred.float() for pred in predictions]
         device = predictions[0].device
         B = predictions[0].shape[0]
+        if self.ignore_classes:
+            targets = self._without_ignored_classes(targets, device)
 
         # Split predictions into class scores and bbox deltas
         all_cls = []
@@ -508,6 +516,10 @@ class YOLOv8Loss(nn.Module):
 
         # Normalize by number of positive anchors
         num_pos = fg_mask.sum().clamp(min=1)
+        if self.ignore_classes and not fg_mask.any():
+            # A batch of healthy fruit alone has no positives once the mango box is gone.
+            # Dividing by 1 would turn its summed negatives into a spike.
+            num_pos = torch.tensor(float(B * self.assigner.topk), device=device)
         cls_loss = weighted.sum() / num_pos
 
         # --- Regression loss (CIoU on positives only) ---
@@ -538,6 +550,15 @@ class YOLOv8Loss(nn.Module):
         }
 
         return total_loss, loss_dict
+
+    def _without_ignored_classes(self, targets: dict, device: torch.device) -> dict:
+        ignored = torch.tensor(self.ignore_classes, device=device)
+        keep = [~torch.isin(labels, ignored) for labels in targets["labels"]]
+        return {
+            **targets,
+            "bboxes": [boxes[mask] for boxes, mask in zip(targets["bboxes"], keep)],
+            "labels": [labels[mask] for labels, mask in zip(targets["labels"], keep)],
+        }
 
     @staticmethod
     def _decode_bboxes(
