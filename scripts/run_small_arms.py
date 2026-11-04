@@ -8,7 +8,8 @@
 
 Every run is evaluated on val and test, with predictions and metrics_v4.json, under
 `<reports-root>/<arm>/fold<k>_seed<S>/<split>/`, the layout of `scripts/aggregate_kfold.py`.
-Re-run the same command to resume: finished steps are skipped, and an interrupted training restarts.
+Re-run the same command to resume: finished steps are skipped, and an interrupted training continues from
+its last finished epoch (`--no-resume` trains it from scratch). A state from other settings stops the step.
 
 The NIR arm reads `--nir-as-rgb-dir`, made with `--make-nir-as-rgb`: links named like the RGB files.
 
@@ -49,6 +50,10 @@ ARMS = {
 }
 
 
+# This runner does not hash its settings: the trainer refuses a state from other ones, by name.
+IDENTITY = {"sha256": "small-arms"}
+
+
 def parse_args(argv=None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--dataset", type=Path, required=True, help="built v4 dataset, with folds_lot/")
@@ -64,6 +69,7 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--reports-root", type=Path, default=Path("reports/v4_small"))
     parser.add_argument("--machine", type=Path, default=Path("configs/machines/rtx3080.yaml"))
     parser.add_argument("--python", default=sys.executable)
+    parser.add_argument("--no-resume", action="store_true", help="train interrupted runs from scratch")
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args(argv)
 
@@ -159,15 +165,19 @@ def main(argv=None) -> int:
                         continue
                     if finished:
                         continue
+                    step = command
                     if is_train:
-                        rk.move_aside_incomplete(marker)
-                    print(f"START {key}", flush=True)
-                    code = rk._execute(command, PROJECT_ROOT)
+                        state, _ = rk.prepare_training(marker, IDENTITY, resume=not args.no_resume)
+                        if state is not None:
+                            # Not part of the marker's command: it is that of the run, not of this attempt.
+                            step = [*command, "--resume", str(state)]
+                    print(f"START {key}{' (continuing)' if step is not command else ''}", flush=True)
+                    code = rk._execute(step, PROJECT_ROOT)
                     print(f"END {key} exit {code}", flush=True)
                     if code != 0:
                         return code
                     if is_train:
-                        rk.mark_train_complete(marker, command, {"sha256": "small-arms"})
+                        rk.mark_train_complete(marker, command, IDENTITY)
                     done += 1
     print(f"Done: {done} steps")
     return 0
