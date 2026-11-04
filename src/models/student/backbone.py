@@ -45,11 +45,11 @@ class Bottleneck(nn.Module):
     Two 3x3 convolutions with residual added when input and output channels match.
     """
 
-    def __init__(self, in_ch: int, out_ch: int) -> None:
+    def __init__(self, in_ch: int, out_ch: int, shortcut: bool = True) -> None:
         super().__init__()
         self.cv1 = Conv_BN_SiLU(in_ch, out_ch, 3, 1)
         self.cv2 = Conv_BN_SiLU(out_ch, out_ch, 3, 1)
-        self.add = in_ch == out_ch
+        self.add = shortcut and in_ch == out_ch
 
     def forward(self, x: Tensor) -> Tensor:
         out = self.cv2(self.cv1(x))
@@ -65,13 +65,13 @@ class C2f(nn.Module):
     3. All branches concatenated and merged via cv2 (1x1 conv)
     """
 
-    def __init__(self, in_ch: int, out_ch: int, n: int = 1) -> None:
+    def __init__(self, in_ch: int, out_ch: int, n: int = 1, shortcut: bool = True) -> None:
         super().__init__()
         self.c_ = out_ch // 2  # hidden channels per branch
         self.cv1 = Conv_BN_SiLU(in_ch, 2 * self.c_, 1, 1)
         self.cv2 = Conv_BN_SiLU((2 + n) * self.c_, out_ch, 1, 1)
         self.m = nn.ModuleList(
-            Bottleneck(self.c_, self.c_) for _ in range(n)
+            Bottleneck(self.c_, self.c_, shortcut) for _ in range(n)
         )
 
     def forward(self, x: Tensor) -> Tensor:

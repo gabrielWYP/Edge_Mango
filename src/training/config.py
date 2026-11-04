@@ -33,6 +33,9 @@ from .neck_norm import (
 from .nir_registration import DEFAULT_NIR_HOMOGRAPHY_PATH
 from .precision import validate_bf16_support, validate_precision
 from .roi_crop import validate_roi_crop
+
+# The variants of src/models/student/student_model.py, without importing the models here.
+STUDENT_VARIANT_NAMES = ("wide", "nano")
 from .strides import (
     CROSS_ATTENTION_SUPPORTED_HEAD_STRIDES,
     DEFAULT_HEAD_STRIDES,
@@ -228,6 +231,11 @@ class TrainingConfig:
     letterbox_value: int = 114
     # Mango ROI crop (src/training/roi_crop.py) — opt-in, so every existing
     # config and checkpoint keeps the full-frame behaviour it has today.
+    # Student architecture and starting weights (src/models/student). Off by default, so
+    # every existing config and checkpoint keeps the student it has today.
+    student_variant: str = "wide"
+    student_pretrained_path: str = ""
+
     roi_crop: bool = False
     roi_crop_margin: float = 0.10
     roi_crop_jitter: float = 0.0
@@ -401,6 +409,11 @@ class TrainingConfig:
         # is valid for both model types.
         validate_fusion_mode(self.fusion_mode)
         validate_modality_ablation(self.modality_ablation)
+        if self.student_variant not in STUDENT_VARIANT_NAMES:
+            raise ValueError(
+                f"Invalid student_variant '{self.student_variant}'. "
+                f"Must be one of: {sorted(STUDENT_VARIANT_NAMES)}"
+            )
         validate_roi_crop(self.roi_crop_margin, self.roi_crop_jitter)
         validate_neck_norm(self.neck_norm, self.neck_gn_groups)
         validate_ema(self.ema, self.ema_decay, self.ema_tau)

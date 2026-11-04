@@ -462,7 +462,7 @@ def _load_model(model_type: str, checkpoint_path: str, config: TrainingConfig, d
         )
         check_norm_compatible(model, state_dict, source=f"Checkpoint at {checkpoint_path}")
     else:
-        model = StudentModel(num_classes=config.num_classes)
+        model = StudentModel(num_classes=config.num_classes, variant=config.student_variant)
         # Pre-fix KD checkpoints stored the training-only adapters inside
         # `model_state_dict`; they are not part of the student.
         state_dict = strip_legacy_kd_adapter_keys(state_dict)

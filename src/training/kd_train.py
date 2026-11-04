@@ -187,7 +187,9 @@ def main():
         pin_memory=config.pin_memory,
     )
 
-    # Create student model
+    # Create student model. The KD adapters are sized for the wide student's channels.
+    if config.student_variant != "wide":
+        raise ValueError(f"KD does not support student_variant={config.student_variant!r} yet.")
     model = StudentModel(num_classes=config.num_classes)
     params = model.count_parameters()
     print(f"StudentModel parameters: {params['total']:,} total")

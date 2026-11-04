@@ -32,6 +32,7 @@ from src.training.run_artifacts import (
     write_run_summary,
 )
 from src.models.master.master_model import MasterModel
+from src.models.student.pretrained import load_yolov8n_weights
 from src.models.student.student_model import StudentModel
 
 
@@ -266,7 +267,13 @@ def main():
 
     # Create model
     if config.model_type == "student":
-        model = StudentModel(num_classes=config.num_classes)
+        model = StudentModel(num_classes=config.num_classes, variant=config.student_variant)
+        if config.student_pretrained_path:
+            report = load_yolov8n_weights(model, config.student_pretrained_path)
+            print(
+                f"Pretrained {config.student_pretrained_path}: {report['loaded']} tensors "
+                f"loaded, {len(report['skipped'])} left at their initial values"
+            )
         params = model.count_parameters()
         print(f"StudentModel parameters: {params['total']:,} total")
     else:
