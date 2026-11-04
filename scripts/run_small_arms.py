@@ -162,6 +162,12 @@ _children: set[subprocess.Popen] = set()
 _children_lock = threading.Lock()
 
 
+def _stop_children() -> None:
+    with _children_lock:
+        for process in _children:
+            process.terminate()
+
+
 def _run_logged(command: list[str], log_path: Path | None, env: dict[str, str]) -> int:
     """Run one step, to its log or to this terminal, so that an interrupt can stop it."""
     handle = open(log_path, "a") if log_path else None
@@ -222,21 +228,27 @@ def schedule(tasks: list[tuple[str, int, int]], jobs: int, run) -> int:
         return teacher is None or needed not in planned or needed in finished
 
     with ThreadPoolExecutor(jobs) as pool:
-        while running or (pending and not first_failure):
-            if not first_failure:
-                for task in [t for t in pending if ready(t)][: jobs - len(running)]:
-                    pending.remove(task)
-                    running[pool.submit(run, *task)] = task
-            if not running:  # only students whose teacher failed are left
-                break
-            done, _ = wait(running, return_when=FIRST_COMPLETED)
-            for future in done:
-                task = running.pop(future)
-                code = future.result()
-                if code == 0:
-                    finished.add(task)
-                elif not first_failure:
-                    first_failure = code
+        try:
+            while running or (pending and not first_failure):
+                if not first_failure:
+                    for task in [t for t in pending if ready(t)][: jobs - len(running)]:
+                        pending.remove(task)
+                        running[pool.submit(run, *task)] = task
+                if not running:  # only students whose teacher failed are left
+                    break
+                done, _ = wait(running, return_when=FIRST_COMPLETED)
+                for future in done:
+                    task = running.pop(future)
+                    code = future.result()
+                    if code == 0:
+                        finished.add(task)
+                    elif not first_failure:
+                        first_failure = code
+        except BaseException:
+            # Leaving this block waits for the threads, which wait for their processes.
+            pending.clear()
+            _stop_children()
+            raise
     return first_failure
 
 
@@ -261,9 +273,6 @@ def main(argv=None) -> int:
         with rk._interrupt_on_termination():
             code = schedule(tasks, args.jobs, lambda arm, fold, seed: run_task(args, arm, fold, seed, env))
     except KeyboardInterrupt:
-        with _children_lock:
-            for process in _children:
-                process.terminate()
         return 130
     print(f"Done: {len(tasks)} runs" if code == 0 else f"Stopped: exit {code}")
     return code

@@ -132,3 +132,30 @@ def test_a_failure_starts_nothing_new_and_is_returned() -> None:
     tasks = [("est_rgb", 0, 42), ("kd_rgb", 0, 42), ("est_nir", 1, 42)]
     assert rs.schedule(tasks, 1, run) == 7
     assert started == [("est_rgb", 0)]
+
+
+def test_an_interrupt_stops_the_running_processes_at_once(monkeypatch) -> None:
+    import subprocess
+    import sys
+    import threading
+    import time
+
+    started = threading.Event()
+    real_wait = rs.wait
+
+    def run(arm, fold, seed):
+        started.set()
+        return rs._run_logged([sys.executable, "-c", "import time; time.sleep(60)"], None, dict(rs.os.environ))
+
+    def interrupted_wait(*args, **kwargs):
+        started.wait(5)
+        while not rs._children:
+            time.sleep(0.01)
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(rs, "wait", interrupted_wait)
+    begin = time.time()
+    with pytest.raises(KeyboardInterrupt):
+        rs.schedule([("est_rgb", 0, 42), ("est_nir", 0, 42)], 1, run)
+    assert time.time() - begin < 30 and not rs._children
+    assert real_wait is not None and subprocess is not None

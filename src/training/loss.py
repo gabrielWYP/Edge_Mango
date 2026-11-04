@@ -196,13 +196,15 @@ class TaskAlignedAssigner:
                     continue
 
                 # Conflict resolution: if an anchor is assigned to multiple
-                # GTs, keep the one with the highest alignment score.
-                for idx, score in zip(pos_idx.tolist(), pos_scores.tolist()):
-                    if target_scores[b, idx] < score or target_classes[b, idx] == -1:
-                        target_classes[b, idx] = gt_cls[gt_i]
-                        target_bboxes[b, idx] = gt_box[gt_i]
-                        target_scores[b, idx] = score
-                        fg_mask[b, idx] = True
+                # GTs, keep the one with the highest alignment score. The top-k
+                # indices are distinct, so this needs no per-anchor loop, whose
+                # comparisons would each wait for the GPU.
+                wins = (target_scores[b, pos_idx] < pos_scores) | (target_classes[b, pos_idx] == -1)
+                winners = pos_idx[wins]
+                target_classes[b, winners] = gt_cls[gt_i]
+                target_bboxes[b, winners] = gt_box[gt_i]
+                target_scores[b, winners] = pos_scores[wins]
+                fg_mask[b, winners] = True
 
                 if self.collect_stats and level_ids is not None:
                     cls_id = int(gt_cls[gt_i].item())
