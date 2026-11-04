@@ -65,6 +65,15 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional timestamp/run ID for --versioned-run.",
     )
+    parser.add_argument(
+        "--resume",
+        default=None,
+        metavar="RESUME_STATE",
+        help=(
+            "Continue an interrupted run from its resume_state.pt, with the same config. "
+            "Not available with --versioned-run."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -97,6 +106,9 @@ def main():
     # After the overrides, which never re-run __post_init__, and before anything
     # is written or loaded.
     validate_kd_modality_ablation(config.modality_ablation)
+
+    if args.resume and args.versioned_run:
+        raise ValueError("--resume cannot be combined with --versioned-run.")
 
     versioned_plan = None
     if args.versioned_run:
@@ -210,6 +222,7 @@ def main():
         val_loader=val_loader,
     )
 
+    trainer.resume_from = args.resume
     results = trainer.fit()
 
     final_checkpoint = results["checkpoint"]

@@ -28,6 +28,8 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
+from dataclasses import asdict
+from datetime import datetime
 from pathlib import Path
 
 import torch
@@ -45,6 +47,13 @@ from .machine import derive_grad_accum_steps
 from .metrics import compute_map, generate_training_curves, LossHistory
 from .nir_registration import homography_sha256
 from .precision import autocast_ctx, make_scaler
+from .resume import (
+    RESUME_STATE,
+    atomic_torch_save,
+    capture_rng_state,
+    resume_config_mismatches,
+    restore_rng_state,
+)
 from .strides import resolve_active_strides
 
 # Checkpoint schema version, per fusion mode (fusion-redesign D-C). The two
@@ -80,6 +89,12 @@ class Trainer:
     # Weight EMA shadow (set in `__init__` when `config.ema`). Declared at
     # class level so instances built without `__init__` still read None.
     ema: ModelEMA | None = None
+    # Set by the CLI before `fit()` to continue from a `resume_state.pt`.
+    resume_from: str | Path | None = None
+    _resume_state: dict | None = None
+    # One entry per continuation of this run, saved in every checkpoint so an
+    # interrupted run can be told apart from an uninterrupted one afterwards.
+    resume_history: tuple[dict, ...] = ()
 
     def __init__(
         self,
@@ -188,6 +203,9 @@ class Trainer:
         Returns:
             Dict with final metrics and checkpoint paths.
         """
+        if self.resume_from is not None:
+            self._load_resume_state(self.resume_from)
+
         model_label = "StudentModel" if self.config.model_type == "student" else "MasterModel"
         is_end_to_end_master = (
             self.config.model_type == "master" and self.config.schedule == "end_to_end"
@@ -292,6 +310,11 @@ class Trainer:
                 Used by the end-to-end MasterModel schedule. Ignored (single
                 group at `lr`) otherwise.
         """
+        # A phase the interrupted run already finished: only its last epoch's
+        # state matters, and the phase it stopped in restores that.
+        if self._resume_state is not None and phase < self._resume_state["phase"]:
+            return
+
         print(f"\n{'─'*50}")
         print(f"Phase {phase}: {epochs} epochs | LR={lr}")
         print(f"{'─'*50}")
@@ -338,7 +361,15 @@ class Trainer:
             optimizer, T_0=max(1, total_epochs - warmup_epochs), T_mult=2
         )
 
-        for epoch in range(1, epochs + 1):
+        start_epoch = 1
+        if self._resume_state is not None:
+            start_epoch = self._restore_resume_state(optimizer, warmup_scheduler, cosine_scheduler)
+            # The run had already stopped early here, before saving the next phase.
+            if self.patience_counter >= self.config.patience:
+                print(f"  Early stopping already reached (patience={self.config.patience})")
+                return
+
+        for epoch in range(start_epoch, epochs + 1):
             t0 = time.time()
 
             # Train
@@ -474,6 +505,9 @@ class Trainer:
                     epoch, phase, val_metrics, f"checkpoint_epoch{epoch}.pt", train_metrics=train_metrics
                 )
 
+            # Last, so it never describes an epoch whose checkpoints are missing.
+            self._save_resume_state(epoch, phase, optimizer, warmup_scheduler, cosine_scheduler)
+
             # Early stopping
             if self.patience_counter >= self.config.patience:
                 print(f"  Early stopping at epoch {epoch} (patience={self.config.patience})")
@@ -494,6 +528,94 @@ class Trainer:
         """Extra top-level checkpoint entries for modules outside
         `self.model` (see `_auxiliary_param_groups`). Empty by default."""
         return {}
+
+    def _load_auxiliary_checkpoint_state(self, state: dict) -> None:
+        """Inverse of `_auxiliary_checkpoint_state`. Nothing to do by default."""
+
+    def _save_resume_state(
+        self, epoch: int, phase: int, optimizer: AdamW, warmup_scheduler, cosine_scheduler
+    ) -> None:
+        """Write everything needed to continue after this epoch (`resume.py`)."""
+        state = {
+            "epoch": epoch,
+            "phase": phase,
+            "model_state_dict": self.model.state_dict(),
+            "ema_state_dict": self.ema.state_dict() if self.ema is not None else None,
+            "ema_updates": self.ema.updates if self.ema is not None else 0,
+            "optimizer": optimizer.state_dict(),
+            "warmup_scheduler": warmup_scheduler.state_dict(),
+            "cosine_scheduler": cosine_scheduler.state_dict(),
+            "scaler": self.scaler.state_dict(),
+            "best_score": self.best_score,
+            "best_map50": self.best_map50,
+            "patience_counter": self.patience_counter,
+            "global_step": self.global_step,
+            "history_epoch": self.history_epoch,
+            "loss_history": asdict(self.loss_history),
+            "resume_history": list(self.resume_history),
+            "rng": capture_rng_state(),
+            "config": self.config.__dict__,
+            "experiment_sha256": self.experiment_sha256,
+        }
+        state.update(self._auxiliary_checkpoint_state())
+        atomic_torch_save(state, self.output_dir / RESUME_STATE)
+
+    def _load_resume_state(self, path: str | Path) -> None:
+        """Read a `resume_state.pt`, refusing one from a different experiment.
+
+        Everything except the optimizer, the schedulers and the random streams is
+        applied here. Those need the optimizer of the phase the run stopped in, so
+        `_restore_resume_state` applies them once `_train_phase` has built it.
+        """
+        path = Path(path)
+        if not path.is_file():
+            raise FileNotFoundError(f"Resume state not found: {path}")
+        state = torch.load(path, map_location="cpu", weights_only=False)
+
+        mismatches = resume_config_mismatches(state["config"], self.config.__dict__)
+        if state["experiment_sha256"] != self.experiment_sha256:
+            mismatches.append("experiment_sha256")
+        if mismatches:
+            raise ValueError(
+                f"{path} comes from other settings ({', '.join(mismatches)}). Continuing it would "
+                "mix two experiments: restore those settings, or train from scratch."
+            )
+
+        self.model.load_state_dict(state["model_state_dict"])
+        if self.ema is not None:
+            self.ema.module.load_state_dict(state["ema_state_dict"])
+            self.ema.updates = state["ema_updates"]
+        self._load_auxiliary_checkpoint_state(state)
+        self.scaler.load_state_dict(state["scaler"])
+        self.best_score = state["best_score"]
+        self.best_map50 = state["best_map50"]
+        self.patience_counter = state["patience_counter"]
+        self.global_step = state["global_step"]
+        self.history_epoch = state["history_epoch"]
+        self.loss_history = LossHistory(**state["loss_history"])
+        self.resume_history = (
+            *state["resume_history"],
+            {
+                "phase": state["phase"],
+                "epoch": state["epoch"],
+                "resumed_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+            },
+        )
+        self._resume_state = state
+        print(f"Resuming from {path}: phase {state['phase']}, epoch {state['epoch']} done")
+
+    def _restore_resume_state(self, optimizer: AdamW, warmup_scheduler, cosine_scheduler) -> int:
+        """Apply the rest of the loaded state to the optimizer of its phase.
+
+        Returns the next epoch to train. The random streams go last, so that
+        nothing done while resuming consumes them.
+        """
+        state, self._resume_state = self._resume_state, None
+        optimizer.load_state_dict(state["optimizer"])
+        warmup_scheduler.load_state_dict(state["warmup_scheduler"])
+        cosine_scheduler.load_state_dict(state["cosine_scheduler"])
+        restore_rng_state(state["rng"])
+        return state["epoch"] + 1
 
     def _selection_score(self, val_metrics: dict) -> float:
         """Value of `config.selection_metric` in one epoch's val metrics."""
@@ -932,9 +1054,12 @@ class Trainer:
         (`evaluate_checkpoint.py`, the KD teacher, `aggregate_kfold.py`)
         picks them up unchanged. `ema` records which kind they are and
         `ema_updates` how many optimizer steps the average has seen. The live
-        weights are NOT stored: nothing resumes training from a checkpoint.
+        weights are NOT stored here.
         Checkpoints without these keys predate the EMA and hold live weights.
         The norm choice (`neck_norm`, `neck_gn_groups`) travels in `config`.
+
+        Resuming reads `resume_state.pt` (`_save_resume_state`), which does hold
+        the live weights. `resume_history` lists the continuations of this run.
         """
         path = self.output_dir / filename
         checkpoint = {
@@ -949,6 +1074,7 @@ class Trainer:
             "best_score": self.best_score,
             "config": self.config.__dict__,
             "experiment_sha256": self.experiment_sha256,
+            "resume_history": list(self.resume_history),
             # NIR registration provenance: checkpoints trained before the
             # 2026-10 fix lack this key and used unregistered NIR.
             "nir_registration": {
@@ -963,4 +1089,4 @@ class Trainer:
             checkpoint["oom_skipped"] = train_metrics.get("oom_skipped")
             checkpoint["nan_skipped"] = train_metrics.get("nan_skipped")
             checkpoint["steps_taken"] = train_metrics.get("steps_taken")
-        torch.save(checkpoint, path)
+        atomic_torch_save(checkpoint, path)

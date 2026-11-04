@@ -8,7 +8,8 @@
 
 Every run is evaluated on val and test, with predictions and metrics_v4.json, under
 `<reports-root>/<arm>/fold<k>_seed<S>/<split>/`, the layout of `scripts/aggregate_kfold.py`.
-Re-run the same command to resume: finished steps are skipped, and an interrupted training restarts.
+Re-run the same command to resume: finished steps are skipped, and an interrupted training continues from
+its last finished epoch (`--no-resume` trains it from scratch). A state from other settings stops the step.
 A finished run is recognized by its folder alone, so a change of settings needs new roots.
 
 `--val-only` leaves out every test evaluation: it is what a pilot uses before the pre-registration.
@@ -58,6 +59,10 @@ ARMS = {
 }
 
 
+# This runner does not hash its settings: the trainer refuses a state from other ones, by name.
+IDENTITY = {"sha256": "small-arms"}
+
+
 def parse_args(argv=None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--dataset", type=Path, required=True, help="built v4 dataset, with folds_lot/")
@@ -78,6 +83,7 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--pixel-cache-root", type=Path, default=None,
                         help="with rgb/ and nir_as_rgb/ from build_pixel_cache.py; only for speed")
     parser.add_argument("--jobs", type=int, default=1, help="runs at the same time")
+    parser.add_argument("--no-resume", action="store_true", help="train interrupted runs from scratch")
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args(argv)
 
@@ -198,15 +204,19 @@ def run_task(args, arm_name: str, fold: int, seed: int, env: dict[str, str]) -> 
         is_train = key.endswith("/train")
         if rk.is_train_complete(marker) if is_train else marker.exists():
             continue
+        step = command
         if is_train:
-            rk.move_aside_incomplete(marker)
-        print(f"START {key}", flush=True)
-        code = _run_logged(command, log_path, env)
+            state, _ = rk.prepare_training(marker, IDENTITY, resume=not args.no_resume)
+            if state is not None:
+                # Not part of the marker's command: it is that of the run, not of this attempt.
+                step = [*command, "--resume", str(state)]
+        print(f"START {key}{' (continuing)' if step is not command else ''}", flush=True)
+        code = _run_logged(step, log_path, env)
         print(f"END {key} exit {code}", flush=True)
         if code != 0:
             return code
         if is_train:
-            rk.mark_train_complete(marker, [str(x) for x in command], {"sha256": "small-arms"})
+            rk.mark_train_complete(marker, [str(x) for x in command], IDENTITY)
     return 0
 
 

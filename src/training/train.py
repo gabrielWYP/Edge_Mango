@@ -92,6 +92,15 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional stage name for --versioned-run. Defaults from model_type.",
     )
+    parser.add_argument(
+        "--resume",
+        default=None,
+        metavar="RESUME_STATE",
+        help=(
+            "Continue an interrupted run from its resume_state.pt, with the same config. "
+            "Not available with --versioned-run."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -153,6 +162,9 @@ def main():
     # CLI --model flag overrides config model_type
     if args.model is not None:
         config.model_type = args.model
+
+    if args.resume and args.versioned_run:
+        raise ValueError("--resume cannot be combined with --versioned-run.")
 
     versioned_plan = None
     if args.versioned_run:
@@ -304,6 +316,7 @@ def main():
     )
     trainer.experiment_sha256 = run_experiment_sha256
 
+    trainer.resume_from = args.resume
     results = trainer.fit()
 
     final_checkpoint = results["checkpoint"]
