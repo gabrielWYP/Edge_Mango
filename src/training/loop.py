@@ -27,6 +27,7 @@ Features:
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 import torch
@@ -768,12 +769,19 @@ class Trainer:
         return self.evaluate()
 
     @torch.no_grad()
-    def evaluate(self) -> dict:
+    def evaluate(self, prediction_sink: Callable[..., None] | None = None) -> dict:
         """Run evaluation over `val_loader` and compute mAP metrics.
 
         Public, eval-only entrypoint with no dependency on a training loop or
         `train_loader` (D10). Used by both the training loop's periodic
         validation and `scripts/evaluate_checkpoint.py`.
+
+        Args:
+            prediction_sink: Called once per image with `(image_id, boxes,
+                scores, labels)`, the decoded predictions AP is computed from
+                (cxcywh normalized to the model input). The metrics do not
+                depend on it. `image_id` comes from the batch's `image_ids`,
+                so a loader used with a sink must provide them.
 
         Returns:
             Dict with map50, map_50_95, per_class_ap_50, per_class_ap_50_95,
@@ -813,6 +821,8 @@ class Trainer:
                 all_pred_boxes.append(pred_boxes_b)
                 all_pred_scores.append(pred_scores_b)
                 all_pred_labels.append(pred_labels_b)
+                if prediction_sink is not None:
+                    prediction_sink(batch["image_ids"][b], pred_boxes_b, pred_scores_b, pred_labels_b)
 
                 # GT
                 gt_bboxes = batch["bboxes"][b]

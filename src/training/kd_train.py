@@ -4,6 +4,7 @@ CLI entry point for Knowledge Distillation training.
 Usage:
     python -m src.training.kd_train --config configs/kd_training.yaml
     python -m src.training.kd_train --config configs/kd_training.yaml --override kd_weight=0.5
+    python -m src.training.kd_train --config configs/kd_training.yaml --override modality_ablation=nir_const
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.training.kd_config import KDConfig
 from src.training.dataset import YOLODataset, build_dataloader, collate_fn, build_weighted_sampler
+from src.training.fusion_modes import DEFAULT_MODALITY_ABLATION, validate_kd_modality_ablation
 from src.training.kd_trainer import KDTrainer
 from src.training.run_artifacts import (
     build_versioned_stage_plan,
@@ -42,7 +44,10 @@ def parse_args() -> argparse.Namespace:
         "--override",
         nargs="*",
         default=[],
-        help="Override config values: key=value pairs.",
+        help=(
+            "Override config values: key=value pairs. modality_ablation=nir_const gives "
+            "the teacher a constant NIR (plan E2, est_kd_rgb); rgb_const is refused."
+        ),
     )
     parser.add_argument(
         "--versioned-run",
@@ -88,6 +93,10 @@ def main():
                 value = float(value)
             setattr(config, key, value)
 
+    # After the overrides, which never re-run __post_init__, and before anything
+    # is written or loaded.
+    validate_kd_modality_ablation(config.modality_ablation)
+
     versioned_plan = None
     if args.versioned_run:
         versioned_plan = build_versioned_stage_plan(
@@ -115,6 +124,8 @@ def main():
     print(f"  KD weight: {config.kd_weight}, temperature: {config.kd_temperature}")
     print(f"  KD loss type: {config.kd_loss_type}")
     print(f"  Distill levels: {config.distill_levels}")
+    if config.modality_ablation != DEFAULT_MODALITY_ABLATION:
+        print(f"  modality_ablation: {config.modality_ablation}")
 
     # Create datasets. Do not pass explicit transforms here: YOLODataset's
     # default path keeps spatial augmentations synchronized across RGB, NIR,
@@ -133,6 +144,7 @@ def main():
         roi_crop=config.roi_crop,
         roi_crop_margin=config.roi_crop_margin,
         roi_crop_jitter=config.roi_crop_jitter,
+        modality_ablation=config.modality_ablation,
     )
 
     val_dataset = YOLODataset(
@@ -149,6 +161,7 @@ def main():
         roi_crop=config.roi_crop,
         roi_crop_margin=config.roi_crop_margin,
         roi_crop_jitter=config.roi_crop_jitter,
+        modality_ablation=config.modality_ablation,
     )
 
     print(f"Dataset: {len(train_dataset)} train, {len(val_dataset)} val images")
@@ -174,7 +187,9 @@ def main():
         pin_memory=config.pin_memory,
     )
 
-    # Create student model
+    # Create student model. The KD adapters are sized for the wide student's channels.
+    if config.student_variant != "wide":
+        raise ValueError(f"KD does not support student_variant={config.student_variant!r} yet.")
     model = StudentModel(num_classes=config.num_classes)
     params = model.count_parameters()
     print(f"StudentModel parameters: {params['total']:,} total")

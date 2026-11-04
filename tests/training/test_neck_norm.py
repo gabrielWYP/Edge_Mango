@@ -272,7 +272,8 @@ class TestStableExperimentConfig:
         )
 
     def test_every_other_experiment_config_keeps_batch_norm_and_no_ema(self):
-        paths = sorted(EXPERIMENT_DIR.glob("*.yaml"))
+        # The v4 arms set their own crop and KD keys; tests/test_run_kfold_v4.py pins them.
+        paths = sorted(p for p in EXPERIMENT_DIR.glob("*.yaml") if not p.name.startswith("v4_"))
         assert STABLE in paths
         for path in paths:
             if path == STABLE:

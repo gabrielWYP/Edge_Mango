@@ -1,0 +1,9 @@
+# Rounds whose late photos are kept against docs/tesis/plan-experimental.md, section 3.1 rule 1.
+# Each entry: {jornada: <id>, ronda_h: <int>, mangos: [<id>, ...]}; without mangos it covers the round.
+# The analysis of these photos uses their real hours (impacto.horas_desde_impacto), not 4 h nominal.
+exceptions:
+  - jornada: lote4-20261031
+    ronda_h: 4
+  - jornada: lote5-20261101
+    ronda_h: 4
+    mangos: [123, 124, 125]

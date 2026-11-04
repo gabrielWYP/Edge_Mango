@@ -1,0 +1,83 @@
+# Experiment config: plan-experimental E2, arm est_etiquetas.
+#
+# Student (YOLOv8-nano, RGB only at inference) trained on labels alone, with
+# `src.training.train --model student`. Baseline of the exploratory comparisons.
+#
+# It is also the config every student is evaluated with: evaluate_checkpoint.py loads
+# a TrainingConfig, which refuses the KD keys of v4_est_kd_*.yaml. So what the KD
+# configs share with this file must stay equal to it. Runbook: docs/tesis/runbook-v4.md.
+#
+# Do not add device/batch_size/num_workers/pin_memory/precision here: those are
+# machine-profile keys (configs/machines/*.yaml, fusion-redesign D-H).
+
+# Data paths. scripts/run_kfold.py replaces all of them with --dataset and the fold:
+# rgb_dir, nir_dir (--nir-variant), nir_homography_path, labels_dir, split_manifest.
+# The NIR of the v4 dataset is already registered, hence the identity homography.
+rgb_dir: "data/cache/v4_captura_v3/rgb"
+nir_dir: "data/cache/v4_captura_v3/nir"
+nir_homography_path: "data/cache/v4_captura_v3/homographies/identity.npy"
+labels_dir: "data/cache/v4_captura_v3/folds_lot/fold_0/labels"
+output_dir: "checkpoints/v4/est_etiquetas"
+split_manifest: "data/cache/v4_captura_v3/folds_lot/fold_0/splits.json"
+
+model_type: student
+backbone_variant: "tiny"
+num_classes: 2
+
+# Image
+image_size: 640
+letterbox_value: 114
+
+# Mango ROI crop, the same in all six arms (a KD teacher and its student share the
+# batch). It also picks the `roi` NIR stats of folds_meta.json; `roi_crop: false`
+# on all six picks the `frame` ones.
+roi_crop: true
+roi_crop_margin: 0.10
+roi_crop_jitter: 0.5
+
+# Training schedule, the same in the three student arms: single phase, all params
+# trainable from epoch 1. Taken from configs/kd_training_twostream.yaml. scripts/run_kfold.py
+# passes patience=1000 (no early stopping).
+epochs: 80
+lr: 0.001
+weight_decay: 0.0005
+warmup_epochs: 3
+patience: 30
+
+# Select on the damage class alone: mango AP is meaningless under the crop.
+selection_metric: damage_ap50
+
+# The experimental constant.
+effective_batch: 8
+
+# Loss
+box_weight: 7.5
+cls_weight: 0.5
+class_weights: [0.5, 1.5]
+
+# Logging
+log_interval: 10
+save_interval: 5
+
+# Gradient clipping
+grad_clip: 10.0
+
+# NIR normalization: placeholders. scripts/run_kfold.py passes nir_mean and nir_std
+# of the fold from <folds-dir>/folds_meta.json.
+nir_mean: 0.0569
+nir_std: 0.0546
+
+# Reproducibility: scripts/run_kfold.py passes seed=<S>.
+seed: 42
+
+# Decode (src/training/decode.py::decode_detections).
+conf_threshold: 0.25
+nms_iou_threshold: 0.5
+nms_enabled: true
+decode_per_class: true
+max_detections: 300
+
+# Task-Aligned Assigner (src/training/loss.py).
+assigner_center_radius: 0.0
+assigner_level_ranges: [64, 128]
+assigner_collect_stats: false

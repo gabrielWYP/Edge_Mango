@@ -89,3 +89,18 @@ channel, permutation p < 0.05 for a combination (uncorrected).
 - ECC is a rigid 2D alignment of a fruit placed by hand; residual 3D pose differences add noise.
 - Intervals and p-values are descriptive (plan section 8.4) and not corrected for multiplicity (6 channels and
   3 combinations per hour).
+
+## Version with the damage boxes
+
+This section is kept by hand: rerunning the centro mode rewrites the rest of this file and drops it.
+
+`--mode boxes` runs E0 as the plan describes it once the boxes exist: the impact region is the damage box and the
+control is the control zone of plan section 2, on a built v4 dataset. It reports the difference of differences and
+the per-patch AUROC per hour, modality and lot, and writes to its own folder so this report stays as it is:
+
+```bash
+python scripts/e0_detectability.py --mode boxes --dataset <v4_dataset> --out reports/e0-detectability/boxes
+```
+
+The steps, the exclusions and the output files are in the docstring of
+[`scripts/e0_detectability.py`](../../scripts/e0_detectability.py). Its numbers wait for the final labels.

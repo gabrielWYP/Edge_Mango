@@ -51,6 +51,7 @@ from scripts.aggregate_kfold import (  # noqa: E402
     DEFAULT_FOLD_SPEC,
     METRICS,
     SPLITS,
+    V4_METRICS,
     check_folds_in_spec,
     load_fold_spec,
 )
@@ -208,7 +209,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--results", default=None,
                         help="kfold_results.json written by scripts/aggregate_kfold.py (results mode).")
     parser.add_argument("--split", choices=SPLITS, default="test", help="Split to read in results mode (default: test).")
-    parser.add_argument("--metric", choices=METRICS, default="ap50", help="Metric to read in results mode (default: ap50).")
+    parser.add_argument("--metric", choices=(*METRICS, *V4_METRICS), default="ap50", help="Metric to read in results mode (default: ap50).")
     parser.add_argument("--sigma-fold", type=float, default=None,
                         help="Priors mode: sd of the lot-by-arm interaction, in metric units.")
     parser.add_argument("--sigma-seed", type=float, default=None,

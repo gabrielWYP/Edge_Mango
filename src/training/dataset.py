@@ -27,6 +27,12 @@ from .augmentations import (
     get_train_transforms,
     get_val_transforms,
 )
+from .fusion_modes import (
+    DEFAULT_MODALITY_ABLATION,
+    MODALITY_ABLATION_NIR_CONST,
+    MODALITY_ABLATION_RGB_CONST,
+    validate_modality_ablation,
+)
 from .nir_registration import load_homography, register_nir_to_rgb
 from .roi_crop import MANGO_CLASS_ID, crop_to_roi, validate_roi_crop
 
@@ -184,6 +190,11 @@ class YOLODataset(Dataset):
             deterministic. Its randomness comes from torch's global RNG (see
             `_roi_crop_rng`), so `torch.manual_seed` and DataLoader worker
             seeding govern it.
+        modality_ablation: Modality ablation of plan E1, on every split:
+            "none" (default), "nir_const" (NIR tensor replaced by 0, the
+            constant after normalization) or "rgb_const" (RGB tensor replaced
+            by 0). Applied last, so augmentation, labels and the other modality
+            are exactly those of "none".
     """
 
     def __init__(
@@ -203,8 +214,12 @@ class YOLODataset(Dataset):
         roi_crop: bool = False,
         roi_crop_margin: float = 0.10,
         roi_crop_jitter: float = 0.0,
+        modality_ablation: str = DEFAULT_MODALITY_ABLATION,
     ):
         validate_roi_crop(roi_crop_margin, roi_crop_jitter)
+        # Here as well as in TrainingConfig: `--override` assigns with setattr,
+        # which never re-runs TrainingConfig.__post_init__.
+        validate_modality_ablation(modality_ablation)
         self.rgb_dir = Path(rgb_dir)
         self.nir_dir = Path(nir_dir)
         self.labels_dir = Path(labels_dir) / split
@@ -220,6 +235,7 @@ class YOLODataset(Dataset):
         self.roi_crop = roi_crop
         self.roi_crop_margin = roi_crop_margin
         self.roi_crop_jitter = roi_crop_jitter
+        self.modality_ablation = modality_ablation
         # Loaded once (fails loudly if missing); never per item.
         self.H_rgb_to_nir = (
             load_homography(self.nir_homography_path)
@@ -262,6 +278,9 @@ class YOLODataset(Dataset):
             # Match NIR by stem substitution
             nir_name = rgb_path.name.replace("_rgb", "_nir")
             nir_path = self.nir_dir / nir_name
+            if not nir_path.exists():
+                # Pre-registered NIR (scripts/build_v4_dataset.py) is stored as lossless PNG.
+                nir_path = nir_path.with_suffix(".png")
 
             if not nir_path.exists():
                 print(f"[YOLODataset] Warning: missing NIR pair for {rgb_path.name}, skipping.")
@@ -480,6 +499,14 @@ class YOLODataset(Dataset):
 
         # Normalize NIR (dataset stats)
         nir_tensor = self._normalize_nir(nir_aug)
+
+        # Modality ablation (plan E1): after normalization, so 0 is the
+        # constant, and after every random draw, so the arms keep the same RNG
+        # stream and differ only in this tensor.
+        if self.modality_ablation == MODALITY_ABLATION_NIR_CONST:
+            nir_tensor = torch.zeros_like(nir_tensor)
+        elif self.modality_ablation == MODALITY_ABLATION_RGB_CONST:
+            rgb_tensor = torch.zeros_like(rgb_tensor)
 
         # Convert bboxes to tensor
         bboxes_tensor = torch.from_numpy(bboxes_aug).float()

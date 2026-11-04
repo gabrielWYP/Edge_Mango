@@ -121,13 +121,20 @@ class YOLOStudentHead(nn.Module):
     FPN_CHANNELS = [128, 256, 256]
     STEM_CHANNELS = [64, 128, 256]
 
-    def __init__(self, num_classes: int = NUM_CLASSES) -> None:
+    def __init__(
+        self,
+        num_classes: int = NUM_CLASSES,
+        fpn_channels: list[int] | None = None,
+        stem_channels: list[int] | None = None,
+    ) -> None:
         super().__init__()
         self.num_classes = num_classes
 
         self.heads = nn.ModuleList([
             DecoupledHead(c_in=fpn_ch, c_stem=stem_ch, num_classes=num_classes)
-            for fpn_ch, stem_ch in zip(self.FPN_CHANNELS, self.STEM_CHANNELS)
+            for fpn_ch, stem_ch in zip(
+                fpn_channels or self.FPN_CHANNELS, stem_channels or self.STEM_CHANNELS
+            )
         ])
 
     def forward(self, fpn_features: dict[str, Tensor]) -> dict[str, list]:

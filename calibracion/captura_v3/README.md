@@ -1,4 +1,4 @@
-# captura_v3 ArUco pairs and RGB -> NIR homographies (lots 1-4)
+# captura_v3 ArUco pairs and RGB -> NIR homographies (lots 1-5)
 
 One folder per capture day. Each folder has the ArUco calibration pair as `captura.py jornada` saved it (`calib-aruco-{rgb,nir,meta}-<ts>`), the homographies estimated from that pair, and the estimation report. The same files are in OCI: the pairs under `calib/` of each jornada, the matrices and reports under `homografias/<date>/` (lot 1: `homografias/20261024/lote1_oficial/`).
 
@@ -17,6 +17,7 @@ Use the `centros` matrix (marker centres, RANSAC 5 px). The `charuco` matrix (in
 | Lot 3 `lote3-20261027`, up to ts 1793131668 (75-1 +6 h, 15:07:48) | `lote3-20261027/matriz_homografia_aruco_3264x2448_lote3_20261027_centros.npy` | 1.8 / 7.0 / 9.5 (n=70) |
 | Lot 3, from ts 1793133155 (75-2 +6 h, 15:32:35) | `lote3-20261027/matriz_homografia_aruco_3264x2448_lote3_20261027_final_centros.npy` | 2.3 / 5.3 / 7.2 (n=70) |
 | Lot 4 `lote4-20261031`, all | `lote4-20261031/matriz_homografia_aruco_3264x2448_lote4_20261031_centros.npy` | 2.0 / 4.6 / 11.9 (n=70) |
+| Lot 5 `lote5-20261101`, all | `lote5-20261101/matriz_homografia_aruco_3264x2448_lote5_20261101_centros.npy` | 2.0 / 6.5 / 9.6 (n=70) |
 
 Errors are on the ChArUco corners common to both images, in the RGB frame, on the board plane. Points below that plane (the mango flanks, the sheet) shift by parallax.
 
@@ -40,6 +41,10 @@ The `calib-aruco-final` type is not one of the `captura.py` calibration types. T
 ## Lot 4
 
 The lot 4 matrix is not in OCI yet. It was fitted on 2026-11-01 from `calib-aruco-*-1793454960` with [`fit_lot_homography.py`](../../docs/findings/2026-11-01-rgb-nir-residual/tools/fit_lot_homography.py), because `homografia_nueva.py` is not in the repository. There is no `charuco` matrix for this lot.
+
+## Lot 5
+
+The lot 5 matrix is not in OCI yet. It was fitted on 2026-11-02 from `calib-aruco-*-1793536729` with [`fit_lot_homography.py`](../../docs/findings/2026-11-01-rgb-nir-residual/tools/fit_lot_homography.py), which reproduces the published lot 4 matrix to the listed errors. `jornadas/lote5-20261101/observaciones_lote5.json` reports its own matrix, kept on the capture machine, at a median of 1.89 px and a p95 of 6.23 px. The lot 4 matrix misses the lot 5 board by 25 px (median).
 
 ## Reports
 

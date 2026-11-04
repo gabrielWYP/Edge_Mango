@@ -111,3 +111,30 @@ class PANet(nn.Module):
         # n5: (N, 256, 20, 20) — final P5 output
 
         return {"p3": f3, "p4": n4, "p5": n5}
+
+
+class NanoPANet(nn.Module):
+    """
+    The neck of the official YOLOv8n: no lateral convs, and C2f blocks without shortcut.
+
+    Produces 3 pyramid levels at channels [64, 128, 256], for the `nano` student.
+    """
+
+    OUTPUT_CHANNELS = [64, 128, 256]
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.td_c2f_4 = C2f(384, 128, n=1, shortcut=False)  # concat(s4_up, s3): 256+128
+        self.td_c2f_3 = C2f(192, 64, n=1, shortcut=False)   # concat(td4_up, s2): 128+64
+        self.bu_conv_3 = Conv_BN_SiLU(64, 64, 3, 2)
+        self.bu_c2f_4 = C2f(192, 128, n=1, shortcut=False)  # concat(f3_down, td4): 64+128
+        self.bu_conv_4 = Conv_BN_SiLU(128, 128, 3, 2)
+        self.bu_c2f_5 = C2f(384, 256, n=1, shortcut=False)  # concat(n4_down, s4): 128+256
+
+    def forward(self, backbone_features: list[Tensor]) -> dict[str, Tensor]:
+        _, s2, s3, s4 = backbone_features
+        td4 = self.td_c2f_4(torch.cat([F.interpolate(s4, scale_factor=2, mode="nearest"), s3], 1))
+        f3 = self.td_c2f_3(torch.cat([F.interpolate(td4, scale_factor=2, mode="nearest"), s2], 1))
+        n4 = self.bu_c2f_4(torch.cat([self.bu_conv_3(f3), td4], 1))
+        n5 = self.bu_c2f_5(torch.cat([self.bu_conv_4(n4), s4], 1))
+        return {"p3": f3, "p4": n4, "p5": n5}

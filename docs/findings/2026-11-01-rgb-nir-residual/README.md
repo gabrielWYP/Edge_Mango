@@ -93,7 +93,73 @@ homography only and closes with the shift, most clearly on lot 4.
 ## Next step
 
 Registration for training and for the box export should add a per-photo translation on top of the homography, using a
-fruit mask. Nothing in the repository applies it yet: `src/training/dataset.py` still loads one global matrix.
+fruit mask. The v4 dataset builder now does this (next section). `src/training/dataset.py` still loads one global
+matrix, so the shift only reaches training through the baked v4 dataset.
+
+## Applied in the v4 dataset builder (2026-11-02, lots 1-5)
+
+`scripts/build_v4_dataset.py --residual-shift fruit` is the default; `none` reproduces the homography alone. The code
+is `src/data_pipeline/v4_residual.py`. All 3417 selected photos, current labels.
+
+**The outline and the skin need different shifts.** Matching only the fruit outline leaves the box about 50 px away
+from the bruise, in the same direction on every lot. The gap is along x, dy stays within a few px, and it shrinks
+toward the rim of the fruit. This supports the parallax reading above, where the skin facing the cameras stands higher
+than the silhouette, although the fruit height was not measured.
+
+**Method.** Each photo gets one match of RGB against warped-NIR gradients over a ring around the RGB fruit outline
+(+-160 px search). This follows the fruit photo by photo, also when it moved between the two exposures, and neither
+the sheet, the shadow nor a strong skin mark votes in it. A second match over the skin inside the ring is too noisy to
+trust alone (correlation about 0.3), but its median per lot and moment gives the parallax from outline to skin.
+
+    shift = outline match of the photo + parallax of its lot and moment
+
+A photo with correlation under 0.30, or with its best shift on the search limit, takes the median outline match of its
+lot and moment plus the same parallax. The shift moves both NIR variants, the boxes drawn on the NIR and the position
+the line rule looks at. Boxes drawn on the RGB and the mango box stay.
+
+| Lot | Photos | Median shift dx, dy | Outline alone dx, dy | Parallax dx | Fell back | Fruit correlation, H only -> shifted | Skin correlation, H only -> shifted |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 791 | +2, +2 | -56, +4 | +60 | 0 | 0.22 -> 0.23 | 0.14 -> 0.16 |
+| 2 | 792 | +34, 0 | -20, 0 | +56 | 0 | 0.40 -> 0.26 | 0.12 -> 0.21 |
+| 3 | 797 | +120, -6 | +66, -4 | +50 | 0 | 0.17 -> 0.26 | 0.07 -> 0.26 |
+| 4 | 699 | +150, +18 | +90, +20 | +60 | 0 | 0.10 -> 0.27 | 0.10 -> 0.27 |
+| 5 | 338 | +172, +11 | +100, +13 | +72 | 0 | 0.12 -> 0.25 | 0.10 -> 0.22 |
+
+Correlations are medians at zero displacement over the grown fruit mask and over the skin. Lot 2 loses on the whole
+fruit because its outline was nearly closed by the homography; the shift gives that up for the skin.
+
+**Box against the bruise.** Reference: for the NIR-drawn boxes at +10 h and +12 h, the shift that best matches the NIR
+box patch to the RGB after a band-pass at bruise size (difference of Gaussians, sigma 3 and 24 at 1/4 scale),
+correlation at least 0.8, not on the edge of its window. It uses intensity at bruise size, not the fine gradients of
+the matches above. Median distance from the box to that position, and the IoU this gives a box of its size:
+
+| Lot | n | H only | Outline alone | Applied shift |
+| --- | --- | --- | --- | --- |
+| 1 | 106 | 27 px, 0.75 | 52 px, 0.60 | 21 px, 0.81 |
+| 2 | 116 | 27 px, 0.77 | 44 px, 0.70 | 24 px, 0.80 |
+| 3 | 106 | 118 px, 0.29 | 55 px, 0.58 | 22 px, 0.80 |
+| 4 | 95 | 148 px, 0.20 | 62 px, 0.56 | 19 px, 0.82 |
+| 5 | 107 | 163 px, 0.21 | 64 px, 0.56 | 22 px, 0.80 |
+
+This reference also chose the method, so the table is not an independent test: the candidates were compared on lots
+1-3 and lots 4-5 separately, seen together, and ranked the same on both. The ring was added afterwards, after a synthetic
+test and the overlays showed the match locking onto strong skin marks. These numbers are from the final code.
+
+**Thresholds.** The search limit never fires on real photos: their largest outline match is 156 px in x and 140 px in y.
+The real correlations run from 0.30 upward (1st percentile 0.45, median 0.60). Pairing an RGB with the NIR of another
+mango of the same lot gives median 0.29, 95th percentile 0.43, and 17% hit the limit. The rule rejects 57% of those wrong
+pairs and no real photo. A stricter threshold would not help: of the 30 real photos at 0.45 or below, 29 look right by
+eye, among them real fruit motions at 0.30 and 0.35 that a fallback would break, and one looks wrong (1792876278).
+
+**Limits.**
+
+- The outline does not close: it stays doubled by the parallax, 50-72 px along x. One translation cannot close both.
+- Boxes near the rim move too far. Reference error by box position, from the centre of the mango box (0) to its edge
+  (1): under 0.3, 17 px and no bias; 0.5-0.7, 18 px; over 0.7 (23% of boxes), 38 px with a 34 px overshoot.
+  1-5% of the NIR-drawn boxes per lot end with under 75% of their area on the RGB fruit (homography alone 0-8%,
+  outline alone 0-2%).
+- The fallback did not fire on the current selection, so on real data it is untested beyond the wrong-pair check.
+- The shift changes by one 2 px step between OpenCV versions on a few photos, so build a dataset with one environment.
 
 ## Lot 4 matrix
 
@@ -121,3 +187,7 @@ The lot-3 closing matrix misses the lot 4 board by 50 px (median), so it cannot 
     --calib-root calibracion/captura_v3 \
     --out-dir docs/findings/2026-11-01-rgb-nir-residual
 ```
+
+The numbers of "Applied in the v4 dataset builder" came from the exploratory scripts in
+[`tools/shift_analysis/`](tools/shift_analysis/). They are kept as a record, not maintained: each reads the paths in its
+first lines and takes its output paths as arguments.

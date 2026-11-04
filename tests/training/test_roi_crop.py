@@ -345,7 +345,10 @@ class TestConfig:
         )
 
     def test_existing_experiment_configs_stay_full_frame(self) -> None:
-        paths = sorted((REPO_ROOT / "configs" / "experiment").glob("*.yaml"))
+        # The v4 arms set their own crop and KD keys; tests/test_run_kfold_v4.py pins them.
+        paths = sorted(
+            p for p in (REPO_ROOT / "configs" / "experiment").glob("*.yaml") if not p.name.startswith("v4_")
+        )
         assert paths
         # The `_stable` variant is the crop experiment plus GroupNorm + EMA
         # (pinned in tests/training/test_neck_norm.py), so it crops too.

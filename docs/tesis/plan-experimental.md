@@ -67,24 +67,22 @@ H1 y H2 se prueban en **secuencia fija** (sección 8.3): H2 solo se evalúa como
 
 Cada exclusión queda en una tabla por lote (`n` incluidas / excluidas y motivo) en el informe final.
 
-### 3.2 Etiquetado "desde el futuro"
+### 3.2 Etiquetado y procedencia de las cajas
 
-Si el daño latente se dibuja mirando el NIR, la evaluación favorece al NIR y H1 se vuelve circular. Por eso:
+El diseño original proyectaba las cajas latentes desde t = 12 h, para que la etiqueta no dependiera de mirar el NIR. La anotación final no lo hizo así: se usan las cajas revisadas por el autor en cada momento, y este sesgo se declara.
 
-1. El bruise se dibuja en **t = 10 h y t = 12 h**, cuando ya es visible, sobre RGB y NIR registrados.
-2. Cada foto de la cara (t = 0 … 8 h y `sano`) se registra contra la de t = 12 h con SIFT + RANSAC sobre el recorte de la fruta (el mango se coloca a mano, así que la pose cambia entre momentos).
-3. La caja de t = 12 h se proyecta hacia atrás a cada momento y se recorta a la zona de impacto sorteada.
-4. Revisión manual de las proyecciones: se corrige la *posición* si el registro falló, **nunca** se ajusta el tamaño mirando el daño latente.
-5. Se guarda la procedencia de cada caja: `dibujada` (t ≥ 10 h) o `proyectada` (t < 10 h), con el error de registro estimado.
+1. Cada foto con daño se anotó en Label Studio. En t ∈ {0, 2, 4, 6}, cerca del 97 % de las cajas está sobre la vista NIR y cerca del 80 % se dibujó a mano; el resto parte de una proyección desde t = 12 h, aceptada o movida.
+2. Se guarda la procedencia de cada caja: `dibujada` (a mano) o `proyectada` (prelabel aceptada o movida).
+3. Todos los brazos entrenan y se evalúan con las mismas cajas.
 
-Así la etiqueta latente no depende de que el bruise se vea a esa hora y es independiente de la modalidad.
-Limitación que se declara: el bruise puede crecer entre t = 0 y t = 12 h, de modo que la caja proyectada es
-una cota superior del área real en t bajos. Por eso se reporta AP30 junto a AP50 (sección 7).
+**Limitación que se declara.** Como las cajas latentes se eligieron mirando sobre todo el NIR, la evaluación puede favorecer a los brazos con NIR. Un resultado positivo en H1 no separa "el NIR detecta mejor" de "la etiqueta se hizo mirando el NIR", así que se reporta como evidencia débil. Un resultado negativo sigue siendo informativo, porque el sesgo juega a favor del NIR.
+Además, el bruise puede crecer entre t = 0 y t = 12 h y la caja puede ser mayor que el área real en t bajos. Por eso se reporta AP30 junto a AP50 (sección 7).
 
 ### 3.3 Folds
 
 - **Leave-one-lot-out**: el fold *k* prueba en el lote *k*, valida en otro lote (fijo y escrito en el archivo de folds) y entrena en los tres restantes (75 mangos).
-- Archivo nuevo `configs/folds/v4_lot_5fold.json`, generado con `scripts/make_grouped_folds.py`. El de v3 (`lot_5fold.json`) no se reutiliza.
+- Archivo nuevo `configs/folds/v4_lot_5fold.json`, con la misma asignación de `scripts/make_grouped_folds.py` (val = lote *k*+1). El de v3 (`lot_5fold.json`) no se reutiliza. Los folds se generan con `scripts/make_v4_folds.py` a partir de la columna `lot` del `index.csv` del dataset v4 y no por día de captura: el lote 1 termina el 25/10 y el lote 2 empieza ese mismo día, así que agrupar por día los fusionaría.
+- `nir_mean` / `nir_std` se calculan por fold y por variante de NIR solo con el train del fold (`folds_meta.json`).
 - Todas las fotos de un mango (sus 4 caras y sus 8 momentos) van al mismo lado del split. Esto lo garantiza el split por lote; igual se verifica con una prueba de no-solapamiento de `mango_id`.
 - El lote es también el día de captura, con su propio balance de blancos (lote 1: 5300 K; lote 2: 4600 K) y su propia homografía RGB→NIR. LOLO mide exactamente esa generalización a un día nuevo.
 
@@ -98,7 +96,7 @@ una cota superior del área real en t bajos. Por eso se reporta AP30 junto a AP5
 | **Lote / día** | WB, homografía y posición de la sábana cambian por lote. | LOLO; ningún hiperparámetro se ajusta en el lote de test. |
 | **Posición del daño** | Con la zona siempre al centro el modelo aprende un prior posicional (hallazgo 2 de `docs/findings/2026-10-18`). | Zonas sorteadas; se reporta AP por zona. |
 | **Registro RGB↔NIR** | El NIR mal registrado empeora el maestro (0.177 → 0.398 al registrarlo en v3). | Homografía por lote; residual medido y reportado por lote antes de entrenar. |
-| **Procedencia de la etiqueta** | Cajas proyectadas vs dibujadas. | AP estratificado por procedencia; etiquetado "desde el futuro" (3.2). |
+| **Procedencia de la etiqueta** | Cajas dibujadas mirando sobre todo el NIR. | AP estratificado por procedencia; sesgo declarado en 3.2. |
 
 ---
 
@@ -153,6 +151,7 @@ posición conocida en el recorte. Por eso esta versión hace lo siguiente:
 - **Combinaciones logísticas.** Se calibran con permutaciones de las etiquetas de zona dentro del lote, porque el AUROC agrupado de scores leave-one-out queda bajo 0.5 aunque no haya señal. Las permutaciones reproducen el sorteo del protocolo.
 
 Cuando existan las cajas, la región de impacto pasa a ser la caja y los controles, la zona control de la sección 2.
+Esa versión ya existe: `scripts/e0_detectability.py --mode boxes --dataset <dataset v4>`. Registra con la alineación ECC del script, no con SIFT + RANSAC; la diferencia se declara en los límites de su informe.
 Resultado preliminar del lote 1: [`reports/e0-detectability/`](../../reports/e0-detectability/README.md).
 
 ### E1. Maestro: ¿aporta el NIR? (H1)
@@ -265,7 +264,7 @@ Las semillas se confirman con `scripts/plan_seeds.py` después de la primera tan
 | Rol | Métrica |
 | :-- | :-- |
 | **Primaria** | AP50 de daño (`ap50_class_1`) sobre las fotos de la **ventana latente** (t ∈ {0, 2, 4, 6}) más las `sano` del lote de test, en el lote de test. |
-| Secundaria 1 | AP30 de daño en latente (el bruise es amorfo y la caja proyectada es una cota superior, 3.2). |
+| Secundaria 1 | AP30 de daño en latente (el bruise es amorfo y la caja puede ser mayor que el área real, 3.2). |
 | Secundaria 2 | AUROC por cara: "¿esta cara tiene daño?", con `sano` como negativo y t ∈ {0, 2, 4, 6} como positivo; score = máxima confianza de daño en la cara. Pareada por diseño. |
 | Descriptivas | AP50 por hora (t = 0 … 12), AP50 en desarrollado, AP por zona de impacto, AP por procedencia de la caja, FP por imagen en `sano`. |
 
@@ -283,6 +282,8 @@ Se sigue el skill [`experiment-statistics`](../../.claude/skills/experiment-stat
 ```
 H1:          baseline = maestro_rgb,  treatment = maestro_rgbnir
 H2:          baseline = est_kd_rgb,   treatment = est_kd_rgbnir
+NIR:         variante nir_clahe en los brazos de E1 y E2
+Recorte:     al mango con rgb_mango_mask, margen 0.10 y jitter 0.5 en train, en los seis brazos (el brazo NIR recibe la ventana desde RGB)
 Metric:      test damage AP50 en ventana latente (t ∈ {0,2,4,6} + sano), media sobre semillas por fold
 ROPE:        ±0.02 AP50
 Threshold:   P(right) >= 0.95
@@ -343,6 +344,8 @@ inferencia confirmatoria es solo la de nivel lote.
 | 8 | Persistencia de predicciones por imagen y métricas estratificadas por hora, zona y procedencia | Sección 7 |
 | 9 | AUROC por cara en `aggregate_kfold.py` | Sección 7 |
 
+Estado al 2026-11-02: los puntos 1 a 9 tienen su código y pruebas, y los comandos están en [`runbook-v4.md`](runbook-v4.md). `configs/folds/v4_lot_5fold.json` ya está generado con las etiquetas finales.
+
 ---
 
 ## 11. Registro de cambios al plan
@@ -351,3 +354,5 @@ inferencia confirmatoria es solo la de nivel lote.
 | :-- | :-- | :-- | :-- |
 | 2026-10-25 | Versión inicial | — | Antes |
 | 2026-11-02 | La ventana latente pasa de t ∈ {0, 2, 4} a t ∈ {0, 2, 4, 6}, y el daño desarrollado queda en t ∈ {8, 10, 12}. La ronda +4 h de los lotes 4 y 5 se incluye aunque esté fuera de tolerancia (regla 1 de 3.1). | Decisión del autor. Las fotos +4 h fuera de tolerancia (lote 4: +19.3 a +32.3 min; lote 5: +12.1 a +14.2 min) siguen en la misma franja. | Antes de E1 y E2. E0 preliminar del lote 1 ya estaba visto. |
+| 2026-11-02 | El NIR de E1 y E2 es la variante CLAHE y las imágenes se recortan al mango en los seis brazos (sección 8.1). E0 sigue midiendo sobre el NIR sin procesar. El recorte depende del fondo controlado de la captura. | Decisión del autor, antes de entrenar. | Antes |
+| 2026-11-02 | La sección 3.2 pasa a las cajas anotadas en cada momento, y se declara que las latentes se dibujaron mirando sobre todo el NIR. La procedencia de la caja sale de cómo se anotó y no de la hora. | Decisión del autor tras ver E0 y la tabla de origen de las cajas. H1 positivo se reporta como evidencia débil. | Antes |

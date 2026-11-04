@@ -256,3 +256,14 @@ def test_end_to_end_from_the_aggregator_output(tmp_path: Path) -> None:
     # the synthetic tree has seed offsets of +/-0.01 around each fold's delta -> sigma2_seed = 2 * 0.01**2
     assert plan["sigma2_seed"] == pytest.approx(2e-4, rel=1e-6)
     assert plan["test_train_ratio"] == pytest.approx(RATIO)
+
+
+def test_results_mode_reads_the_primary_metric_of_the_v4_plan(tmp_path: Path) -> None:
+    results = _write_results(tmp_path / "kfold_results.json", MATRIX, metric="latent_ap50")
+    out = tmp_path / "p.json"
+    argv = ["--results", str(results), "--split", "test", "--metric", "latent_ap50", "--fold-spec",
+            str(_write_spec(tmp_path)), "--max-seeds", "6", "--json-out", str(out)]
+    assert ps.main(argv) == 0
+
+    plan = json.loads(out.read_text())
+    assert plan["sigma2_seed"] == pytest.approx(sp.estimate_variance_components(_matrix()).sigma2_seed)

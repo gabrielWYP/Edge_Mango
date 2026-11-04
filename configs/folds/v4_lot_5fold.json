@@ -1,0 +1,72 @@
+{
+  "folds": [
+    {
+      "fold": 0,
+      "num_test": 791,
+      "num_train": 2383,
+      "num_val": 792,
+      "test": "lot1",
+      "train": [
+        "lot3",
+        "lot4",
+        "lot5"
+      ],
+      "val": "lot2"
+    },
+    {
+      "fold": 1,
+      "num_test": 792,
+      "num_train": 2377,
+      "num_val": 797,
+      "test": "lot2",
+      "train": [
+        "lot1",
+        "lot4",
+        "lot5"
+      ],
+      "val": "lot3"
+    },
+    {
+      "fold": 2,
+      "num_test": 797,
+      "num_train": 2370,
+      "num_val": 799,
+      "test": "lot3",
+      "train": [
+        "lot1",
+        "lot2",
+        "lot5"
+      ],
+      "val": "lot4"
+    },
+    {
+      "fold": 3,
+      "num_test": 799,
+      "num_train": 2380,
+      "num_val": 787,
+      "test": "lot4",
+      "train": [
+        "lot1",
+        "lot2",
+        "lot3"
+      ],
+      "val": "lot5"
+    },
+    {
+      "fold": 4,
+      "num_test": 787,
+      "num_train": 2388,
+      "num_val": 791,
+      "test": "lot5",
+      "train": [
+        "lot2",
+        "lot3",
+        "lot4"
+      ],
+      "val": "lot1"
+    }
+  ],
+  "index_sha256": "1c661c45777ffae1d6b228bf7af7978c5e785d602bf2a534dc91a3ad49edf52f",
+  "labels_sha256": "eb1ee92d5c090ce77bab4d7eaa448dd8eaa0787b776dd7cb921d00f40f0d368f",
+  "schema_version": 1
+}

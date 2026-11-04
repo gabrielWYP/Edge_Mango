@@ -1,4 +1,4 @@
-"""Fit the lot 4 RGB -> NIR homography and check the method against lots 1-3.
+"""Fit the lot 5 RGB -> NIR homography and check the method against lots 1-4.
 
 The script that produced the lots 1-3 matrices (homografia_nueva.py) is not in the repository, so the same
 estimator (marker centres, RANSAC 5 px) is rebuilt here and compared with the published matrices on ChArUco
@@ -26,9 +26,10 @@ PAIRS = [
     ("lot 2", "lote2-20261025", "calib-aruco", 1792941738, "matriz_homografia_aruco_3264x2448_lote2_20261025_centros.npy"),
     ("lot 3 morning", "lote3-20261027", "calib-aruco", 1793100324, "matriz_homografia_aruco_3264x2448_lote3_20261027_centros.npy"),
     ("lot 3 closing", "lote3-20261027", "calib-aruco-final", 1793154347, "matriz_homografia_aruco_3264x2448_lote3_20261027_final_centros.npy"),
-    ("lot 4", "lote4-20261031", "calib-aruco", 1793454960, None),
+    ("lot 4", "lote4-20261031", "calib-aruco", 1793454960, "matriz_homografia_aruco_3264x2448_lote4_20261031_centros.npy"),
+    ("lot 5", "lote5-20261101", "calib-aruco", 1793536729, None),
 ]
-LOT4_MATRIX = "matriz_homografia_aruco_3264x2448_lote4_20261031_centros.npy"
+FITTED_MATRIX = "matriz_homografia_aruco_3264x2448_lote5_20261101_centros.npy"
 
 
 def detector_params() -> cv2.aruco.DetectorParameters:
@@ -96,7 +97,7 @@ def main() -> None:
             continue
 
         print(f"{label}: fitted {fitted}")
-        np.save(directory / LOT4_MATRIX, homography)
+        np.save(directory / FITTED_MATRIX, homography)
         report = {
             "marcadores": {
                 "rgb": len(rgb_centres),
@@ -106,7 +107,7 @@ def main() -> None:
             },
             "esquinas_charuco_comunes": len(set(rgb_corners) & set(nir_corners)),
             "error_en_esquinas_charuco_px": {
-                "lote3_final": corner_error(previous_published, rgb_corners, nir_corners),
+                "lote4": corner_error(previous_published, rgb_corners, nir_corners),
                 "nueva_centros": fitted,
             },
             "zona_rgb_cubierta_por_esquinas_pct": {

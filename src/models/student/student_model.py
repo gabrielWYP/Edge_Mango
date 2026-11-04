@@ -34,7 +34,7 @@ import torch.nn as nn
 from torch import Tensor
 
 from src.models.student.backbone import CSPDarknetNano
-from src.models.student.neck import PANet
+from src.models.student.neck import NanoPANet, PANet
 from src.models.student.head import YOLOStudentHead, NUM_CLASSES
 
 # Prefix of the training-only KD adapters that `KDTrainer` used to attach to
@@ -59,6 +59,11 @@ def strip_legacy_kd_adapter_keys(state_dict: dict[str, Tensor]) -> dict[str, Ten
     }
 
 
+# "wide" is the student of the v4 plan; "nano" has the neck and head channels of YOLOv8n.
+STUDENT_VARIANTS = ("wide", "nano")
+NANO_STEM_CHANNELS = [64, 64, 64]
+
+
 class StudentModel(nn.Module):
     """
     YOLOv8-Nano student model for knowledge distillation.
@@ -70,13 +75,24 @@ class StudentModel(nn.Module):
         num_classes: Number of detection classes (default 2: sano, danado).
     """
 
-    def __init__(self, num_classes: int = NUM_CLASSES) -> None:
+    def __init__(self, num_classes: int = NUM_CLASSES, variant: str = "wide") -> None:
         super().__init__()
+        if variant not in STUDENT_VARIANTS:
+            raise ValueError(f"Unknown student variant {variant!r}: {sorted(STUDENT_VARIANTS)}")
         self.num_classes = num_classes
+        self.variant = variant
 
         self.backbone = CSPDarknetNano()
-        self.neck = PANet()
-        self.head = YOLOStudentHead(num_classes=num_classes)
+        if variant == "nano":
+            self.neck = NanoPANet()
+            self.head = YOLOStudentHead(
+                num_classes=num_classes,
+                fpn_channels=NanoPANet.OUTPUT_CHANNELS,
+                stem_channels=NANO_STEM_CHANNELS,
+            )
+        else:
+            self.neck = PANet()
+            self.head = YOLOStudentHead(num_classes=num_classes)
 
     def forward(self, x: Tensor) -> dict[str, Any]:
         """
