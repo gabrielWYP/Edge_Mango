@@ -292,3 +292,40 @@ def test_the_same_pilot_overrides_are_not_another_experiment(tmp_path) -> None:
 
     with pytest.raises(ValueError, match="ignore_classes"):
         _trainer(tmp_path, resume=True, pixel_cache_dir="/c/rgb", ignore_classes=[]).fit()
+
+
+def _record_lrs(trainer: Trainer) -> list[float]:
+    """The learning rate each epoch really trains with."""
+    seen: list[float] = []
+    train_epoch = trainer._train_epoch
+
+    def spy(optimizer, epoch, phase):
+        seen.append(optimizer.param_groups[0]["lr"])
+        return train_epoch(optimizer, epoch, phase)
+
+    trainer._train_epoch = spy
+    return seen
+
+
+def test_the_warmup_rises_from_its_first_epoch_and_the_cosine_follows(tmp_path) -> None:
+    trainer = _trainer(tmp_path)  # lr=0.05, warmup_epochs=2, epochs=6
+    seen = _record_lrs(trainer)
+    trainer.fit()
+
+    assert seen[:3] == pytest.approx([0.025, 0.05, 0.05])
+    assert seen[2] > seen[3] > seen[4] > seen[5] > 0
+
+
+def test_a_continued_run_trains_with_the_same_learning_rates(tmp_path) -> None:
+    straight = _trainer(tmp_path / "straight")
+    expected = _record_lrs(straight)
+    straight.fit()
+
+    torch.manual_seed(7)
+    with pytest.raises(_Crash):
+        _trainer(tmp_path / "continued", crash_at=2).fit()
+    continued = _trainer(tmp_path / "continued", resume=True)
+    seen = _record_lrs(continued)
+    continued.fit()
+
+    assert seen == pytest.approx(expected[1:])
