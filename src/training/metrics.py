@@ -410,6 +410,11 @@ def _write_metrics_csv(history: LossHistory, output_dir: Path) -> None:
             writer.writerow(row)
 
 
+def _extra_loss_series(history: LossHistory) -> dict[str, list[float]]:
+    """Return the actual losses in `extra_losses`, without counters and gradient norms."""
+    return {name: values for name, values in history.extra_losses.items() if name.endswith("_loss")}
+
+
 def _plot_losses(history: LossHistory, output_dir: Path) -> None:
     import matplotlib.pyplot as plt
 
@@ -418,7 +423,7 @@ def _plot_losses(history: LossHistory, output_dir: Path) -> None:
     ax.plot(epochs, history.total_loss, label="total_loss", linewidth=2)
     ax.plot(epochs, history.cls_loss, label="cls_loss", linewidth=2)
     ax.plot(epochs, history.box_loss, label="box_loss", linewidth=2)
-    for name, values in history.extra_losses.items():
+    for name, values in _extra_loss_series(history).items():
         ax.plot(epochs, values, label=name, linewidth=2)
     ax.set_xlabel("Epoch")
     ax.set_ylabel("Loss")
@@ -550,7 +555,7 @@ def generate_training_curves(history: LossHistory, output_dir: Path) -> None:
         axes[0, 0].plot(epochs, history.total_loss, label="total_loss", linewidth=2)
         axes[0, 0].plot(epochs, history.cls_loss, label="cls_loss", linewidth=2)
         axes[0, 0].plot(epochs, history.box_loss, label="box_loss", linewidth=2)
-        for name, values in history.extra_losses.items():
+        for name, values in _extra_loss_series(history).items():
             axes[0, 0].plot(epochs, values, label=name, linewidth=2)
         axes[0, 0].set_title("Training losses")
         axes[0, 0].set_ylabel("Loss")
