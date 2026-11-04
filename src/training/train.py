@@ -234,6 +234,7 @@ def main():
         roi_crop=config.roi_crop,
         roi_crop_margin=config.roi_crop_margin,
         roi_crop_jitter=config.roi_crop_jitter,
+        pixel_cache_dir=config.pixel_cache_dir,
         modality_ablation=config.modality_ablation,
     )
 
@@ -251,6 +252,7 @@ def main():
         roi_crop=config.roi_crop,
         roi_crop_margin=config.roi_crop_margin,
         roi_crop_jitter=config.roi_crop_jitter,
+        pixel_cache_dir=config.pixel_cache_dir,
         modality_ablation=config.modality_ablation,
     )
 

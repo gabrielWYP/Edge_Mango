@@ -44,6 +44,7 @@ def decode_detections(
     per_class_candidates: bool = True,
     max_detections: int = 300,
     normalize: bool = True,
+    ignore_classes: Sequence[int] = (),
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Decode raw anchor-free YOLO outputs into detections for one image.
 
@@ -94,6 +95,10 @@ def decode_detections(
         reg = p[num_classes:]  # (4, H, W)
 
         scores = c.sigmoid()  # (nc, H, W)
+        if len(ignore_classes) > 0:
+            # An untrained channel must not take detections from the capped list.
+            scores = scores.clone()
+            scores[list(ignore_classes)] = 0.0
 
         if per_class_candidates:
             mask = scores > conf_threshold  # (nc, H, W)

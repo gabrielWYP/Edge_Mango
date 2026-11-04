@@ -280,3 +280,15 @@ def test_a_save_killed_midway_leaves_the_previous_file_intact(tmp_path, monkeypa
     monkeypatch.undo()
 
     assert torch.load(path, weights_only=False) == {"epoch": 1}
+
+
+def test_the_same_pilot_overrides_are_not_another_experiment(tmp_path) -> None:
+    torch.manual_seed(7)
+    settings = {"pixel_cache_dir": "/c/rgb", "ignore_classes": [0]}
+    with pytest.raises(_Crash):
+        _trainer(tmp_path, crash_at=2, **settings).fit()
+
+    _trainer(tmp_path, resume=True, **settings).fit()
+
+    with pytest.raises(ValueError, match="ignore_classes"):
+        _trainer(tmp_path, resume=True, pixel_cache_dir="/c/rgb", ignore_classes=[]).fit()

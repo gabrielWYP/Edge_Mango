@@ -196,6 +196,8 @@ class YOLODataset(Dataset):
             bound. Assumes NIR is already in the RGB frame.
         roi_crop_margin: Per-side crop margin as a fraction of the mango box
             width/height (>= 0).
+        pixel_cache_dir: Folder from `scripts/build_pixel_cache.py`: read the stored pixels
+            instead of decoding the images. The output is the same, only faster.
         roi_crop_jitter: Half-range of the per-side margin scale in [0, 1].
             Applied only when `split == "train"`; val/test crops are
             deterministic. Its randomness comes from torch's global RNG (see
@@ -225,6 +227,7 @@ class YOLODataset(Dataset):
         roi_crop: bool = False,
         roi_crop_margin: float = 0.10,
         roi_crop_jitter: float = 0.0,
+        pixel_cache_dir: str | Path | None = None,
         modality_ablation: str = DEFAULT_MODALITY_ABLATION,
     ):
         validate_roi_crop(roi_crop_margin, roi_crop_jitter)
@@ -246,6 +249,9 @@ class YOLODataset(Dataset):
         self.roi_crop = roi_crop
         self.roi_crop_margin = roi_crop_margin
         self.roi_crop_jitter = roi_crop_jitter
+        self.pixel_cache_dir = Path(pixel_cache_dir) if pixel_cache_dir else None
+        if self.pixel_cache_dir is not None and not roi_crop:
+            raise ValueError("pixel_cache_dir stores only the mango window: it requires roi_crop.")
         self.modality_ablation = modality_ablation
         # Loaded once (fails loudly if missing); never per item.
         self.H_rgb_to_nir = (
@@ -418,6 +424,9 @@ class YOLODataset(Dataset):
         """
         pair = self.pairs[idx]
 
+        if self.pixel_cache_dir is not None:
+            return self._finish_item(pair, *self._load_cached_pixels(pair))
+
         # Load images (BGR for RGB, grayscale for NIR)
         rgb_img = cv2.imread(str(pair["rgb_path"]))  # (H, W, 3) BGR
         nir_img = cv2.imread(str(pair["nir_path"]), cv2.IMREAD_GRAYSCALE)  # (H, W)
@@ -430,9 +439,6 @@ class YOLODataset(Dataset):
         # Convert BGR to RGB
         rgb_img = cv2.cvtColor(rgb_img, cv2.COLOR_BGR2RGB)
 
-        # Load labels
-        bboxes, labels = self._load_labels(pair["label_path"])
-
         # Register NIR to the RGB frame (labels live in the RGB frame) before
         # any letterbox/augmentation. Border fill = the NIR letterbox pad value.
         if self.H_rgb_to_nir is not None:
@@ -440,6 +446,18 @@ class YOLODataset(Dataset):
             nir_img = register_nir_to_rgb(
                 nir_img, self.H_rgb_to_nir, (orig_w, orig_h), int(self.nir_mean * 255)
             )
+        return self._finish_item(pair, rgb_img, nir_img, None, (0, 0))
+
+    def _load_cached_pixels(self, pair: dict) -> tuple:
+        """The RGB and registered NIR that `scripts/build_pixel_cache.py` stored for this pair."""
+        with np.load(self.pixel_cache_dir / f"{Path(pair['rgb_path']).stem}.npz") as stored:
+            frame = tuple(int(x) for x in stored["frame_size"])
+            origin = tuple(int(x) for x in stored["origin"])
+            return stored["rgb"], stored["nir"], frame, origin
+
+    def _finish_item(self, pair, rgb_img, nir_img, frame_size, origin) -> dict:
+        """Crop, letterbox, augment and normalize one registered pair."""
+        bboxes, labels = self._load_labels(pair["label_path"])
 
         # Crop to the GT mango box (+ margin) so letterbox does not throw away
         # most of the resolution on background. After registration, so one
@@ -454,6 +472,8 @@ class YOLODataset(Dataset):
                 margin=self.roi_crop_margin,
                 margin_jitter=self._roi_crop_jitter_range(),
                 rng=self._roi_crop_rng(),
+                frame_size=frame_size,
+                origin=origin,
             )
 
         # Letterbox both images (RGB uses gray=114, NIR uses its own mean ~14)

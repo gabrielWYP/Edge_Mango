@@ -77,6 +77,88 @@ def test_the_nir_student_pads_like_the_nir_its_kd_teacher_input_will_have(tmp_pa
     assert not any(x.startswith("letterbox_value") for x in _train(args, "est_rgb"))
 
 
+def test_val_only_never_evaluates_on_test(tmp_path) -> None:
+    steps = rs.plan_arm(_args(tmp_path, "--val-only"), "kd_nir", 0, 42)
+    assert [s[0].rsplit("/", 1)[1] for s in steps] == ["train", "eval_val", "metrics_val"]
+    commands = [[str(x) for x in s[1]] for s in steps]
+    assert not any(x == "test" or "labels/test" in x for command in commands for x in command)
+
+
+def test_the_extra_override_reaches_training_and_evaluation(tmp_path) -> None:
+    steps = rs.plan_arm(_args(tmp_path, "--extra-override", "ignore_classes=[0]"), "est_rgb", 0, 42)
+    train, evaluation = [str(x) for x in steps[0][1]], [str(x) for x in steps[1][1]]
+    assert "ignore_classes=[0]" in train and "ignore_classes=[0]" in evaluation
+
+
+@pytest.mark.parametrize("arm, folder", [("est_nir", "nir_as_rgb"), ("est_rgb", "rgb"), ("kd_nir", "rgb")])
+def test_the_pixel_cache_follows_the_rgb_slot_and_only_in_training(tmp_path, arm, folder) -> None:
+    steps = rs.plan_arm(_args(tmp_path, "--pixel-cache-root", "/c"), arm, 0, 42)
+    assert f"pixel_cache_dir=/c/{folder}" in [str(x) for x in steps[0][1]]
+    assert not any("pixel_cache_dir" in str(x) for s in steps[1:] for x in s[1])
+
+
+def test_a_student_waits_for_its_teacher_and_the_limit_holds() -> None:
+    import threading
+    import time
+
+    lock, running, peak, finished, order = threading.Lock(), [0], [0], [], []
+
+    def run(arm, fold, seed):
+        with lock:
+            teacher = rs.ARMS[arm].teacher
+            assert teacher is None or (teacher, fold, seed) in finished
+            running[0] += 1
+            peak[0] = max(peak[0], running[0])
+            order.append(arm)
+        time.sleep(0.01)
+        with lock:
+            running[0] -= 1
+            finished.append((arm, fold, seed))
+        return 0
+
+    tasks = [(arm, fold, 42) for fold in range(3) for arm in rs.ARMS]
+    assert rs.schedule(tasks, 3, run) == 0
+    assert len(finished) == len(tasks) and peak[0] == 3
+
+
+def test_a_failure_starts_nothing_new_and_is_returned() -> None:
+    started = []
+
+    def run(arm, fold, seed):
+        started.append((arm, fold))
+        return 7 if arm == "est_rgb" else 0
+
+    tasks = [("est_rgb", 0, 42), ("kd_rgb", 0, 42), ("est_nir", 1, 42)]
+    assert rs.schedule(tasks, 1, run) == 7
+    assert started == [("est_rgb", 0)]
+
+
+def test_an_interrupt_stops_the_running_processes_at_once(monkeypatch) -> None:
+    import subprocess
+    import sys
+    import threading
+    import time
+
+    started = threading.Event()
+    real_wait = rs.wait
+
+    def run(arm, fold, seed):
+        started.set()
+        return rs._run_logged([sys.executable, "-c", "import time; time.sleep(60)"], None, dict(rs.os.environ))
+
+    def interrupted_wait(*args, **kwargs):
+        started.wait(5)
+        while not rs._children:
+            time.sleep(0.01)
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(rs, "wait", interrupted_wait)
+    begin = time.time()
+    with pytest.raises(KeyboardInterrupt):
+        rs.schedule([("est_rgb", 0, 42), ("est_nir", 0, 42)], 1, run)
+    assert time.time() - begin < 30 and not rs._children
+    assert real_wait is not None and subprocess is not None
+
 
 def _main(tmp_path: Path, monkeypatch, *extra: str) -> tuple[Path, list[list[str]]]:
     """Run `main` for one arm with fake steps; returns its run directory and the commands."""
@@ -84,13 +166,13 @@ def _main(tmp_path: Path, monkeypatch, *extra: str) -> tuple[Path, list[list[str
     calls: list[list[str]] = []
     run = tmp_path / "ckpt" / "est_rgb" / "fold0" / "seed42"
 
-    def execute(command, cwd):
+    def execute(command, log_path, env):
         calls.append([str(x) for x in command])
         if len(calls) == 1:
             (run / "best_model.pt").write_bytes(b"trained")
         return 0
 
-    monkeypatch.setattr(rs.rk, "_execute", execute)
+    monkeypatch.setattr(rs, "_run_logged", execute)
     code = rs.main([
         "--dataset", str(tmp_path), "--weights", "w.pt", "--arms", "est_rgb", "--folds", "0",
         "--checkpoints-root", str(tmp_path / "ckpt"), "--reports-root", str(tmp_path / "reports"), *extra,
@@ -141,3 +223,26 @@ def test_a_finished_training_is_not_run_again(tmp_path, monkeypatch) -> None:
     assert "src.training.train" in first[0]
     assert not any("src.training.train" in command for command in second)
     assert (run / rs.rk.COMPLETE_MARKER).is_file()
+
+
+def test_a_continued_pilot_keeps_its_overrides_and_never_reaches_test(tmp_path, monkeypatch) -> None:
+    run = _interrupted_run(tmp_path)
+    _, calls = _main(
+        tmp_path, monkeypatch, "--val-only", "--pixel-cache-root", "/c", "--extra-override", "ignore_classes=[0]",
+    )
+
+    train, evaluation = calls[0], calls[1]
+    assert train[-2:] == ["--resume", str(run / rs.rk.RESUME_STATE)]
+    assert "pixel_cache_dir=/c/rgb" in train and "ignore_classes=[0]" in train
+    assert "pixel_cache_dir=/c/rgb" not in evaluation and "ignore_classes=[0]" in evaluation
+    assert not any(x == "test" or "labels/test" in x for command in calls for x in command)
+
+
+def test_a_continued_run_appends_to_its_log(tmp_path, monkeypatch) -> None:
+    import sys
+
+    log = tmp_path / "run.log"
+    command = [sys.executable, "-c", "print('attempt')"]
+    assert rs._run_logged(command, log, dict(rs.os.environ)) == 0
+    assert rs._run_logged(command, log, dict(rs.os.environ)) == 0
+    assert log.read_text().count("attempt") == 2

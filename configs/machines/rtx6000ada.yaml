@@ -1,0 +1,9 @@
+# Machine profile: RTX 6000 Ada (49 GB, 48 CPU threads), for several runs at once.
+#
+# HOW the run executes only — see gtx1660s.yaml for the whitelist rules.
+# With effective_batch=8, batch_size=8 gives grad_accum_steps=1, the batch of the KD arms.
+device: cuda
+batch_size: 8
+num_workers: 8
+pin_memory: true
+precision: fp32

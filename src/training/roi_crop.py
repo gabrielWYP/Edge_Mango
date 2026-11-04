@@ -59,6 +59,8 @@ def crop_to_roi(
     margin_jitter: float = 0.0,
     rng: np.random.Generator | None = None,
     min_visible: float = 0.5,
+    frame_size: tuple[int, int] | None = None,
+    origin: tuple[int, int] = (0, 0),
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Crop both modalities to the largest `roi_class` box plus a margin.
 
@@ -81,6 +83,10 @@ def crop_to_roi(
         min_visible: A box whose area inside the window is below this
             fraction of its original area is dropped together with its label.
             Boxes with no visible area are always dropped.
+
+        frame_size: `(height, width)` of the full frame when `rgb` and `nir` hold only part
+            of it, as in the pixel cache. `bboxes` stay normalized to the full frame.
+        origin: `(x, y)` of `rgb[0, 0]` in the full frame.
 
     Returns:
         (rgb_c, nir_c, bboxes_c, labels_c). Boxes are float32 `(N, 4)` YOLO
@@ -109,7 +115,7 @@ def crop_to_roi(
     if roi_candidates.size == 0:
         return rgb, nir, bboxes, labels
 
-    height, width = rgb.shape[:2]
+    height, width = frame_size if frame_size is not None else rgb.shape[:2]
     boxes = bboxes.astype(np.float64)
 
     # ROI in full-frame pixels (largest box of the class; ties -> first).
@@ -162,6 +168,13 @@ def crop_to_roi(
         ],
         axis=1,
     )
-    rgb_c = np.ascontiguousarray(rgb[y_min:y_max, x_min:x_max])
-    nir_c = np.ascontiguousarray(nir[y_min:y_max, x_min:x_max])
+    x0, y0 = origin
+    if x_min < x0 or y_min < y0 or x_max - x0 > rgb.shape[1] or y_max - y0 > rgb.shape[0]:
+        raise ValueError(
+            f"Crop window ({x_min}, {y_min}, {x_max}, {y_max}) falls outside the stored part of "
+            f"the frame, which starts at {origin} with shape {rgb.shape[:2]}: the pixel cache "
+            "was built for a smaller margin."
+        )
+    rgb_c = np.ascontiguousarray(rgb[y_min - y0:y_max - y0, x_min - x0:x_max - x0])
+    nir_c = np.ascontiguousarray(nir[y_min - y0:y_max - y0, x_min - x0:x_max - x0])
     return rgb_c, nir_c, cropped[keep].astype(np.float32), labels[keep]

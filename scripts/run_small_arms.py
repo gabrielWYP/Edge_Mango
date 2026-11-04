@@ -3,13 +3,18 @@
 
     est_rgb   labels only, on RGB. Baseline of H1 and H2.
     est_nir   labels only, on NIR. H1: est_nir against est_rgb.
-    kd_nir    RGB student distilled from est_nir of its fold and seed. H2: against est_rgb.
-    kd_rgb    RGB student distilled from est_rgb of its fold and seed. Control of H2.
+    kd_nir    RGB student distilled from est_nir of its fold and seed. H2: against kd_rgb.
+    kd_rgb    RGB student distilled from est_rgb of its fold and seed. Baseline of H2.
 
 Every run is evaluated on val and test, with predictions and metrics_v4.json, under
 `<reports-root>/<arm>/fold<k>_seed<S>/<split>/`, the layout of `scripts/aggregate_kfold.py`.
 Re-run the same command to resume: finished steps are skipped, and an interrupted training continues from
 its last finished epoch (`--no-resume` trains it from scratch). A state from other settings stops the step.
+A finished run is recognized by its folder alone, so a change of settings needs new roots.
+
+`--val-only` leaves out every test evaluation: it is what a pilot uses before the pre-registration.
+`--jobs` runs that many (arm, fold, seed) at once, each student after its teacher, with one log per
+run under `<reports-root>/logs/`. A failure stops new runs and lets the ones in progress finish.
 
 The NIR arm reads `--nir-as-rgb-dir`, made with `--make-nir-as-rgb`: links named like the RGB files.
 
@@ -21,7 +26,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import subprocess
 import sys
+import threading
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -69,6 +78,11 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--reports-root", type=Path, default=Path("reports/v4_small"))
     parser.add_argument("--machine", type=Path, default=Path("configs/machines/rtx3080.yaml"))
     parser.add_argument("--python", default=sys.executable)
+    parser.add_argument("--val-only", action="store_true", help="no evaluation on the test lot")
+    parser.add_argument("--extra-override", nargs="*", default=[], help="key=value on every training and evaluation")
+    parser.add_argument("--pixel-cache-root", type=Path, default=None,
+                        help="with rgb/ and nir_as_rgb/ from build_pixel_cache.py; only for speed")
+    parser.add_argument("--jobs", type=int, default=1, help="runs at the same time")
     parser.add_argument("--no-resume", action="store_true", help="train interrupted runs from scratch")
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args(argv)
@@ -99,6 +113,7 @@ def plan_arm(args, arm_name: str, fold: int, seed: int) -> list[tuple[str, list[
         f"nir_mean={roi['mean']}",
         f"nir_std={roi['std']}",
         f"student_variant={args.variant}",
+        *args.extra_override,
     ]
     if arm.reads_nir:
         # The dataset pads NIR with its mean and RGB with 114. This keeps the pad of
@@ -106,6 +121,9 @@ def plan_arm(args, arm_name: str, fold: int, seed: int) -> list[tuple[str, list[
         data.append(f"letterbox_value={int(roi['mean'] * 255)}")
     run = rk.run_path(args.checkpoints_root, arm_name, fold, seed)
     weights = [f"student_pretrained_path={args.weights}"] if args.weights else []
+    if args.pixel_cache_root:
+        # Training only: the final evaluations read the images themselves.
+        weights.append(f"pixel_cache_dir={args.pixel_cache_root / ('nir_as_rgb' if arm.reads_nir else 'rgb')}")
     common = [*data, *PROTOCOL, f"seed={seed}", f"epochs={args.epochs}", f"output_dir={run}"]
     if arm.teacher:
         teacher = rk.run_path(args.checkpoints_root, arm.teacher, fold, seed) / rk.CHECKPOINT
@@ -123,7 +141,7 @@ def plan_arm(args, arm_name: str, fold: int, seed: int) -> list[tuple[str, list[
     key = f"{arm_name}/fold{fold}/seed{seed}"
     steps: list[tuple[str, list[str], Path | None]] = [(f"{key}/train", train, run)]
     report = rk.report_run_dir(args.reports_root, arm_name, fold, seed)
-    for split in ("val", "test"):
+    for split in ("val",) if args.val_only else ("val", "test"):
         out = report / split
         steps.append((
             f"{key}/eval_{split}",
@@ -146,6 +164,104 @@ def plan_arm(args, arm_name: str, fold: int, seed: int) -> list[tuple[str, list[
     return steps
 
 
+_children: set[subprocess.Popen] = set()
+_children_lock = threading.Lock()
+
+
+def _stop_children() -> None:
+    with _children_lock:
+        for process in _children:
+            process.terminate()
+
+
+def _run_logged(command: list[str], log_path: Path | None, env: dict[str, str]) -> int:
+    """Run one step, to its log or to this terminal, so that an interrupt can stop it."""
+    handle = open(log_path, "a") if log_path else None
+    try:
+        process = subprocess.Popen(
+            [str(x) for x in command], cwd=PROJECT_ROOT, env=env,
+            stdout=handle, stderr=subprocess.STDOUT if handle else None,
+        )
+        with _children_lock:
+            _children.add(process)
+        try:
+            return process.wait()
+        finally:
+            with _children_lock:
+                _children.discard(process)
+    finally:
+        if handle:
+            handle.close()
+
+
+def run_task(args, arm_name: str, fold: int, seed: int, env: dict[str, str]) -> int:
+    """Every pending step of one (arm, fold, seed), in order; the first failure's exit code, or 0."""
+    log_path = None
+    if args.jobs > 1:
+        log_path = args.reports_root / "logs" / f"{arm_name}_fold{fold}_seed{seed}.log"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+    for key, command, marker in plan_arm(args, arm_name, fold, seed):
+        is_train = key.endswith("/train")
+        if rk.is_train_complete(marker) if is_train else marker.exists():
+            continue
+        step = command
+        if is_train:
+            state, _ = rk.prepare_training(marker, IDENTITY, resume=not args.no_resume)
+            if state is not None:
+                # Not part of the marker's command: it is that of the run, not of this attempt.
+                step = [*command, "--resume", str(state)]
+        print(f"START {key}{' (continuing)' if step is not command else ''}", flush=True)
+        code = _run_logged(step, log_path, env)
+        print(f"END {key} exit {code}", flush=True)
+        if code != 0:
+            return code
+        if is_train:
+            rk.mark_train_complete(marker, [str(x) for x in command], IDENTITY)
+    return 0
+
+
+def schedule(tasks: list[tuple[str, int, int]], jobs: int, run) -> int:
+    """Run `(arm, fold, seed)` tasks, at most `jobs` at once and each student after its teacher.
+
+    A teacher outside `tasks` must have finished already: its absence stops the student's step.
+    A failure starts nothing new. Returns the first non-zero exit code, or 0.
+    """
+    pending = list(tasks)
+    planned = set(tasks)
+    finished: set[tuple[str, int, int]] = set()
+    first_failure = 0
+    running: dict = {}
+
+    def ready(task: tuple[str, int, int]) -> bool:
+        teacher = ARMS[task[0]].teacher
+        needed = (teacher, task[1], task[2])
+        return teacher is None or needed not in planned or needed in finished
+
+    with ThreadPoolExecutor(jobs) as pool:
+        try:
+            while running or (pending and not first_failure):
+                if not first_failure:
+                    for task in [t for t in pending if ready(t)][: jobs - len(running)]:
+                        pending.remove(task)
+                        running[pool.submit(run, *task)] = task
+                if not running:  # only students whose teacher failed are left
+                    break
+                done, _ = wait(running, return_when=FIRST_COMPLETED)
+                for future in done:
+                    task = running.pop(future)
+                    code = future.result()
+                    if code == 0:
+                        finished.add(task)
+                    elif not first_failure:
+                        first_failure = code
+        except BaseException:
+            # Leaving this block waits for the threads, which wait for their processes.
+            pending.clear()
+            _stop_children()
+            raise
+    return first_failure
+
+
 def main(argv=None) -> int:
     args = parse_args(argv)
     args.nir_as_rgb_dir = args.nir_as_rgb_dir or args.dataset.parent / "v4_nir_as_rgb_clahe"
@@ -153,34 +269,23 @@ def main(argv=None) -> int:
         print(f"{make_nir_as_rgb(args.dataset, args.nir_as_rgb_dir)} NIR links in {args.nir_as_rgb_dir}")
     # Teachers first within each fold and seed, whatever order --arms has.
     order = sorted(args.arms, key=lambda name: ARMS[name].teacher is not None)
-    done = 0
-    for seed in args.seeds:
-        for fold in args.folds:
-            for arm_name in order:
-                for key, command, marker in plan_arm(args, arm_name, fold, seed):
-                    is_train = key.endswith("/train")
-                    finished = rk.is_train_complete(marker) if is_train else marker.exists()
-                    if args.dry_run:
-                        print(f"[{'skip' if finished else 'run'}] {key}: {' '.join(map(str, command))}")
-                        continue
-                    if finished:
-                        continue
-                    step = command
-                    if is_train:
-                        state, _ = rk.prepare_training(marker, IDENTITY, resume=not args.no_resume)
-                        if state is not None:
-                            # Not part of the marker's command: it is that of the run, not of this attempt.
-                            step = [*command, "--resume", str(state)]
-                    print(f"START {key}{' (continuing)' if step is not command else ''}", flush=True)
-                    code = rk._execute(step, PROJECT_ROOT)
-                    print(f"END {key} exit {code}", flush=True)
-                    if code != 0:
-                        return code
-                    if is_train:
-                        rk.mark_train_complete(marker, command, IDENTITY)
-                    done += 1
-    print(f"Done: {done} steps")
-    return 0
+    tasks = [(arm, fold, seed) for seed in args.seeds for fold in args.folds for arm in order]
+    if args.dry_run:
+        for arm, fold, seed in tasks:
+            for key, command, marker in plan_arm(args, arm, fold, seed):
+                finished = rk.is_train_complete(marker) if key.endswith("/train") else marker.exists()
+                print(f"[{'skip' if finished else 'run'}] {key}: {' '.join(map(str, command))}")
+        return 0
+    env = dict(os.environ)
+    if args.jobs > 1:
+        env.setdefault("OMP_NUM_THREADS", "2")
+    try:
+        with rk._interrupt_on_termination():
+            code = schedule(tasks, args.jobs, lambda arm, fold, seed: run_task(args, arm, fold, seed, env))
+    except KeyboardInterrupt:
+        return 130
+    print(f"Done: {len(tasks)} runs" if code == 0 else f"Stopped: exit {code}")
+    return code
 
 
 if __name__ == "__main__":
