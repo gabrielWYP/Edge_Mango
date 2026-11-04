@@ -41,6 +41,17 @@ IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]
 
 
+def nir_as_rgb_tensor(nir: torch.Tensor, nir_mean: float, nir_std: float) -> torch.Tensor:
+    """(N, 3, H, W) NIR normalized as RGB, from a (N, 1, H, W) dataset NIR tensor.
+
+    It is what a model reads when the NIR images replace its RGB directory: the
+    gray file loaded with three equal channels, under the ImageNet normalization.
+    """
+    mean = nir.new_tensor(IMAGENET_MEAN).view(1, 3, 1, 1)
+    std = nir.new_tensor(IMAGENET_STD).view(1, 3, 1, 1)
+    return ((nir * nir_std + nir_mean).repeat(1, 3, 1, 1) - mean) / std
+
+
 def letterbox(
     image: np.ndarray,
     target_size: int = 640,

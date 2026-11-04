@@ -44,6 +44,7 @@ from .fusion_modes import (
     use_nir_from_checkpoint,
     validate_kd_modality_ablation,
 )
+from .dataset import nir_as_rgb_tensor
 from .kd_config import KDConfig
 from .kd_loss import KDLoss
 from .loop import Trainer
@@ -51,7 +52,9 @@ from .neck_norm import neck_norm_from_checkpoint
 from .precision import autocast_ctx
 from .strides import STUDENT_STRIDES, select_by_strides
 from src.models.master.master_model import MasterModel
+from src.models.student.student_model import StudentModel, strip_legacy_kd_adapter_keys
 from src.models.master.distill_projections import (
+    ProjectionLayers,
     backbone_projections,
     fpn_projections,
     head_projections,
@@ -92,18 +95,22 @@ class KDTrainer(Trainer):
 
         # Student → teacher adapters (FitNets regressors). Trainer-owned,
         # NOT student submodules: see the module docstring.
-        self.kd_adapters = nn.ModuleDict({
-            "backbone": backbone_projections(),
-            "fpn": fpn_projections(),
-            "head_cls": head_projections(),
-            "head_reg": head_projections(),
-        }).to(self.device)
-
         # Load frozen teacher — stored as plain attribute, NOT a submodule.
         # This ensures teacher params are excluded from:
         #   - optimizer.param_groups (built in _train_phase via self.model.parameters())
         #   - model.state_dict() (used in inherited _save_checkpoint)
-        self.teacher = self._load_teacher(config)
+        if config.teacher_kind == "student":
+            self.teacher = self._load_student_teacher(config)
+            self.kd_adapters = self._student_teacher_adapters(model, self.teacher)
+        else:
+            self.teacher = self._load_teacher(config)
+            self.kd_adapters = nn.ModuleDict({
+                "backbone": backbone_projections(),
+                "fpn": fpn_projections(),
+                "head_cls": head_projections(),
+                "head_reg": head_projections(),
+            })
+        self.kd_adapters.to(self.device)
         self.teacher.to(self.device)
 
         # KD loss
@@ -120,6 +127,75 @@ class KDTrainer(Trainer):
     def _auxiliary_checkpoint_state(self) -> dict:
         """Persist the adapters next to (not inside) `model_state_dict`."""
         return {"kd_adapters_state_dict": self.kd_adapters.state_dict()}
+
+    @staticmethod
+    def _student_teacher_adapters(student: StudentModel, teacher: StudentModel) -> nn.ModuleDict:
+        """1x1 adapters between two students, with the channels each one really has."""
+        def channels(model: StudentModel) -> dict[str, list[int]]:
+            head = [h.cls_stem[0].conv.out_channels for h in model.head.heads]
+            return {
+                "backbone": [128, 256],
+                "fpn": list(model.neck.OUTPUT_CHANNELS),
+                "head_cls": head,
+                "head_reg": head,
+            }
+
+        s, t = channels(student), channels(teacher)
+        return nn.ModuleDict({
+            name: ProjectionLayers(teacher_channels=t[name], student_channels=s[name])
+            for name in s
+        })
+
+    @staticmethod
+    def _load_student_teacher(config: KDConfig) -> StudentModel:
+        """Load a frozen StudentModel, in the variant recorded in its checkpoint."""
+        ckpt_path = Path(config.teacher_checkpoint)
+        if not ckpt_path.exists():
+            raise FileNotFoundError(f"Teacher checkpoint not found: {ckpt_path}")
+        checkpoint = torch.load(str(ckpt_path), map_location="cpu", weights_only=False)
+        variant = (checkpoint.get("config") or {}).get("student_variant", "wide")
+        teacher = StudentModel(num_classes=config.num_classes, variant=variant)
+        teacher.load_state_dict(strip_legacy_kd_adapter_keys(checkpoint["model_state_dict"]))
+        teacher.eval()
+        for param in teacher.parameters():
+            param.requires_grad = False
+        print(f"[KDTrainer] Student teacher ({variant}, reads {config.teacher_input}) "
+              f"loaded from {ckpt_path}")
+        return teacher
+
+    def _teacher_features(self, rgb: torch.Tensor, nir: torch.Tensor) -> dict:
+        """The teacher's features at the student's levels. Call under no_grad."""
+        if self.config.teacher_kind == "student":
+            x = rgb
+            if self.config.teacher_input == "nir":
+                x = nir_as_rgb_tensor(nir, self.config.nir_mean, self.config.nir_std)
+            t_out = self.teacher(x)
+            return {
+                "backbone": t_out["distill_backbone"],
+                "fpn": t_out["distill_fpn"],
+                "head_cls": t_out["distill_head_cls"],
+                "head_reg": t_out["distill_head_reg"],
+            }
+        t_out = self.teacher(rgb, nir)
+        # `distill_backbone` (renamed from `distill_backbone_rgb`,
+        # fusion-redesign W7/W4): the teacher's backbone is now
+        # a single early-fused stream, so this is no longer an
+        # "RGB-only" feature set — it carries NIR information
+        # too (design.md D-5). [2:] still selects S3, S4;
+        # channels [384, 768] are unchanged.
+        # fusion-redesign D-3/§5: the teacher may emit more
+        # pyramid/head levels than the student's fixed 3
+        # (default head_strides=[4,8,16,32] vs the student's
+        # [8,16,32]). Select the matching levels by stride,
+        # not by position — a positional zip/truncation would
+        # silently distill P2/P3/P4 into student P3/P4/P5.
+        strides = self.teacher.head_strides
+        return {
+            "backbone": t_out["distill_backbone"][2:],
+            "fpn": select_by_strides(t_out["distill_fpn"], strides, STUDENT_STRIDES),
+            "head_cls": select_by_strides(t_out["distill_head_cls"], strides, STUDENT_STRIDES),
+            "head_reg": select_by_strides(t_out["distill_head_reg"], strides, STUDENT_STRIDES),
+        }
 
     @staticmethod
     def _load_teacher(config: KDConfig) -> MasterModel:
@@ -249,30 +325,7 @@ class KDTrainer(Trainer):
                 with autocast_ctx(self.device.type, self.config.precision):
                     # --- Teacher forward (no grad) ---
                     with torch.no_grad():
-                        t_out = self.teacher(rgb, nir)
-                        # `distill_backbone` (renamed from `distill_backbone_rgb`,
-                        # fusion-redesign W7/W4): the teacher's backbone is now
-                        # a single early-fused stream, so this is no longer an
-                        # "RGB-only" feature set — it carries NIR information
-                        # too (design.md D-5). [2:] still selects S3, S4;
-                        # channels [384, 768] are unchanged.
-                        t_backbone = t_out["distill_backbone"][2:]
-                        # fusion-redesign D-3/§5: the teacher may emit more
-                        # pyramid/head levels than the student's fixed 3
-                        # (default head_strides=[4,8,16,32] vs the student's
-                        # [8,16,32]). Select the matching levels by stride,
-                        # not by position — a positional zip/truncation would
-                        # silently distill P2/P3/P4 into student P3/P4/P5.
-                        teacher_strides = self.teacher.head_strides
-                        fpn_for_student = select_by_strides(
-                            t_out["distill_fpn"], teacher_strides, STUDENT_STRIDES
-                        )
-                        head_cls_for_student = select_by_strides(
-                            t_out["distill_head_cls"], teacher_strides, STUDENT_STRIDES
-                        )
-                        head_reg_for_student = select_by_strides(
-                            t_out["distill_head_reg"], teacher_strides, STUDENT_STRIDES
-                        )
+                        kd_teacher = self._teacher_features(rgb, nir)
 
                     # --- Student forward (RGB only) ---
                     s_out = self.model(rgb)
@@ -292,12 +345,6 @@ class KDTrainer(Trainer):
                     det_loss, det_dict = self.criterion(s_out["preds"], targets)
 
                     # --- KD loss ---
-                    kd_teacher = {
-                        "backbone": t_backbone,
-                        "fpn": fpn_for_student,
-                        "head_cls": head_cls_for_student,
-                        "head_reg": head_reg_for_student,
-                    }
                     kd_loss, kd_per_level = self.kd_criterion(kd_teacher, adapted_student)
 
                     # --- Total loss ---

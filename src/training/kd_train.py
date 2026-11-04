@@ -29,6 +29,7 @@ from src.training.run_artifacts import (
     finalize_stage,
     write_run_summary,
 )
+from src.models.student.pretrained import load_yolov8n_weights
 from src.models.student.student_model import StudentModel
 
 
@@ -187,10 +188,13 @@ def main():
         pin_memory=config.pin_memory,
     )
 
-    # Create student model. The KD adapters are sized for the wide student's channels.
-    if config.student_variant != "wide":
-        raise ValueError(f"KD does not support student_variant={config.student_variant!r} yet.")
-    model = StudentModel(num_classes=config.num_classes)
+    # Create student model. A master teacher's adapters are sized for the wide student's channels.
+    if config.teacher_kind == "master" and config.student_variant != "wide":
+        raise ValueError(f"A master teacher needs the wide student, not {config.student_variant!r}.")
+    model = StudentModel(num_classes=config.num_classes, variant=config.student_variant)
+    if config.student_pretrained_path:
+        report = load_yolov8n_weights(model, config.student_pretrained_path)
+        print(f"Pretrained {config.student_pretrained_path}: {report['loaded']} tensors loaded")
     params = model.count_parameters()
     print(f"StudentModel parameters: {params['total']:,} total")
 
