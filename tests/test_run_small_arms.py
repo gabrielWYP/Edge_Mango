@@ -66,3 +66,13 @@ def test_links_carry_the_rgb_name_and_are_not_redone(tmp_path) -> None:
     assert rs.make_nir_as_rgb(tmp_path, target) == 1
     assert rs.make_nir_as_rgb(tmp_path, target) == 1
     assert (target / "mango_rgb_7.jpg").resolve() == (nir / "mango_nir_7.png").resolve()
+
+
+def test_the_nir_student_pads_like_the_nir_its_kd_teacher_input_will_have(tmp_path) -> None:
+    args = _args(tmp_path)
+    expected = f"letterbox_value={int(0.31 * 255)}"
+    steps = rs.plan_arm(args, "est_nir", 0, 42)
+    assert expected in [str(x) for x in steps[0][1]]  # training
+    assert expected in [str(x) for x in steps[1][1]]  # evaluation
+    assert not any(x.startswith("letterbox_value") for x in _train(args, "est_rgb"))
+

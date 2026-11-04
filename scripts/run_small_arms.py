@@ -94,6 +94,10 @@ def plan_arm(args, arm_name: str, fold: int, seed: int) -> list[tuple[str, list[
         f"nir_std={roi['std']}",
         f"student_variant={args.variant}",
     ]
+    if arm.reads_nir:
+        # The dataset pads NIR with its mean and RGB with 114. This keeps the pad of
+        # the NIR student equal to the one its KD input has as a teacher.
+        data.append(f"letterbox_value={int(roi['mean'] * 255)}")
     run = rk.run_path(args.checkpoints_root, arm_name, fold, seed)
     weights = [f"student_pretrained_path={args.weights}"] if args.weights else []
     common = [*data, *PROTOCOL, f"seed={seed}", f"epochs={args.epochs}", f"output_dir={run}"]
