@@ -101,6 +101,102 @@ def _cxcywh_to_xyxy(boxes: torch.Tensor) -> torch.Tensor:
     return torch.stack([cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2], dim=-1)
 
 
+@dataclass(frozen=True)
+class _RankedClass:
+    """One class's predictions, best score first, each with its best GT overlap.
+
+    Matching against a threshold needs only these, so the 11 thresholds of one
+    evaluation share a single, costly, IoU computation.
+    """
+
+    n_gt: int
+    best_iou: torch.Tensor  # (P,), -1 when the prediction's image has no GT of the class
+    match_key: torch.Tensor  # (P,), identifies the (image, GT) pair of `best_iou`
+
+
+def _rank_class(
+    pred_boxes: list[torch.Tensor],
+    pred_scores: list[torch.Tensor],
+    pred_labels: list[torch.Tensor],
+    gt_boxes: list[torch.Tensor],
+    gt_labels: list[torch.Tensor],
+    cls_id: int,
+) -> _RankedClass:
+    """Rank a class's predictions and find the best GT of each."""
+    scores, best_ious, match_keys = [], [], []
+    n_gt = 0
+    max_gts = max((int((labels == cls_id).sum()) for labels in gt_labels), default=0) + 1
+
+    for image_idx, (boxes_i, scores_i, labels_i, gt_boxes_i, gt_labels_i) in enumerate(
+        zip(pred_boxes, pred_scores, pred_labels, gt_boxes, gt_labels)
+    ):
+        gts = gt_boxes_i[gt_labels_i == cls_id]
+        n_gt += len(gts)
+        pred_mask = labels_i == cls_id
+        boxes = boxes_i[pred_mask]
+        if len(boxes) == 0:
+            continue
+        scores.append(scores_i[pred_mask])
+        if len(gts) == 0:
+            best_iou = torch.full((len(boxes),), -1.0)
+            best_gt = torch.zeros(len(boxes), dtype=torch.int64)
+        else:
+            best_iou, best_gt = box_iou(boxes, gts).max(dim=1)
+        best_ious.append(best_iou)
+        match_keys.append(image_idx * max_gts + best_gt)
+
+    if not scores:
+        return _RankedClass(n_gt, torch.zeros(0), torch.zeros(0, dtype=torch.int64))
+    # Stable, so that predictions with equal scores stay in image order.
+    order = torch.cat(scores).sort(descending=True, stable=True).indices
+    return _RankedClass(n_gt, torch.cat(best_ious)[order], torch.cat(match_keys)[order])
+
+
+def _ap_of_ranked_class(ranked: _RankedClass, iou_threshold: float) -> float:
+    """All-point AP of a ranked class: each GT matches its first prediction above the threshold."""
+    if ranked.n_gt == 0 or len(ranked.best_iou) == 0:
+        return 0.0
+
+    candidates = torch.nonzero(ranked.best_iou >= iou_threshold).squeeze(1)
+    tp = torch.zeros(len(ranked.best_iou))
+    if len(candidates) > 0:
+        # `return_index` gives each key's first position, the best-ranked prediction.
+        _, first = np.unique(ranked.match_key[candidates].numpy(), return_index=True)
+        tp[candidates[torch.from_numpy(first)]] = 1
+    fp = 1 - tp
+
+    # Compute precision-recall curve
+    cum_tp = tp.cumsum(0)
+    cum_fp = fp.cumsum(0)
+
+    precision = cum_tp / (cum_tp + cum_fp)
+    recall = cum_tp / ranked.n_gt
+
+    # All-point interpolation (VOC2010+)
+    # Prepend 0 and append 0 for proper integration
+    recall = torch.cat([torch.tensor([0.0]), recall, torch.tensor([1.0])])
+    precision = torch.cat([torch.tensor([0.0]), precision, torch.tensor([0.0])])
+
+    # Make precision monotonically decreasing
+    precision = precision.flip(0).cummax(0).values.flip(0)
+
+    # Compute AP as area under PR curve
+    recall_diff = recall[1:] - recall[:-1]
+    return (recall_diff * precision[1:]).sum().item()
+
+
+def _ap_from_ranked(
+    ranked: dict[int, _RankedClass], iou_threshold: float
+) -> tuple[float, dict[int, float]]:
+    """mAP and per-class AP of already ranked classes at one IoU threshold."""
+    per_class_ap = {
+        cls_id: _ap_of_ranked_class(class_ranking, iou_threshold)
+        for cls_id, class_ranking in ranked.items()
+    }
+    mAP = np.mean(list(per_class_ap.values())) if per_class_ap else 0.0
+    return float(mAP), per_class_ap
+
+
 def _compute_ap_at_iou(
     pred_boxes: list[torch.Tensor],
     pred_scores: list[torch.Tensor],
@@ -127,77 +223,11 @@ def _compute_ap_at_iou(
         mAP: Mean AP across all classes.
         per_class_ap: Dict mapping class_id → AP.
     """
-    per_class_ap = {}
-
-    for cls_id in range(num_classes):
-        class_predictions: list[tuple[float, int, torch.Tensor]] = []
-        class_gt_boxes: list[torch.Tensor] = []
-
-        for image_idx, (boxes_i, scores_i, labels_i, gt_boxes_i, gt_labels_i) in enumerate(
-            zip(pred_boxes, pred_scores, pred_labels, gt_boxes, gt_labels)
-        ):
-            pred_mask = labels_i == cls_id
-            for box, score in zip(boxes_i[pred_mask], scores_i[pred_mask]):
-                class_predictions.append((float(score.item()), image_idx, box))
-
-            gt_mask = gt_labels_i == cls_id
-            class_gt_boxes.append(gt_boxes_i[gt_mask])
-
-        n_gt = sum(len(boxes_i) for boxes_i in class_gt_boxes)
-        if n_gt == 0:
-            per_class_ap[cls_id] = 0.0
-            continue
-
-        if not class_predictions:
-            per_class_ap[cls_id] = 0.0
-            continue
-
-        class_predictions.sort(key=lambda item: item[0], reverse=True)
-
-        matched_gt = set()
-        tp = torch.zeros(len(class_predictions))
-        fp = torch.zeros(len(class_predictions))
-
-        for i, (_, image_idx, pred_box) in enumerate(class_predictions):
-            gt_boxes_i = class_gt_boxes[image_idx]
-            if len(gt_boxes_i) == 0:
-                fp[i] = 1
-                continue
-
-            ious = box_iou(pred_box.unsqueeze(0), gt_boxes_i).squeeze(0)
-            best_iou, best_gt = ious.max(dim=0)
-            match_key = (image_idx, best_gt.item())
-            if best_iou >= iou_threshold and match_key not in matched_gt:
-                tp[i] = 1
-                matched_gt.add(match_key)
-            else:
-                fp[i] = 1
-
-        # Compute precision-recall curve
-        cum_tp = tp.cumsum(0)
-        cum_fp = fp.cumsum(0)
-
-        precision = cum_tp / (cum_tp + cum_fp)
-        recall = cum_tp / n_gt
-
-        # All-point interpolation (VOC2010+)
-        # Prepend 0 and append 0 for proper integration
-        recall = torch.cat([torch.tensor([0.0]), recall, torch.tensor([1.0])])
-        precision = torch.cat([torch.tensor([0.0]), precision, torch.tensor([0.0])])
-
-        # Make precision monotonically decreasing
-        for i in range(len(precision) - 2, -1, -1):
-            precision[i] = precision[i].max(precision[i + 1])
-
-        # Compute AP as area under PR curve
-        recall_diff = recall[1:] - recall[:-1]
-        ap = (recall_diff * precision[1:]).sum()
-
-        per_class_ap[cls_id] = ap.item()
-
-    # Mean AP across all classes
-    mAP = np.mean(list(per_class_ap.values())) if per_class_ap else 0.0
-    return float(mAP), per_class_ap
+    ranked = {
+        cls_id: _rank_class(pred_boxes, pred_scores, pred_labels, gt_boxes, gt_labels, cls_id)
+        for cls_id in range(num_classes)
+    }
+    return _ap_from_ranked(ranked, iou_threshold)
 
 
 def _compute_operating_point(
@@ -294,11 +324,15 @@ def compute_map(
         for boxes in gt_boxes
     ]
 
+    ranked = {
+        cls_id: _rank_class(
+            pred_boxes_xyxy, pred_scores, pred_labels, gt_boxes_xyxy, gt_labels, cls_id
+        )
+        for cls_id in range(num_classes)
+    }
+
     # mAP@0.5
-    map50, per_class_50 = _compute_ap_at_iou(
-        pred_boxes_xyxy, pred_scores, pred_labels,
-        gt_boxes_xyxy, gt_labels, 0.5, num_classes,
-    )
+    map50, per_class_50 = _ap_from_ranked(ranked, 0.5)
 
     # mAP@0.5:0.95 (COCO-style, 10 thresholds)
     thresholds = [0.50 + 0.05 * i for i in range(10)]
@@ -306,10 +340,7 @@ def compute_map(
     per_class_95 = {c: 0.0 for c in range(num_classes)}
 
     for thresh in thresholds:
-        mAP_t, pc_t = _compute_ap_at_iou(
-            pred_boxes_xyxy, pred_scores, pred_labels,
-            gt_boxes_xyxy, gt_labels, thresh, num_classes,
-        )
+        mAP_t, pc_t = _ap_from_ranked(ranked, thresh)
         maps_per_thresh.append(mAP_t)
         for c in range(num_classes):
             per_class_95[c] += pc_t.get(c, 0.0)
