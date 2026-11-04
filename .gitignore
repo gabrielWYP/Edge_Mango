@@ -97,3 +97,5 @@ checkpoints/v4/
 checkpoints/v4_pilots/
 reports/v4/
 reports/e0-detectability/boxes-final/patches.csv
+checkpoints/v4_small/
+reports/v4_small/

@@ -3,7 +3,7 @@
 | | |
 | :-- | :-- |
 | **Fecha** | 2026-10-25 |
-| **Estado** | Plan aprobado como base de la tesis. **Ningún experimento corrido todavía**: el dataset v4 (`captura_v3`) está en captura (lotes 1 y 2 hechos el 2026-10-24 y 2026-10-25). |
+| **Estado** | Captura y anotación completas. El 2026-11-03 H1 y H2 se reformulan a modelos chicos por el cómputo disponible (sección 1). E0 está hecho; E1 y E2 se reemplazan por los cuatro brazos de `scripts/run_small_arms.py`. Ningún resultado de test se ha leído. |
 | **Dataset** | 125 mangos en 5 lotes de 25, 4 caras, 8 momentos (`sano` + t = 0, 2, 4, 6, 8, 10, 12 h): 500 pares sanos y 3500 con daño. Protocolo en [`capture/README.md`](../../capture/README.md). |
 | **Reemplaza** | Los experimentos sobre los 286 pares de v3 (`docs/findings/2026-10-18`, `reports/`). Esos resultados quedan como desarrollo y motivación, no como evidencia de la tesis. |
 
@@ -30,6 +30,23 @@ maestro con NIR le enseña al estudiante dónde mirar (*learning using privilege
 | **H2** (confirmatoria) | El estudiante destilado del maestro RGB+NIR detecta el daño latente mejor que el estudiante destilado del maestro sin NIR. | E2 |
 
 H1 y H2 se prueban en **secuencia fija** (sección 8.3): H2 solo se evalúa como confirmatoria si H1 se acepta.
+
+### Reformulación del 2026-11-03
+
+La tabla anterior es el diseño original. Lo reemplaza este, por tres razones medidas solo en validación o en tiempo, sin leer test:
+
+- **Cómputo.** El maestro grande tarda unas 12.7 h por entrenamiento en la única GPU, y el plazo es el 2026-11-08. Los 90 entrenamientos del plan original superan las 800 h.
+- **Maestro.** En el fold 0, `maestro_rgbnir` conserva casi todo su AP50 sin RGB en inferencia (0.229 frente a 0.215) y lo pierde sin NIR (0.006), así que en la práctica ya detecta desde el NIR.
+- **Atención.** Su salida es hasta unas 400 veces mayor que las features RGB en las etapas profundas, y casi no cambia con el NIR de otra foto. No se encontró precedente de esta fusión en un detector RGB+NIR.
+
+| | Hipótesis | Comparación |
+| :-- | :-- | :-- |
+| **H1** | Con la misma arquitectura chica, el NIR detecta el daño latente mejor que el RGB. | `est_nir` frente a `est_rgb` |
+| **H2** | Un estudiante RGB destilado de un maestro NIR detecta el daño latente mejor que uno destilado de un maestro RGB. | `kd_nir` frente a `kd_rgb` |
+
+Además se reporta `kd_nir` frente a `est_rgb`, como comparación secundaria. El maestro RGB+NIR entrenado queda como caso de estudio y no entra en estas pruebas.
+
+**Alcance.** Con una semilla y cinco folds no se separa la variación entre semillas, así que **estos resultados se reportan como evidencia preliminar, no como confirmación**: análisis pareado por fold con intervalos, sin afirmar que una hipótesis queda probada. Además, las cajas latentes se dibujaron mirando sobre todo el NIR (sección 3.2), y eso favorece a `est_nir` en H1. Por eso, un H1 positivo sigue siendo evidencia débil.
 
 ### Qué significa cada combinación
 
@@ -156,6 +173,8 @@ Resultado preliminar del lote 1: [`reports/e0-detectability/`](../../reports/e0-
 
 ### E1. Maestro: ¿aporta el NIR? (H1)
 
+> **Reemplazado el 2026-11-03** por los cuatro brazos de la sección 1. Se conserva como diseño original.
+
 **Brazos** (misma arquitectura, mismo presupuesto, mismas semillas):
 
 | Brazo | Entrada |
@@ -178,6 +197,8 @@ daño ya es visible en RGB. Si la ganancia es igual a toda hora, el NIR aporta, 
 latente; se escribe así.
 
 ### E2. Destilación: ¿se transfiere el NIR al estudiante? (H2)
+
+> **Reemplazado el 2026-11-03** por los cuatro brazos de la sección 1. Se conserva como diseño original.
 
 **Brazos** (estudiante YOLOv8-nano, solo RGB en inferencia, mismas semillas):
 
@@ -280,14 +301,17 @@ Se sigue el skill [`experiment-statistics`](../../.claude/skills/experiment-stat
 ### 8.1 Pre-registro (se completa y se commitea antes de la primera evaluación en test)
 
 ```
-H1:          baseline = maestro_rgb,  treatment = maestro_rgbnir
-H2:          baseline = est_kd_rgb,   treatment = est_kd_rgbnir
+H1:          baseline = est_rgb,  treatment = est_nir
+H2:          baseline = kd_rgb,   treatment = kd_nir
+Secundaria:  baseline = est_rgb,  treatment = kd_nir
+Variante:    se fija el 2026-11-04 con la validación de los pilotos, antes de leer test
+Épocas:      se fijan el 2026-11-04 con la validación de los pilotos, antes de leer test
 NIR:         variante nir_clahe en los brazos de E1 y E2
-Recorte:     al mango con rgb_mango_mask, margen 0.10 y jitter 0.5 en train, en los seis brazos (el brazo NIR recibe la ventana desde RGB)
+Recorte:     al mango con rgb_mango_mask, margen 0.10 y jitter 0.5 en train, en los cuatro brazos (el brazo NIR recibe la ventana desde RGB)
 Metric:      test damage AP50 en ventana latente (t ∈ {0,2,4,6} + sano), media sobre semillas por fold
 ROPE:        ±0.02 AP50
 Threshold:   P(right) >= 0.95
-Seeds:       42, 1337, 2024
+Seeds:       42 (una sola, por cómputo: resultado preliminar)
 Folds:       los cinco de configs/folds/v4_lot_5fold.json (ninguno descartado)
 Selección:   checkpoint por damage AP50 del lote de validación (todas las horas), nunca el de test
 Exclusiones: reglas de la sección 3.1
@@ -356,3 +380,4 @@ Estado al 2026-11-02: los puntos 1 a 9 tienen su código y pruebas, y los comand
 | 2026-11-02 | La ventana latente pasa de t ∈ {0, 2, 4} a t ∈ {0, 2, 4, 6}, y el daño desarrollado queda en t ∈ {8, 10, 12}. La ronda +4 h de los lotes 4 y 5 se incluye aunque esté fuera de tolerancia (regla 1 de 3.1). | Decisión del autor. Las fotos +4 h fuera de tolerancia (lote 4: +19.3 a +32.3 min; lote 5: +12.1 a +14.2 min) siguen en la misma franja. | Antes de E1 y E2. E0 preliminar del lote 1 ya estaba visto. |
 | 2026-11-02 | El NIR de E1 y E2 es la variante CLAHE y las imágenes se recortan al mango en los seis brazos (sección 8.1). E0 sigue midiendo sobre el NIR sin procesar. El recorte depende del fondo controlado de la captura. | Decisión del autor, antes de entrenar. | Antes |
 | 2026-11-02 | La sección 3.2 pasa a las cajas anotadas en cada momento, y se declara que las latentes se dibujaron mirando sobre todo el NIR. La procedencia de la caja sale de cómo se anotó y no de la hora. | Decisión del autor tras ver E0 y la tabla de origen de las cajas. H1 positivo se reporta como evidencia débil. | Antes |
+| 2026-11-03 | H1 y H2 se reformulan: `est_nir` frente a `est_rgb` y `kd_nir` frente a `kd_rgb`, con una semilla y cinco folds, como evidencia preliminar. El maestro RGB+NIR queda como caso de estudio. | Decisión del autor: plazo y cómputo, y medidas en validación del fold 0. | Antes |

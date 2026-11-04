@@ -1,5 +1,15 @@
 # Runbook: E1 and E2 on the v4 folds
 
+> **Since 2026-11-03 the plan runs the four small arms** of [`scripts/run_small_arms.py`](../../scripts/run_small_arms.py), described in section 1 of the plan. The sections below describe the original six arms, which remain usable.
+>
+> ```bash
+> python scripts/run_small_arms.py --dataset data/cache/v4_captura_v3_final --make-nir-as-rgb \
+>     --weights <yolov8n state_dict> --variant <wide|nano> --epochs <n> --seeds 42
+> python scripts/aggregate_kfold.py --seeds 42 --reports-root reports/v4_small --rope 0.02 \
+>     --fold-spec data/cache/v4_captura_v3_final/folds_lot/folds_meta.json \
+>     --arms est_rgb est_nir --baseline est_rgb --treatment est_nir
+> ```
+
 The exact commands for [`plan-experimental.md`](plan-experimental.md), sections E1, E2, 6 and 8, from the
 dataset to the results. Run them from the repository root. Every `run_kfold.py` command is resumable: after a
 crash or a Ctrl-C, re-run the same command and the finished steps are skipped.
