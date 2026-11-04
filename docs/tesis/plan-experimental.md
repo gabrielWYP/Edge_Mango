@@ -3,7 +3,7 @@
 | | |
 | :-- | :-- |
 | **Fecha** | 2026-10-25 |
-| **Estado** | Captura y anotación completas. El 2026-11-03 H1 y H2 se reformulan a modelos chicos por el cómputo disponible (sección 1). E0 está hecho; E1 y E2 se reemplazan por los cuatro brazos de `scripts/run_small_arms.py`. Ningún resultado de test se ha leído. |
+| **Estado** | Captura y anotación completas. El 2026-11-03 H1 y H2 se reformulan a modelos chicos por el cómputo disponible (sección 1). E0 está hecho; E1 y E2 se reemplazan por los cuatro brazos de `scripts/run_small_arms.py`. Ningún resultado de test se usó para decidir; hubo una exposición del fold 0 registrada en la sección 11. Resultados y causas en [`resultados-causas-y-soluciones.md`](resultados-causas-y-soluciones.md). |
 | **Dataset** | 125 mangos en 5 lotes de 25, 4 caras, 8 momentos (`sano` + t = 0, 2, 4, 6, 8, 10, 12 h): 500 pares sanos y 3500 con daño. Protocolo en [`capture/README.md`](../../capture/README.md). |
 | **Reemplaza** | Los experimentos sobre los 286 pares de v3 (`docs/findings/2026-10-18`, `reports/`). Esos resultados quedan como desarrollo y motivación, no como evidencia de la tesis. |
 
@@ -386,3 +386,4 @@ Estado al 2026-11-02: los puntos 1 a 9 tienen su código y pruebas, y los comand
 | 2026-11-03 | H1 y H2 se reformulan: `est_nir` frente a `est_rgb` y `kd_nir` frente a `kd_rgb`, con una semilla y cinco folds, como evidencia preliminar. El maestro RGB+NIR queda como caso de estudio. | Decisión del autor: plazo y cómputo, y medidas en validación del fold 0. | Antes |
 | 2026-11-03 | Se declara el criterio de anotación por color y hendidura, y se agrega un análisis de sensibilidad sin las fotos latentes con `visible_rgb = yes`. | Aclaración del autor, que anotó las cajas. | Antes |
 | 2026-11-03 | Brazo exploratorio de E2: `configs/kd_training_twostream_regions.yaml` (PKD balanceado por región, solo P3 y P4 del FPN y la cabeza). H1, H2 y sus brazos no cambian. | Auditoría sobre el corpus preliminar (`reports/kd-feature-audit/`): el fondo concentra más del 90 % del error de imitación y el backbone casi no depende del NIR. | Antes (v4); la auditoría no usa test |
+| 2026-11-04 | Sin cambios al diseño. Se declara que, al consolidar los resultados, se imprimieron en la sesión de trabajo los resultados de test del fold 0, semilla 42, de `maestro_rgbnir`, `est_nir` y `est_rgb`, que el evaluador del runner había generado de forma automática. Variante y épocas se siguen fijando solo con validación. | Transparencia del pre-registro. | Exposición parcial de test antes de fijar variante y épocas; los demás folds y los brazos KD siguen sin correr |
