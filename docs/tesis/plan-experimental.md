@@ -373,6 +373,27 @@ frase se toma de la tabla de decisión del skill (sección 4). Nunca "significat
 Las curvas por hora llevan intervalos **descriptivos** por bootstrap de mangos dentro de cada lote; la
 inferencia confirmatoria es solo la de nivel lote.
 
+### 8.5 Análisis exploratorio por lote (registrado el 2026-11-05, antes de leer test)
+
+**Pregunta.** ¿La ventaja de `est_rgbnir` sobre `est_rgb` (H1), y la de `kd_rgbnir` sobre `kd_rgb` (H2), cambia con las condiciones de captura del lote de test? Los lotes se capturaron en días distintos, con otro balance de blancos y otra deriva de luz, y la teoría del autor es que el modelo rinde distinto por fold por esas condiciones. La dificultad de un lote afecta a todos los brazos y se cancela en la diferencia pareada; lo que interesa aquí es si la **diferencia** entre brazos cambia con el lote.
+
+**Datos.** Por fold: el AP50 latente de test de cada brazo y las diferencias de H1, H2 y la secundaria, con la media de las semillas presentes en los dos brazos de cada diferencia. Las mismas corridas de la prueba confirmatoria, sin entrenar nada más.
+
+**Descriptores** (`scripts/lot_descriptors.py`, calculados el 2026-11-05 en [`reports/lot-descriptors/`](../../reports/lot-descriptors/README.md), sin salidas de modelos): para el lote de test de cada fold, su valor y su distancia a la media de los tres lotes de entrenamiento del fold. Primarios, fijados antes de leer test:
+
+| Descriptor | Qué mide | Expectativa de la teoría |
+| :-- | :-- | :-- |
+| `rgb_fruit_r_over_b` | Tono del RGB en la fruta (R/B) | Más ventaja del NIR cuanto más se aleja del entrenamiento |
+| `rgb_fruit_luma` | Brillo del RGB en la fruta | Ídem |
+| `rgb_border_spread` | Deriva de la luz durante la jornada (p90 - p10 del brillo del fondo) | Más ventaja del NIR con más deriva |
+| `latent_contrast_ratio` | Contraste del daño latente en NIR dividido por el de RGB, en la caja anotada | Más ventaja del NIR cuanto mayor |
+| `residual_shift_px` | Corrección del registro RGB-NIR aplicada por foto | Menos ventaja del NIR cuanto mayor, si el registro queda peor |
+| `latent_visible_rgb_yes_share` | Fotos latentes con la marca visible en RGB según la anotación | Confusor del lado de las etiquetas: menos ventaja del NIR cuanto mayor |
+
+Los demás descriptores del CSV se reportan como tabla, sin lectura.
+
+**Salida.** `scripts/lot_effects.py --split test`: una tabla por fold y un gráfico por descriptor primario. Con cinco lotes **no** se calcula correlación, intervalo ni p-valor. Se describe si el orden de los folds por la diferencia sigue el de algún descriptor, y nada se escribe como causa. A lo sumo: "consistente con" la teoría o "no consistente". El lote 1 concentra casi todas las diferencias de captura (5300 K frente a 4600-4800 K, la fruta más roja, la mayor deriva de luz), así que un patrón que dependa solo del fold 4 se reporta como un solo lote.
+
 ---
 
 ## 9. Reglas para no tener que pensar después
@@ -421,3 +442,4 @@ Estado al 2026-11-02: los puntos 1 a 9 tienen su código y pruebas, y los comand
 | 2026-11-05 | H1 pasa a `est_rgbnir` frente a `est_rgb`, y H2 a `kd_rgbnir` frente a `kd_rgb`. Secundaria: `kd_rgbnir` frente a `est_rgb`. Exploratoria: `kd_rgb` frente a `est_rgb`. `est_nir` queda como referencia descriptiva y `kd_nir` fuera del plan. El maestro de 48 M sale de las pruebas. Las bases y los maestros se reentrenan con el warm-up corregido. | Decisión del autor: las pruebas deben medir si el NIR agrega señal al RGB y si esa señal se transfiere a un estudiante RGB; `kd_rgb` queda como control del efecto de destilar. Ya se conocía la validación del fold 0 de los pilotos de `est_rgb` y `est_nir` (warm-up anterior) y de `est_rgbnir` hasta la época 21 (warm-up corregido). No se basa en resultados de test. | Después de la exposición parcial de test (fold 0, semilla 42, de `maestro_rgbnir`, `est_nir` y `est_rgb`); `est_rgbnir` y los brazos KD siguen sin evaluación en test |
 | 2026-11-05 | Se fijan las épocas (80), la clase mango (se mantiene), EMA (no se usa) y las semillas (42, 1337 y 2024, con la 42 primero; sección 8.1). Los brazos de las pruebas corren primero y `est_nir`, la referencia, al final. Los pilotos de la clase mango corrieron antes del arreglo del warm-up; las corridas definitivas lo incluyen y se vuelven a correr todas, también el fold 0. | Pilotos de fold 0 solo en validación: `est_rgb` y `est_nir` con 3 semillas, con y sin la clase mango, y `est_rgbnir` completo con 3 semillas (0.201 de AP50 latente, entre `est_rgb` y `est_nir`), conocido antes de commitear esta fila y la reformulación. EMA se descarta por plazo, sin diagnóstico. No se basa en resultados de test. | Después de la exposición parcial de test; antes de la primera evaluación en test de cualquier brazo vigente |
 | 2026-11-05 | Las corridas definitivas lanzadas a las 14:19 con los brazos del 2026-11-03 (`est_rgb`, `est_nir`, `kd_rgb`, `kd_nir`, commit `b77d4af`) se detienen a los 15 minutos, en la época 8 de 80 de sus tres primeras corridas y sin ninguna evaluación, y se apartan en `runs/aborted_final_b77d4af`. Se relanzan con los brazos vigentes. | Adoptar la reformulación del 2026-11-05. | Antes de cualquier evaluación en test de esas corridas |
+| 2026-11-05 | Se agrega el análisis exploratorio por lote de la sección 8.5, con sus descriptores primarios fijados. | Teoría del autor: las condiciones de captura cambian por lote y pueden cambiar la ventaja del NIR. Los descriptores salen de imágenes, metadatos y etiquetas, sin salidas de modelos. | Antes de leer cualquier resultado de test de los brazos vigentes; el runner ya había escrito los de `est_rgb` y `est_rgbnir` del fold 0, semilla 42, sin abrirlos |

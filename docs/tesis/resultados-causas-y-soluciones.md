@@ -17,7 +17,7 @@ Este documento reúne lo medido y no reemplaza al [plan experimental](plan-exper
 | Pregunta | Respuesta hoy | Fuerza de la evidencia |
 | :-- | :-- | :-- |
 | ¿El NIR agrega señal al RGB con el mismo modelo? (H1) | En validación del fold 0, con 3 semillas, `est_rgbnir` da 0.201 de AP50 latente frente a 0.148 de `est_rgb`, pero queda por debajo de `est_nir` (0.242), la referencia. `est_rgbnir` corrió con el warm-up corregido y los otros dos no. Sin los demás folds no se puede generalizar. | Muy débil: un fold y validación |
-| ¿La destilación transfiere el NIR al estudiante RGB? (H2) | Sin datos sobre v4. KD ya corre sobre v4 y cuesta lo mismo que un estudiante sin destilar. | Ninguna |
+| ¿La destilación transfiere el NIR al estudiante RGB? (H2) | Sin datos sobre v4. KD ya corre sobre v4; con 3 corridas a la vez, una época de KD tarda cerca de 1.4 veces la de un estudiante sin destilar. | Ninguna |
 | ¿Destilar ayudó en v3? | Sin conclusión: la diferencia media es positiva en test y negativa en validación. | Débil: split aleatorio, tres semillas |
 | ¿El RGB y el NIR ven el daño latente sin deep learning? (E0) | Los dos dan AUROC cercano a 0.55-0.60, sin ventaja clara del NIR. | Descriptiva: intervalos sin remuestreo de lotes y controles que no siempre cubren 0.5 |
 
@@ -150,7 +150,7 @@ El piloto con EMA (`ema=true`, `ema_decay=0.9994`, warm-up corregido, `main` en 
 
 #### Prueba de KD
 
-`kd_nir` nunca había corrido sobre v4. Una prueba de 2 épocas en el fold 0, con un maestro `est_nir` de 2 épocas, cargó el maestro, entrenó sin errores y tardó 102 y 96 s por época, contra 98 y 93 s del maestro en las mismas condiciones (4 corridas compartiendo la GPU). KD cuesta lo mismo que un estudiante sin destilar.
+`kd_nir` nunca había corrido sobre v4. Una prueba de 2 épocas en el fold 0, con un maestro `est_nir` de 2 épocas, cargó el maestro, entrenó sin errores y tardó 102 y 96 s por época, contra 98 y 93 s del maestro en las mismas condiciones (4 corridas compartiendo la GPU). La prueba de `kd_rgbnir`, con un maestro de 4 canales, también cargó y entrenó sin errores (125 y 116 s por época, con 4 corridas). En las corridas definitivas, con 3 a la vez, KD tarda 90-95 s por época frente a 66 s de un estudiante sin destilar: la prueba, con la GPU más cargada, subestimó la diferencia.
 
 **Velocidad medida (`est_rgb`, `nano`, RTX 6000 Ada, con caché de píxeles):**
 
@@ -161,6 +161,29 @@ El piloto con EMA (`ema=true`, `ema_decay=0.9994`, warm-up corregido, `main` en 
 | 6 | 169 | 2.13 |
 
 Son medidas de pocas épocas iniciales, y otros procesos compartieron la máquina durante parte de las de 1 y 6 corridas. El rendimiento casi no sube después de 3 corridas. Los pilotos, con 3 a la vez, pasan de unos 89 s en la primera época a unos 66 s por época después (2.7 épocas por minuto), sin causa aislada.
+
+### Condiciones de captura por lote
+
+Medidas con `scripts/lot_descriptors.py` sobre las 3966 fotos del dataset, sin salidas de modelos ([`reports/lot-descriptors/`](../../reports/lot-descriptors/README.md)). Son los descriptores del análisis exploratorio por lote (sección 8.5 del plan).
+
+| Descriptor | Lote 1 | Lote 2 | Lote 3 | Lote 4 | Lote 5 |
+| :-- | :-- | :-- | :-- | :-- | :-- |
+| Balance de blancos del RGB (K) | 5300 | 4600 | 4700 | 4800 | 4800 |
+| R/B en la fruta | 4.88 | 3.53 | 3.89 | 3.81 | 4.03 |
+| Brillo del RGB en la fruta | 79.6 | 65.7 | 77.8 | 64.7 | 74.3 |
+| Deriva del brillo del fondo en RGB (p90 - p10) | 19.3 | 5.4 | 2.1 | 2.3 | 2.6 |
+| Luz medida por la cámara NIR (`Lux`, mediana) | 1229 | 1182 | 1155 | 1071 | 1113 |
+| Deriva de la luz (`Lux`, p90 - p10) | 438 | 68 | 118 | 51 | 41 |
+| Contraste del daño latente en RGB | 0.69 | 0.62 | 0.61 | 0.69 | 0.56 |
+| Contraste del daño latente en NIR | 0.49 | 0.44 | 0.67 | 0.58 | 0.49 |
+| Corrección del registro RGB-NIR por foto (px, mediana) | 10 | 35 | 120 | 152 | 177 |
+| Fotos latentes con `visible_rgb = yes` | 13.3 % | 12.9 % | 2.5 % | 3.3 % | 4.8 % |
+| Fotos fuera de tolerancia excluidas | 9 | 6 | 3 | 0 | 10 |
+
+- **El lote 1 es el más distinto.** Tiene otro balance de blancos, la fruta más roja y brillante, y una deriva de luz durante la jornada entre 4 y 10 veces mayor que la de los demás lotes. Además es el único con corrección de balance de blancos en el dataset, en el 7 % de sus fotos.
+- **El registro empeora con el tiempo.** La corrección por foto pasa de 10 px en el lote 1 a 177 px en el lote 5. No mide el error que queda después de corregir, sino cuánto se desvió la homografía de cada lote.
+- **Las etiquetas también cambian por lote.** La marca latente se anotó como visible en RGB en el 13 % de las fotos de los lotes 1 y 2, y en el 3-5 % de los lotes 3 a 5. Puede ser un cambio del daño o de la anotación; no se separa con estos datos.
+- **El contraste se mide sobre la caja anotada**, que se dibujó mirando sobre todo el NIR (sección 3.2 del plan). La temperatura de color que estima la cámara NIR es constante (5536 K) porque sus ganancias de color están fijas, así que no informa.
 
 ## Problemas, causas y soluciones
 
@@ -295,7 +318,7 @@ Las corridas definitivas incluyen el arreglo del warm-up, así que el fold 0 se 
 | `kd_nir` | Fuera del plan | Prueba de 2 épocas | No corre |
 | EMA | — | Interrumpido en la época 15 | Descartado |
 
-Con 3 corridas a la vez, cada grupo de 80 épocas tarda unos 90 min, y KD tarda lo mismo. La semilla 42 de los cuatro brazos de las pruebas (20 corridas) debería terminar en la madrugada del 2026-11-06, sus tres semillas (60 corridas) hacia la noche del 2026-11-06, y `est_nir` (15 corridas) unas 7.5 h después.
+Con 3 corridas a la vez, una época tarda unos 66 s en un estudiante sin destilar y 90-95 s en KD. Con ese ritmo, la semilla 42 de los cuatro brazos de las pruebas (20 corridas) termina hacia las 03:00 del 2026-11-06, sus tres semillas (60 corridas) hacia las 04:00 del 2026-11-07, y `est_nir` (15 corridas) hacia las 11:00 del 2026-11-07.
 
 Los pilotos están en `~/edge_mango/runs/pilots*/` y las corridas definitivas en `~/edge_mango/runs/final/` (las detenidas, en `runs/aborted_final_b77d4af/`), con copias en `checkpoints/v4_pilots*/` y `checkpoints/v4_final/` que Git ignora.
 
