@@ -17,7 +17,7 @@ Este documento reúne lo medido y no reemplaza al [plan experimental](plan-exper
 | Pregunta | Respuesta hoy | Fuerza de la evidencia |
 | :-- | :-- | :-- |
 | ¿El NIR agrega señal al RGB con el mismo modelo? (H1) | En validación del fold 0, con 3 semillas, `est_rgbnir` da 0.201 de AP50 latente frente a 0.148 de `est_rgb`, pero queda por debajo de `est_nir` (0.242), la referencia. `est_rgbnir` corrió con el warm-up corregido y los otros dos no. Sin los demás folds no se puede generalizar. | Muy débil: un fold y validación |
-| ¿La destilación transfiere el NIR al estudiante RGB? (H2) | Sin datos sobre v4. KD ya corre sobre v4; con 3 corridas a la vez, una época de KD tarda cerca de 1.4 veces la de un estudiante sin destilar. | Ninguna |
+| ¿La destilación transfiere el NIR al estudiante RGB? (H2) | Sin datos sobre v4. KD ya corre sobre v4 y, con 3 corridas a la vez, una época cuesta casi lo mismo que la de un estudiante sin destilar. En validación del fold 0, `kd_rgbnir` no supera a `kd_rgb` (ver [Corridas definitivas](#corridas-definitivas-avance-en-validación)). | Ninguna |
 | ¿Destilar ayudó en v3? | Sin conclusión: la diferencia media es positiva en test y negativa en validación. | Débil: split aleatorio, tres semillas |
 | ¿El RGB y el NIR ven el daño latente sin deep learning? (E0) | Los dos dan AUROC cercano a 0.55-0.60, sin ventaja clara del NIR. | Descriptiva: intervalos sin remuestreo de lotes y controles que no siempre cubren 0.5 |
 
@@ -150,7 +150,7 @@ El piloto con EMA (`ema=true`, `ema_decay=0.9994`, warm-up corregido, `main` en 
 
 #### Prueba de KD
 
-`kd_nir` nunca había corrido sobre v4. Una prueba de 2 épocas en el fold 0, con un maestro `est_nir` de 2 épocas, cargó el maestro, entrenó sin errores y tardó 102 y 96 s por época, contra 98 y 93 s del maestro en las mismas condiciones (4 corridas compartiendo la GPU). La prueba de `kd_rgbnir`, con un maestro de 4 canales, también cargó y entrenó sin errores (125 y 116 s por época, con 4 corridas). En las corridas definitivas, con 3 a la vez, KD tarda 90-95 s por época frente a 66 s de un estudiante sin destilar: la prueba, con la GPU más cargada, subestimó la diferencia.
+`kd_nir` nunca había corrido sobre v4. Una prueba de 2 épocas en el fold 0, con un maestro `est_nir` de 2 épocas, cargó el maestro, entrenó sin errores y tardó 102 y 96 s por época, contra 98 y 93 s del maestro en las mismas condiciones (4 corridas compartiendo la GPU). La prueba de `kd_rgbnir`, con un maestro de 4 canales, también cargó y entrenó sin errores (125 y 116 s por época, con 4 corridas). En las corridas definitivas, con 3 a la vez, KD tarda 61-74 s por época frente a 66 s de un estudiante sin destilar. Una medición de 90-95 s en sus primeras épocas coincidió con otra carga de la máquina y no se repitió.
 
 **Velocidad medida (`est_rgb`, `nano`, RTX 6000 Ada, con caché de píxeles):**
 
@@ -161,6 +161,24 @@ El piloto con EMA (`ema=true`, `ema_decay=0.9994`, warm-up corregido, `main` en 
 | 6 | 169 | 2.13 |
 
 Son medidas de pocas épocas iniciales, y otros procesos compartieron la máquina durante parte de las de 1 y 6 corridas. El rendimiento casi no sube después de 3 corridas. Los pilotos, con 3 a la vez, pasan de unos 89 s en la primera época a unos 66 s por época después (2.7 épocas por minuto), sin causa aislada.
+
+### Corridas definitivas: avance en validación
+
+Semilla 42, corte del 2026-11-05 a las 18:50: 6 de las 20 corridas de la semilla 42 terminaron. Son métricas de **validación**, la misma que elige el checkpoint, así que sirven para seguir el avance y no son evidencia de H1 ni de H2. Los resultados de test que el runner ya escribió no se leyeron.
+
+| Fold (lote de validación) | Brazo | AP50 latente | AP30 latente | AP50 desarrollado | AUROC por cara | FP por imagen sana |
+| :-- | :-- | :-- | :-- | :-- | :-- | :-- |
+| 0 (lote 2) | `est_rgb` | 0.151 | 0.212 | 0.139 | 0.602 | 5.26 |
+| 0 (lote 2) | `est_rgbnir` | 0.197 | 0.268 | 0.166 | 0.678 | 3.20 |
+| 0 (lote 2) | `kd_rgb` | 0.173 | 0.257 | 0.175 | 0.621 | 5.26 |
+| 0 (lote 2) | `kd_rgbnir` | 0.157 | 0.254 | 0.168 | 0.628 | 5.45 |
+| 1 (lote 3) | `est_rgb` | 0.175 | 0.272 | 0.276 | 0.587 | 5.33 |
+| 1 (lote 3) | `est_rgbnir` | 0.294 | 0.381 | 0.486 | 0.604 | 4.13 |
+
+- **H1 va en la dirección esperada en los dos folds:** `est_rgbnir` supera a `est_rgb` en AP50 latente por 0.046 y 0.119, y en el fold 1 la ventaja aparece en todas las horas.
+- **H2 no se ve en el fold 0:** `kd_rgbnir` queda 0.016 por debajo de `kd_rgb`, dentro de la ROPE. En ese fold el maestro RGB+NIR le saca solo 0.046 al RGB, así que tiene poco para transferir.
+- **Destilar sin NIR ayuda un poco en el fold 0:** `kd_rgb` supera a `est_rgb` por 0.022. Es el efecto que `kd_rgb` controla en H2.
+- **Las curvas** ([`curves_seed42.png`](../../reports/final-runs-progress/curves_seed42.png), `scripts/plot_run_curves.py`) muestran el mismo patrón que los pilotos: el AP50 de validación sube hasta la época 45-65 y después se estanca, mientras la pérdida de detección en train sigue bajando. `est_rgbnir` tiene la pérdida más baja de los cuatro brazos.
 
 ### Condiciones de captura por lote
 
@@ -318,7 +336,7 @@ Las corridas definitivas incluyen el arreglo del warm-up, así que el fold 0 se 
 | `kd_nir` | Fuera del plan | Prueba de 2 épocas | No corre |
 | EMA | — | Interrumpido en la época 15 | Descartado |
 
-Con 3 corridas a la vez, una época tarda unos 66 s en un estudiante sin destilar y 90-95 s en KD. Con ese ritmo, la semilla 42 de los cuatro brazos de las pruebas (20 corridas) termina hacia las 03:00 del 2026-11-06, sus tres semillas (60 corridas) hacia las 04:00 del 2026-11-07, y `est_nir` (15 corridas) hacia las 11:00 del 2026-11-07.
+Con 3 corridas a la vez, una época tarda unos 66 s, con KD o sin él, y las evaluaciones entre corridas dejan el ritmo en unas 1.8 corridas por hora. Con ese ritmo, la semilla 42 de los cuatro brazos de las pruebas (20 corridas) termina hacia las 02:00 del 2026-11-06, sus tres semillas (60 corridas) hacia las 00:00 del 2026-11-07, y `est_nir` (15 corridas) hacia las 08:30 del 2026-11-07.
 
 Los pilotos están en `~/edge_mango/runs/pilots*/` y las corridas definitivas en `~/edge_mango/runs/final/` (las detenidas, en `runs/aborted_final_b77d4af/`), con copias en `checkpoints/v4_pilots*/` y `checkpoints/v4_final/` que Git ignora.
 
