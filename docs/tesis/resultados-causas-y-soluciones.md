@@ -1,6 +1,6 @@
 # Resultados, causas y soluciones hasta el 2026-11-05
 
-**Todavía no hay evidencia para aceptar ni rechazar H1 o H2.** Los pilotos del fold 0 terminaron y fijaron la configuración, y las corridas definitivas de los cuatro brazos en los cinco folds empezaron el 2026-11-05 a las 14:19. Los resultados anteriores sirven como desarrollo y motivan los cambios de diseño, pero no prueban las hipótesis.
+**Todavía no hay evidencia para aceptar ni rechazar H1 o H2.** El 2026-11-05 H1 y H2 se reformularon hacia el estudiante RGB+NIR (ver [Cómo cambiaron H1 y H2](#cómo-cambiaron-h1-y-h2)). Los pilotos del fold 0 terminaron y fijaron la configuración, y las corridas definitivas de los brazos vigentes empezaron el mismo día. Los resultados anteriores sirven como desarrollo y motivan los cambios de diseño, pero no prueban las hipótesis.
 
 Este documento reúne lo medido y no reemplaza al [plan experimental](plan-experimental.md), que sigue fijando las reglas de análisis.
 
@@ -16,8 +16,7 @@ Este documento reúne lo medido y no reemplaza al [plan experimental](plan-exper
 
 | Pregunta | Respuesta hoy | Fuerza de la evidencia |
 | :-- | :-- | :-- |
-| ¿El NIR detecta mejor que el RGB con el mismo modelo? (H1) | En validación del fold 0, con `nano` y 3 semillas, `est_nir` da 0.242 de AP50 latente frente a 0.148 de `est_rgb`, y gana en las tres semillas y en las cinco métricas. Sin los demás folds no se puede generalizar. | Muy débil: un fold y validación |
-| ¿Un estudiante con RGB y NIR juntos supera al de solo NIR? (exploratorio) | No en el fold 0: `est_rgbnir` da 0.201, entre `est_rgb` y `est_nir`. | Muy débil: un fold y validación |
+| ¿El NIR agrega señal al RGB con el mismo modelo? (H1) | En validación del fold 0, con 3 semillas, `est_rgbnir` da 0.201 de AP50 latente frente a 0.148 de `est_rgb`, pero queda por debajo de `est_nir` (0.242), la referencia. `est_rgbnir` corrió con el warm-up corregido y los otros dos no. Sin los demás folds no se puede generalizar. | Muy débil: un fold y validación |
 | ¿La destilación transfiere el NIR al estudiante RGB? (H2) | Sin datos sobre v4. KD ya corre sobre v4 y cuesta lo mismo que un estudiante sin destilar. | Ninguna |
 | ¿Destilar ayudó en v3? | Sin conclusión: la diferencia media es positiva en test y negativa en validación. | Débil: split aleatorio, tres semillas |
 | ¿El RGB y el NIR ven el daño latente sin deep learning? (E0) | Los dos dan AUROC cercano a 0.55-0.60, sin ventaja clara del NIR. | Descriptiva: intervalos sin remuestreo de lotes y controles que no siempre cubren 0.5 |
@@ -105,7 +104,7 @@ Las métricas de las primeras columnas vienen de `metrics_v4.json` y evalúan `b
 | :-- | :-- | :-- | :-- | :-- | :-- |
 | `est_rgb` | 0.148 ± 0.007 | 0.218 | 0.131 | 0.591 | 6.59 |
 | `est_nir` | 0.242 ± 0.024 | 0.322 | 0.217 | 0.684 | 4.54 |
-| `est_rgbnir` (exploratorio, ver abajo) | 0.201 ± 0.019 | 0.277 | 0.172 | 0.653 | 6.98 |
+| `est_rgbnir` (tratamiento de H1, ver abajo) | 0.201 ± 0.019 | 0.277 | 0.172 | 0.653 | 6.98 |
 
 `est_nir` supera a `est_rgb` en las cinco métricas y en las tres semillas. Es validación de un solo fold, la misma que eligió el checkpoint: no es evidencia de H1.
 
@@ -133,9 +132,9 @@ La ventaja del NIR no se concentra en la ventana latente: también aparece en t 
 
 La diferencia entre zonas se repite en todos los brazos y aún no tiene causa. Una hipótesis por comprobar es que el modelo aproveche el oscurecimiento del centro de la fruta, que E0 observó haya o no golpe; no explica el resultado de la izquierda.
 
-#### Estudiante RGB+NIR (exploratorio)
+#### Estudiante RGB+NIR (`est_rgbnir`)
 
-`est_rgbnir` es el mismo `nano` con 4 canales de entrada (RGB y NIR CLAHE), de la rama `feat/student-rgbnir` (`39f7882`), con mango y sin EMA. No entra en H1 ni en H2. Corrió **con** el arreglo del warm-up, a diferencia de los pilotos de arriba, así que la comparación con ellos mezcla los dos cambios.
+`est_rgbnir` es el mismo `nano` con 4 canales de entrada (RGB y NIR CLAHE), de la rama `feat/student-rgbnir` (`39f7882`), con mango y sin EMA. Su piloto se lanzó como exploratorio y desde la reformulación del 2026-11-05 es el tratamiento de H1 y el maestro de `kd_rgbnir`. Corrió **con** el arreglo del warm-up, a diferencia de los pilotos de arriba, así que la comparación con ellos mezcla los dos cambios.
 
 | Semilla | AP50 latente | AP30 latente | AP50 desarrollado | AUROC por cara | FP por imagen sana | Mejor AP50 de daño (época) | Media de las últimas 10 épocas |
 | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- |
@@ -143,7 +142,7 @@ La diferencia entre zonas se repite en todos los brazos y aún no tiene causa. U
 | 1337 | 0.188 | 0.253 | 0.159 | 0.656 | 6.78 | 0.170 (32) | 0.147 |
 | 2024 | 0.223 | 0.307 | 0.180 | 0.649 | 4.44 | 0.202 (58) | 0.159 |
 
-Queda entre `est_rgb` y `est_nir` en todas las métricas salvo los FP. A diferencia de los otros brazos, su mejor época llega antes (32-58) y el AP50 baja después: la media de las últimas 10 épocas (0.128-0.159) queda bien por debajo del mejor valor. Agregar el RGB al NIR no ayudó en este fold; una explicación posible, sin probar, es que el modelo se sobreajuste más rápido a los rasgos del RGB.
+Queda entre `est_rgb` y `est_nir` en todas las métricas salvo los FP. A diferencia de los otros brazos, su mejor época llega antes (32-58) y el AP50 baja después: la media de las últimas 10 épocas (0.128-0.159) queda bien por debajo del mejor valor. En este fold, sumar el RGB al NIR quedó por debajo del NIR solo, aunque por encima del RGB solo; una explicación posible, sin probar, es que el modelo se sobreajuste más rápido a los rasgos del RGB.
 
 #### EMA (descartado)
 
@@ -185,7 +184,7 @@ Son medidas de pocas épocas iniciales, y otros procesos compartieron la máquin
 | AP muy bajo del maestro inicial | Asignador, NMS, decodificación y subanotación | Refutadas una por una | Ninguna necesaria | Cerrado |
 | Atención casi uniforme en etapas iniciales | Falta de codificación posicional | Hipótesis | `fusion_pos_encoding` | Implementada, sin reporte de reentrenamiento |
 | Salida de la atención hasta unas 400 veces mayor que las features RGB en etapas profundas | No determinada | Medido en un checkpoint, sin causa aislada | Dejar el maestro grande como caso de estudio | Aplicada al diseño; arreglo de fusión sin evaluar |
-| El maestro detecta casi solo desde el NIR | Medido por ablación en validación del fold 0 | Demostrada en un fold | Comparar directamente NIR y RGB con modelos chicos | Aplicada: es la nueva H1 |
+| El maestro detecta casi solo desde el NIR | Medido por ablación en validación del fold 0 | Demostrada en un fold | Comparar directamente NIR y RGB con modelos chicos | Aplicada en la H1 del 2026-11-03, reemplazada por la del 2026-11-05 |
 | Entrenamiento inestable; 3 de 5 folds eligieron una época con la clase mango colapsada | BatchNorm con microlotes | Inestabilidad demostrada; BatchNorm como hipótesis | GroupNorm + EMA | Implementado, sin LOLO estabilizado reportado |
 | Corridas truncadas por ruido de validación | Early stopping activo | Probable | `patience=1000`: todos los brazos entrenan las mismas épocas | Aplicada |
 | Muchos falsos positivos de baja confianza | Meseta de scores; NMS mejora como máximo +0.020 | Probable | Reportar también AP30 y FP en `sano` | Medido en los primeros pilotos: 4.7 a 8.2 FP por imagen sana |
@@ -216,36 +215,39 @@ Son medidas de pocas épocas iniciales, y otros procesos compartieron la máquin
 
 ## Cómo cambiaron H1 y H2
 
-El cambio se decidió el 2026-11-03, antes de leer test, y está registrado en la sección 11 del plan.
+H1 y H2 cambiaron dos veces, y ambos cambios están registrados en la sección 11 del plan. El del 2026-11-03 se decidió antes de leer test. El del 2026-11-05 se decidió después de la exposición parcial de test del fold 0, sin usar esos resultados, y conociendo la validación de los pilotos.
 
-| | Diseño original | Diseño actual |
-| :-- | :-- | :-- |
-| **H1** | El maestro RGB+NIR detecta mejor que el mismo maestro sin NIR | Con la misma arquitectura chica, el NIR detecta mejor que el RGB: `est_nir` frente a `est_rgb` |
-| **H2** | El estudiante destilado del maestro RGB+NIR supera al destilado del maestro sin NIR | Un estudiante RGB destilado de un maestro NIR supera a uno destilado de un maestro RGB: `kd_nir` frente a `kd_rgb` |
-| **Secundaria** | — | `kd_nir` frente a `est_rgb` |
-| **Brazos** | 6, repetidos en 5 folds y 3 semillas: 90 entrenamientos | 4 en 5 folds y 1 semilla: 20 entrenamientos |
-| **Alcance** | Confirmatorio | Evidencia preliminar: análisis pareado por fold con intervalos |
-| **Maestro RGB+NIR** | Centro del experimento | Caso de estudio, fuera de las pruebas |
+| | Diseño original | 2026-11-03 | Vigente desde el 2026-11-05 |
+| :-- | :-- | :-- | :-- |
+| **H1** | El maestro RGB+NIR detecta mejor que el mismo maestro sin NIR | El NIR detecta mejor que el RGB: `est_nir` frente a `est_rgb` | Agregar NIR a la entrada detecta mejor que usar solo RGB: `est_rgbnir` frente a `est_rgb` |
+| **H2** | El estudiante destilado del maestro RGB+NIR supera al destilado del maestro sin NIR | Un estudiante RGB destilado de un maestro NIR supera a uno destilado de un maestro RGB: `kd_nir` frente a `kd_rgb` | Un estudiante RGB destilado de un maestro RGB+NIR supera a uno destilado de un maestro RGB: `kd_rgbnir` frente a `kd_rgb` |
+| **Secundaria** | — | `kd_nir` frente a `est_rgb` | `kd_rgbnir` frente a `est_rgb` |
+| **Exploratoria** | — | — | `kd_rgb` frente a `est_rgb` |
+| **Brazos** | 6, repetidos en 5 folds y 3 semillas: 90 entrenamientos | 4 en 5 folds y 1 semilla: 20 entrenamientos | 4 más `est_nir` como referencia, en 5 folds y 3 semillas: 75 entrenamientos |
+| **Alcance** | Confirmatorio | Evidencia preliminar: análisis pareado por fold con intervalos | Igual |
+| **Maestro grande (48 M)** | Centro del experimento | Caso de estudio, fuera de las pruebas | Fuera de las pruebas; sus resultados quedan como desarrollo |
 
 ### Por qué cambiaron
 
 1. **Cómputo:** el maestro grande tarda unas 12.7 h por entrenamiento y hay una sola GPU. El plan original superaba las 800 h, con plazo el 2026-11-08.
 2. **El maestro ya detecta desde el NIR:** en validación del fold 0, conserva 0.215 de 0.229 sin RGB y cae a 0.006 sin NIR.
 3. **Fusión dudosa:** la atención domina las etapas profundas, casi no cambia con el NIR de otra foto, y no se encontró precedente de esta fusión en un detector RGB+NIR.
+4. **La pregunta correcta (2026-11-05):** comparar NIR con RGB no mide si el NIR agrega algo al RGB, y en `kd_nir` el maestro no ve el RGB de su estudiante. `kd_rgb` se mantiene porque, sin ese control, una mejora al destilar no se podría atribuir al NIR.
 
-### Los cuatro brazos
+### Los brazos vigentes
 
 | Brazo | Entrada | Entrenamiento |
 | :-- | :-- | :-- |
 | `est_rgb` | RGB | Solo etiquetas. Base de H1 |
-| `est_nir` | NIR (CLAHE) | Solo etiquetas |
-| `kd_rgb` | RGB | Destilado de `est_rgb` del mismo fold y semilla. Base de H2 |
-| `kd_nir` | RGB | Destilado de `est_nir` del mismo fold y semilla |
+| `est_rgbnir` | RGB+NIR | Solo etiquetas. Tratamiento de H1 y maestro de `kd_rgbnir` |
+| `kd_rgb` | RGB | Destilado de `est_rgb` del mismo fold y semilla. Control de H2 |
+| `kd_rgbnir` | RGB | Destilado de `est_rgbnir` del mismo fold y semilla. Tratamiento de H2 |
+| `est_nir` | NIR (CLAHE) | Solo etiquetas. Referencia descriptiva, fuera de las pruebas |
 
 ### Qué se mantiene
 
 - La métrica primaria: AP50 de daño en la ventana latente (t ∈ {0, 2, 4, 6} + `sano`) en el lote de test.
-- Los folds por lote, el NIR CLAHE y el recorte al mango en los cuatro brazos.
+- Los folds por lote, el NIR CLAHE y el recorte al mango en todos los brazos.
 - La ROPE de ±0.02 y el umbral `P(right) ≥ 0.95`, que ahora guían una lectura preliminar.
 - La regla de no ajustar nada mirando test.
 
@@ -259,11 +261,11 @@ El cambio se decidió el 2026-11-03, antes de leer test, y está registrado en l
 
 | H1 | H2 | Conclusión posible |
 | :-- | :-- | :-- |
-| Favorable | Favorable | Evidencia preliminar de que el NIR aporta y se transfiere. H1 sigue siendo evidencia débil por el sesgo de etiquetado. |
-| Favorable | No favorable | El NIR aporta algo que la destilación no transfirió con este diseño. Puede justificar el sensor NIR en el edge. |
-| No favorable | — | Con este setup no se observa aporte del NIR. Es informativo porque el sesgo de etiquetado juega a su favor. H2 pasa a exploratoria. |
+| Favorable | Favorable | Evidencia preliminar de que el NIR agrega señal al RGB y parte de ella llega a un estudiante que solo usa RGB. Sigue siendo evidencia débil por el sesgo de etiquetado. |
+| Favorable | No favorable | El NIR agrega señal, pero la destilación no la transfirió con este diseño. Puede justificar el sensor NIR en el edge. Si `kd_rgbnir` supera a `est_rgb`, esa ganancia no se atribuye al NIR. |
+| No favorable | — | Con este setup no se observa que el NIR agregue señal. Es informativo porque el sesgo de etiquetado juega a su favor. H2 pasa a exploratoria. |
 
-**Con una semilla no se separa el efecto de la variación entre semillas.** Ningún resultado de este diseño alcanza para escribir que una hipótesis queda probada.
+**Con cinco lotes y a lo sumo tres semillas, los intervalos son anchos por construcción.** Ningún resultado de este diseño alcanza para escribir que una hipótesis queda probada.
 
 ## Estado y pendientes
 
@@ -277,22 +279,25 @@ Todas con la validación de los pilotos del fold 0 y antes de leer test. Están 
 | Épocas | 80 | La mejor época cae entre la 56 y la 79 en los pilotos con mango, con el LR casi en 0 al final |
 | Clase mango | Se mantiene | Quitarla no mejora `est_rgb`, y la regla pedía mejorar ambos brazos |
 | EMA | No se usa | Su piloto se interrumpió con AP50 de daño cercano a 0; sin tiempo para diagnosticarlo |
-| Semillas | 42, 1337 y 2024, con la 42 primero en todos los brazos y folds | Se reporta el mayor conjunto de semillas completo en los cuatro brazos y los cinco folds |
+| Semillas | 42, 1337 y 2024, con la 42 primero en los cuatro brazos de las pruebas y `est_nir` al final | Se reporta el mayor conjunto de semillas completo en los cuatro brazos de las pruebas y los cinco folds |
 
 ### Corridas
 
-Las corridas definitivas salen de `main` en `b77d4af`, que incluye el arreglo del warm-up. Por eso el fold 0 se vuelve a entrenar y los pilotos no se reutilizan.
+Las corridas definitivas incluyen el arreglo del warm-up, así que el fold 0 se vuelve a entrenar y los pilotos no se reutilizan. Las primeras, lanzadas a las 14:19 con los brazos del 2026-11-03, se detuvieron a los 15 minutos sin ninguna evaluación y se relanzaron con los brazos vigentes (sección 11 del plan).
 
-| Brazo | Pilotos (fold 0, solo validación) | Definitivas (5 folds, val y test) |
-| :-- | :-- | :-- |
-| `est_rgb`, `est_nir` | 12 de 12 terminadas | En curso desde el 2026-11-05, 14:19 |
-| `kd_rgb`, `kd_nir` | Prueba de 2 épocas de `kd_nir` | En cola: cada una arranca cuando termina su maestro del mismo fold y semilla |
-| `est_rgbnir` (exploratorio) | 3 de 3 terminadas | Fuera de las corridas definitivas |
-| EMA | Interrumpido en la época 15 | Descartado |
+| Brazo | Rol | Pilotos (fold 0, solo validación) | Definitivas (5 folds, val y test) |
+| :-- | :-- | :-- | :-- |
+| `est_rgb` | Base de H1 y maestro de `kd_rgb` | 6 de 6 terminadas, con warm-up anterior | En curso desde el 2026-11-05 |
+| `est_rgbnir` | Tratamiento de H1 y maestro de `kd_rgbnir` | 3 de 3 terminadas, con warm-up corregido | En curso desde el 2026-11-05 |
+| `kd_rgb` | Control de H2 | Sin piloto | En cola tras su maestro del mismo fold y semilla |
+| `kd_rgbnir` | Tratamiento de H2 | Sin piloto | En cola tras su maestro del mismo fold y semilla |
+| `est_nir` | Referencia descriptiva | 6 de 6 terminadas, con warm-up anterior | Al final, después de las 3 semillas de los otros cuatro |
+| `kd_nir` | Fuera del plan | Prueba de 2 épocas | No corre |
+| EMA | — | Interrumpido en la época 15 | Descartado |
 
-Con 3 corridas a la vez, cada grupo de 80 épocas tarda unos 90 min, y KD tarda lo mismo. La semilla 42 (20 corridas) debería terminar en la madrugada del 2026-11-06 y las tres semillas (60 corridas), hacia la noche del 2026-11-06.
+Con 3 corridas a la vez, cada grupo de 80 épocas tarda unos 90 min, y KD tarda lo mismo. La semilla 42 de los cuatro brazos de las pruebas (20 corridas) debería terminar en la madrugada del 2026-11-06, sus tres semillas (60 corridas) hacia la noche del 2026-11-06, y `est_nir` (15 corridas) unas 7.5 h después.
 
-Los pilotos están en `~/edge_mango/runs/pilots*/` y las corridas definitivas en `~/edge_mango/runs/final/`, con copias en `checkpoints/v4_pilots*/` y `checkpoints/v4_final/` que Git ignora.
+Los pilotos están en `~/edge_mango/runs/pilots*/` y las corridas definitivas en `~/edge_mango/runs/final/` (las detenidas, en `runs/aborted_final_b77d4af/`), con copias en `checkpoints/v4_pilots*/` y `checkpoints/v4_final/` que Git ignora.
 
 ### Declaración sobre test
 
@@ -303,7 +308,7 @@ El 2026-11-04, al revisar los artefactos, se imprimieron en la sesión de trabaj
 - [x] Fijar épocas, clase mango, EMA y semillas solo con validación, y commitear el pre-registro de la sección 8.1.
 - [ ] Explicar la diferencia de AP entre zonas de impacto.
 - [x] Medir el tiempo de KD en paralelo.
-- [ ] Correr los cuatro brazos en los cinco folds con la misma configuración (en curso).
+- [ ] Correr los brazos vigentes en los cinco folds con la misma configuración (en curso).
 - [ ] Generar las tablas con `scripts/aggregate_kfold.py` para H1, H2 y la secundaria.
 - [ ] Reportar los 5 deltas, el IC corregido, las tres probabilidades, k/5 y el sign-flip con su piso de 0.0625.
 - [ ] Repetir el análisis de sensibilidad sin `visible_rgb = yes`.
