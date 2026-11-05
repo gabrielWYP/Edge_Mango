@@ -5,7 +5,12 @@ Reads the TensorBoard logs only (validation, never test). Colour is what the mod
 orange RGB+NIR); a dashed line is a distilled student. The detection loss is box + cls, the same in every arm: the
 total loss of a KD run also holds its distillation term.
 
-    python scripts/plot_run_curves.py runs/final reports/final-runs-progress/curves_seed42.png
+The AP curve is drawn twice: the raw values faint, and over them an exponential smoothing with bias correction
+(the TensorBoard one), smoothed_t = (1 - w) * sum_i w^(t-i) * ap_i / (1 - w^t). The weight w is the optional third
+argument (default 0.8, about 5 epochs; 0 turns it off). Smoothing changes only the drawing: the dot is still the raw
+best epoch, the checkpoint the run selected.
+
+    python scripts/plot_run_curves.py runs/final reports/final-runs-progress/curves_seed42.png [0.8]
 """
 import glob, sys, datetime
 import matplotlib; matplotlib.use("Agg")
@@ -13,6 +18,7 @@ import matplotlib.pyplot as plt
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 
 ROOT, OUT = sys.argv[1], sys.argv[2]  # runs root with <arm>/fold<k>/seed42, output PNG
+SMOOTH = float(sys.argv[3]) if len(sys.argv) > 3 else 0.8
 SURFACE, INK, INK2, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#e4e3df"
 BLUE, ORANGE = "#2a78d6", "#eb6834"
 ARMS = [  # (arm, color by input of the model or its teacher, line by training, label)
@@ -21,6 +27,14 @@ ARMS = [  # (arm, color by input of the model or its teacher, line by training, 
     ("kd_rgb", BLUE, (0, (4, 2)), "kd_rgb (RGB, maestro RGB)"),
     ("kd_rgbnir", ORANGE, (0, (4, 2)), "kd_rgbnir (RGB, maestro RGB+NIR)"),
 ]
+
+def smooth(values, w):
+    """Exponential moving average with bias correction, so the first epochs are not pulled towards 0."""
+    out, acc = [], 0.0
+    for t, v in enumerate(values, 1):
+        acc = w * acc + (1 - w) * v
+        out.append(acc / (1 - w ** t) if w else v)
+    return out
 
 def scalars(run):
     out = {}
@@ -49,7 +63,10 @@ for col, fold in enumerate(folds):
         box, cls = s.get("Phase1/train/box_loss", {}), s.get("Phase1/train/cls_loss", {})
         if not ap: continue
         ep = sorted(ap)
-        axes[0][col].plot(ep, [ap[e] for e in ep], color=color, ls=ls, lw=2, label=label)
+        raw = [ap[e] for e in ep]
+        if SMOOTH:
+            axes[0][col].plot(ep, raw, color=color, ls=ls, lw=1, alpha=0.25)
+        axes[0][col].plot(ep, smooth(raw, SMOOTH), color=color, ls=ls, lw=2, label=label)
         best = max(ep, key=ap.get)
         axes[0][col].plot([best], [ap[best]], "o", ms=8, color=color, mec=SURFACE, mew=2)
         le = sorted(set(box) & set(cls))
@@ -59,6 +76,10 @@ for col, fold in enumerate(folds):
     axes[1][col].set_xlabel("Época")
     axes[1][col].set_xlim(0, 81)
 axes[0][0].set_ylabel("AP50 de daño en validación\n(todas las horas; ● = mejor época)")
+if SMOOTH:
+    axes[0][0].set_ylabel(
+        f"AP50 de daño en validación, suavizado w={SMOOTH:g}\n(tenue = valor por época; ● = mejor época)"
+    )
 axes[1][0].set_ylabel("Pérdida de detección en train\n(caja + clase)")
 handles, labels = axes[0][0].get_legend_handles_labels()
 fig.legend(
