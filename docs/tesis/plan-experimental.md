@@ -392,7 +392,7 @@ inferencia confirmatoria es solo la de nivel lote.
 
 Los demás descriptores del CSV se reportan como tabla, sin lectura.
 
-**Salida.** `scripts/lot_effects.py --split test`: una tabla por fold y un gráfico por descriptor primario. Con cinco lotes **no** se calcula correlación, intervalo ni p-valor. Se describe si el orden de los folds por la diferencia sigue el de algún descriptor, y nada se escribe como causa. A lo sumo: "consistente con" la teoría o "no consistente". El lote 1 concentra casi todas las diferencias de captura (5300 K frente a 4600-4800 K, la fruta más roja, la mayor deriva de luz), así que un patrón que dependa solo del fold 4 se reporta como un solo lote.
+**Salida.** `scripts/lot_effects.py --split test`: una tabla por fold y un gráfico por descriptor primario. Con cinco lotes **no** se calcula correlación, intervalo ni p-valor. Se describe si el orden de los folds por la diferencia sigue el de algún descriptor, y nada se escribe como causa. A lo sumo: "consistente con" la teoría o "no consistente". El lote 1 concentra casi todas las diferencias de captura (5300 K frente a 4600-4800 K, la fruta más roja, la mayor deriva de luz), así que un patrón que dependa solo del fold 0, que prueba en el lote 1, se reporta como un solo lote.
 
 ---
 
