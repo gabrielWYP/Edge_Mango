@@ -29,8 +29,9 @@ class KDConfig(TrainingConfig):
         teacher_checkpoint: Path to the teacher checkpoint (.pt file).
         teacher_kind: "master" (default, MasterModel) or "student", a frozen
             StudentModel whose variant comes from its checkpoint.
-        teacher_input: What a student teacher reads: "rgb" or "nir". The NIR
-            is given the way a student trained on NIR images read it.
+        teacher_input: What a student teacher reads: "rgb", "nir" or "rgbnir".
+            The NIR is given the way a student trained on NIR images read it;
+            "rgbnir" needs a teacher trained with `student_in_channels=4`.
         kd_weight: Scalar weight for KD loss in total loss composition.
         kd_temperature: Temperature for KD feature scaling (unused for MSE, reserved).
         kd_loss_type: Per-pair feature loss, "mse" (default, raw-feature MSE)
@@ -76,7 +77,7 @@ class KDConfig(TrainingConfig):
         super().__post_init__()
         if self.teacher_kind not in ("master", "student"):
             raise ValueError(f"Invalid teacher_kind '{self.teacher_kind}'.")
-        if self.teacher_input not in ("rgb", "nir"):
+        if self.teacher_input not in ("rgb", "nir", "rgbnir"):
             raise ValueError(f"Invalid teacher_input '{self.teacher_input}'.")
         # Loud on a typo: an unknown loss type must not silently fall back to
         # MSE and invalidate an mse-vs-pearson ablation arm.

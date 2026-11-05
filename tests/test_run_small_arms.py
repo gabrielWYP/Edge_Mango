@@ -27,11 +27,14 @@ def _train(args, arm: str) -> list[str]:
 def test_only_the_nir_student_reads_nir_in_its_rgb_slot(tmp_path) -> None:
     args = _args(tmp_path)
     assert f"rgb_dir={tmp_path / 'links'}" in _train(args, "est_nir")
-    for arm in ("est_rgb", "kd_nir", "kd_rgb"):
+    for arm in ("est_rgb", "est_rgbnir", "kd_nir", "kd_rgb", "kd_rgbnir"):
         assert f"rgb_dir={tmp_path / 'rgb'}" in _train(args, arm)
 
 
-@pytest.mark.parametrize("arm, teacher, reads", [("kd_nir", "est_nir", "nir"), ("kd_rgb", "est_rgb", "rgb")])
+@pytest.mark.parametrize(
+    "arm, teacher, reads",
+    [("kd_nir", "est_nir", "nir"), ("kd_rgb", "est_rgb", "rgb"), ("kd_rgbnir", "est_rgbnir", "rgbnir")],
+)
 def test_a_kd_arm_distills_from_its_teacher_of_the_same_fold_and_seed(tmp_path, arm, teacher, reads) -> None:
     command = _train(_args(tmp_path), arm)
     assert "src.training.kd_train" in command and f"teacher_input={reads}" in command
@@ -248,7 +251,7 @@ def test_a_continued_run_appends_to_its_log(tmp_path, monkeypatch) -> None:
     assert log.read_text().count("attempt") == 2
 
 
-def test_the_two_modality_student_reads_rgb_and_stays_out_of_the_planned_arms(tmp_path) -> None:
+def test_the_two_modality_student_reads_rgb_and_nir_and_is_a_planned_arm(tmp_path) -> None:
     args = _args(tmp_path, "--pixel-cache-root", "cache")
     steps = rs.plan_arm(args, "est_rgbnir", 0, 42)
     train, evaluation = [str(x) for x in steps[0][1]], [str(x) for x in steps[1][1]]
@@ -256,5 +259,5 @@ def test_the_two_modality_student_reads_rgb_and_stays_out_of_the_planned_arms(tm
     assert f"rgb_dir={tmp_path / 'rgb'}" in train and f"nir_dir={tmp_path / 'nir_clahe'}" in train
     assert f"pixel_cache_dir={Path('cache') / 'rgb'}" in train
     assert not any(x.startswith("letterbox_value=") for x in train)
-    assert "est_rgbnir" not in args.arms
+    assert "est_rgbnir" in args.arms and "kd_rgbnir" in args.arms and "kd_nir" not in args.arms
     assert not any("student_in_channels" in str(x) for x in _train(args, "est_rgb"))

@@ -62,7 +62,7 @@ def strip_legacy_kd_adapter_keys(state_dict: dict[str, Tensor]) -> dict[str, Ten
 # "wide" is the student of the v4 plan; "nano" has the neck and head channels of YOLOv8n.
 STUDENT_VARIANTS = ("wide", "nano")
 NANO_STEM_CHANNELS = [64, 64, 64]
-# 3: RGB, the student of the plan. 4: RGB and NIR stacked at the input, for the exploratory `est_rgbnir`.
+# 3: RGB, the student of the plan. 4: RGB and NIR stacked at the input, for `est_rgbnir`, the arm of H1 and the teacher of `kd_rgbnir`.
 STUDENT_IN_CHANNELS = (3, 4)
 
 

@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""The four arms of the reformulated H1 and H2: the same small student on RGB, on NIR, and distilled.
+"""The arms of H1 and H2 as reformulated on 2026-11-05: the same small student, with and without NIR.
 
-    est_rgb   labels only, on RGB. Baseline of H1 and H2.
-    est_nir   labels only, on NIR. H1: est_nir against est_rgb.
-    kd_nir    RGB student distilled from est_nir of its fold and seed. H2: against kd_rgb.
-    kd_rgb    RGB student distilled from est_rgb of its fold and seed. Baseline of H2.
+    est_rgb     labels only, on RGB. Baseline of H1.
+    est_rgbnir  labels only, on RGB and NIR stacked at the input. H1: against est_rgb. It needs NIR at inference.
+    kd_rgb      RGB student distilled from est_rgb of its fold and seed. Control of H2.
+    kd_rgbnir   RGB student distilled from est_rgbnir of its fold and seed. H2: against kd_rgb.
+    est_nir     labels only, on NIR. Descriptive reference, outside H1 and H2.
 
-Exploratory, outside H1 and H2, only when `--arms` names it:
+Outside the plan, only when `--arms` names it:
 
-    est_rgbnir  labels only, on RGB and NIR stacked at the input. It needs NIR at inference.
+    kd_nir      RGB student distilled from est_nir of its fold and seed.
 
 Every run is evaluated on val and test, with predictions and metrics_v4.json, under
 `<reports-root>/<arm>/fold<k>_seed<S>/<split>/`, the layout of `scripts/aggregate_kfold.py`.
@@ -59,12 +60,19 @@ class Arm:
 ARMS = {
     "est_rgb": Arm(),
     "est_nir": Arm(reads_nir=True),
+    "est_rgbnir": Arm(in_channels=4),
     "kd_nir": Arm(teacher="est_nir"),
     "kd_rgb": Arm(teacher="est_rgb"),
-    "est_rgbnir": Arm(in_channels=4),
+    "kd_rgbnir": Arm(teacher="est_rgbnir"),
 }
-# Outside H1 and H2: it runs only when `--arms` names it.
-PLANNED_ARMS = ["est_rgb", "est_nir", "kd_nir", "kd_rgb"]
+# kd_nir is outside the plan: it runs only when `--arms` names it.
+PLANNED_ARMS = ["est_rgb", "est_rgbnir", "est_nir", "kd_rgb", "kd_rgbnir"]
+
+
+def arm_input(name: str) -> str:
+    """What an arm reads, in the terms of `teacher_input`."""
+    arm = ARMS[name]
+    return "rgbnir" if arm.in_channels == 4 else "nir" if arm.reads_nir else "rgb"
 
 
 # This runner does not hash its settings: the trainer refuses a state from other ones, by name.
@@ -141,7 +149,7 @@ def plan_arm(args, arm_name: str, fold: int, seed: int) -> list[tuple[str, list[
             args.python, "-m", "src.training.kd_train", "--config", KD_CONFIG, "--override",
             *common, *weights, *rk.machine_overrides(args.machine), "batch_size=8",
             f"teacher_checkpoint={teacher}", "teacher_kind=student",
-            f"teacher_input={'nir' if ARMS[arm.teacher].reads_nir else 'rgb'}",
+            f"teacher_input={arm_input(arm.teacher)}",
         ]
     else:
         train = [

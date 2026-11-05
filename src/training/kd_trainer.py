@@ -159,7 +159,12 @@ class KDTrainer(Trainer):
             raise FileNotFoundError(f"Teacher checkpoint not found: {ckpt_path}")
         checkpoint = torch.load(str(ckpt_path), map_location="cpu", weights_only=False)
         variant = (checkpoint.get("config") or {}).get("student_variant", "wide")
-        teacher = StudentModel(num_classes=config.num_classes, variant=variant)
+        in_channels = (checkpoint.get("config") or {}).get("student_in_channels", 3)
+        if (in_channels == 4) != (config.teacher_input == "rgbnir"):
+            raise ValueError(
+                f"teacher_input={config.teacher_input!r} does not fit a teacher with {in_channels} input channels."
+            )
+        teacher = StudentModel(num_classes=config.num_classes, variant=variant, in_channels=in_channels)
         teacher.load_state_dict(strip_legacy_kd_adapter_keys(checkpoint["model_state_dict"]))
         teacher.eval()
         for param in teacher.parameters():
@@ -171,10 +176,12 @@ class KDTrainer(Trainer):
     def _teacher_features(self, rgb: torch.Tensor, nir: torch.Tensor) -> dict:
         """The teacher's features at the student's levels. Call under no_grad."""
         if self.config.teacher_kind == "student":
-            x = rgb
-            if self.config.teacher_input == "nir":
-                x = nir_as_rgb_tensor(nir, self.config.nir_mean, self.config.nir_std)
-            t_out = self.teacher(x)
+            if self.config.teacher_input == "rgbnir":
+                t_out = self.teacher(rgb, nir)
+            elif self.config.teacher_input == "nir":
+                t_out = self.teacher(nir_as_rgb_tensor(nir, self.config.nir_mean, self.config.nir_std))
+            else:
+                t_out = self.teacher(rgb)
             return {
                 "backbone": t_out["distill_backbone"],
                 "fpn": t_out["distill_fpn"],
