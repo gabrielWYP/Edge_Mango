@@ -308,15 +308,17 @@ H2:          baseline = kd_rgb,   treatment = kd_nir
 Secundaria:  baseline = est_rgb,  treatment = kd_nir
 Sensibilidad: las mismas comparaciones sin las fotos latentes con visible_rgb = yes (146 de 1987), porque ahí la marca ya se veía en RGB
 Variante:    nano, fijada el 2026-11-04 (sección 11)
-Épocas:      se fijan con la validación de los pilotos, antes de leer test
-Clase mango: se decide con la validación de los pilotos, antes de leer test (sección 11)
-EMA:         se decide con la validación de los pilotos, antes de leer test (sección 11)
+Épocas:      80. En los pilotos la mejor época de validación cae entre la 56 y la 74, con el LR casi en 0 al final (sección 11)
+Clase mango: se mantiene. Con la regla de la sección 11, quitarla no mejora est_rgb (-0.0001 de AP50 latente medio de validación) aunque mejora est_nir (+0.009)
+EMA:         no se usa. Su piloto se interrumpió en la época 15 con AP50 de daño en validación cercano a 0 en las tres corridas, y no hay tiempo para diagnosticarlo
 NIR:         variante nir_clahe en los brazos de E1 y E2
 Recorte:     al mango con rgb_mango_mask, margen 0.10 y jitter 0.5 en train, en los cuatro brazos (el brazo NIR recibe la ventana desde RGB)
 Metric:      test damage AP50 en ventana latente (t ∈ {0,2,4,6} + sano), media sobre semillas por fold
 ROPE:        ±0.02 AP50
 Threshold:   P(right) >= 0.95
-Seeds:       42 (una sola, por cómputo: resultado preliminar)
+Seeds:       42, 1337 y 2024. Primero corre la 42 en los cuatro brazos y los cinco folds, después las otras dos.
+             Se reporta el mayor conjunto de semillas completo en los cuatro brazos y los cinco folds; una semilla
+             incompleta no se reporta. Ningún resultado de test se lee antes de que terminen las corridas que se reportan
 Folds:       los cinco de configs/folds/v4_lot_5fold.json (ninguno descartado)
 Selección:   checkpoint por damage AP50 del lote de validación (todas las horas), nunca el de test
 Exclusiones: reglas de la sección 3.1
@@ -392,3 +394,4 @@ Estado al 2026-11-02: los puntos 1 a 9 tienen su código y pruebas, y los comand
 | 2026-11-04 | Se fija la variante `nano`, sin pilotarla frente a `wide`. | Decisión del autor: es el modelo que describe el plan y tiene menos de la mitad de parámetros (3.0 M frente a 6.9 M). No se basa en resultados de test. | Después de la exposición parcial de test |
 | 2026-11-04 | Pilotos solo en validación: `est_rgb` y `est_nir`, `nano`, fold 0, 3 semillas y 80 épocas, con y sin la clase mango. Regla para quitarla: el AP50 latente medio de validación debe mejorar en ambos brazos, comparando medias de 3 semillas y nunca la diferencia entre brazos. | Decisión del autor: el mango consume pérdida y anclas en una tarea ya resuelta. No se basa en resultados de test. | Después de la exposición parcial de test |
 | 2026-11-04 | Se corrige el warm-up, cuya primera época entrenaba con el LR completo. Se agrega una prueba con EMA (`ema_decay=0.9994`) y warm-up corregido, sobre la condición de mango que resulte de los pilotos. Si EMA se adopta, se aplica igual a todos los brazos. | Decisión del autor tras ver saltos del AP50 de daño en validación. El warm-up afecta a todas las corridas anteriores. No se basa en resultados de test. | Después de la exposición parcial de test |
+| 2026-11-05 | Se fijan las épocas (80), la clase mango (se mantiene), EMA (no se usa) y las semillas (42, 1337 y 2024, con la 42 primero; sección 8.1). Los pilotos de la clase mango corrieron antes del arreglo del warm-up; las corridas definitivas lo incluyen y se vuelven a correr todas, también el fold 0. | Pilotos de fold 0 solo en validación (`est_rgb` y `est_nir`, 3 semillas, con y sin la clase mango). EMA se descarta por plazo, sin diagnóstico. No se basa en resultados de test. | Después de la exposición parcial de test; antes de la primera corrida definitiva |
