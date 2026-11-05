@@ -308,7 +308,7 @@ H2:          baseline = kd_rgb,   treatment = kd_nir
 Secundaria:  baseline = est_rgb,  treatment = kd_nir
 Sensibilidad: las mismas comparaciones sin las fotos latentes con visible_rgb = yes (146 de 1987), porque ahí la marca ya se veía en RGB
 Variante:    nano, fijada el 2026-11-04 (sección 11)
-Épocas:      80. En los pilotos la mejor época de validación cae entre la 56 y la 74, con el LR casi en 0 al final (sección 11)
+Épocas:      80. En los pilotos la mejor época de validación cae entre la 56 y la 79, con el LR casi en 0 al final (sección 11)
 Clase mango: se mantiene. Con la regla de la sección 11, quitarla no mejora est_rgb (-0.0001 de AP50 latente medio de validación) aunque mejora est_nir (+0.009)
 EMA:         no se usa. Su piloto se interrumpió en la época 15 con AP50 de daño en validación cercano a 0 en las tres corridas, y no hay tiempo para diagnosticarlo
 NIR:         variante nir_clahe en los brazos de E1 y E2
