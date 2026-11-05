@@ -1,4 +1,4 @@
-"""The plan of the four small arms: the protocol, the modalities and the order."""
+"""The plan of the small arms: the protocol, the modalities and the order."""
 
 from __future__ import annotations
 
@@ -246,3 +246,15 @@ def test_a_continued_run_appends_to_its_log(tmp_path, monkeypatch) -> None:
     assert rs._run_logged(command, log, dict(rs.os.environ)) == 0
     assert rs._run_logged(command, log, dict(rs.os.environ)) == 0
     assert log.read_text().count("attempt") == 2
+
+
+def test_the_two_modality_student_reads_rgb_and_stays_out_of_the_planned_arms(tmp_path) -> None:
+    args = _args(tmp_path, "--pixel-cache-root", "cache")
+    steps = rs.plan_arm(args, "est_rgbnir", 0, 42)
+    train, evaluation = [str(x) for x in steps[0][1]], [str(x) for x in steps[1][1]]
+    assert "student_in_channels=4" in train and "student_in_channels=4" in evaluation
+    assert f"rgb_dir={tmp_path / 'rgb'}" in train and f"nir_dir={tmp_path / 'nir_clahe'}" in train
+    assert f"pixel_cache_dir={Path('cache') / 'rgb'}" in train
+    assert not any(x.startswith("letterbox_value=") for x in train)
+    assert "est_rgbnir" not in args.arms
+    assert not any("student_in_channels" in str(x) for x in _train(args, "est_rgb"))

@@ -207,6 +207,8 @@ def main():
     # Create student model. A master teacher's adapters are sized for the wide student's channels.
     if config.teacher_kind == "master" and config.student_variant != "wide":
         raise ValueError(f"A master teacher needs the wide student, not {config.student_variant!r}.")
+    if config.student_in_channels != 3:
+        raise ValueError("A distilled student reads RGB alone: student_in_channels must be 3.")
     model = StudentModel(num_classes=config.num_classes, variant=config.student_variant)
     if config.student_pretrained_path:
         report = load_yolov8n_weights(model, config.student_pretrained_path)

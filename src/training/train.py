@@ -281,7 +281,11 @@ def main():
 
     # Create model
     if config.model_type == "student":
-        model = StudentModel(num_classes=config.num_classes, variant=config.student_variant)
+        model = StudentModel(
+            num_classes=config.num_classes,
+            variant=config.student_variant,
+            in_channels=config.student_in_channels,
+        )
         if config.student_pretrained_path:
             report = load_yolov8n_weights(model, config.student_pretrained_path)
             print(

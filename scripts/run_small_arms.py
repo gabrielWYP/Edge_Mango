@@ -6,6 +6,10 @@
     kd_nir    RGB student distilled from est_nir of its fold and seed. H2: against kd_rgb.
     kd_rgb    RGB student distilled from est_rgb of its fold and seed. Baseline of H2.
 
+Exploratory, outside H1 and H2, only when `--arms` names it:
+
+    est_rgbnir  labels only, on RGB and NIR stacked at the input. It needs NIR at inference.
+
 Every run is evaluated on val and test, with predictions and metrics_v4.json, under
 `<reports-root>/<arm>/fold<k>_seed<S>/<split>/`, the layout of `scripts/aggregate_kfold.py`.
 Re-run the same command to resume: finished steps are skipped, and an interrupted training continues from
@@ -49,6 +53,7 @@ PROTOCOL = ("patience=1000", "selection_metric=damage_ap50")
 class Arm:
     reads_nir: bool = False
     teacher: str | None = None
+    in_channels: int = 3
 
 
 ARMS = {
@@ -56,7 +61,10 @@ ARMS = {
     "est_nir": Arm(reads_nir=True),
     "kd_nir": Arm(teacher="est_nir"),
     "kd_rgb": Arm(teacher="est_rgb"),
+    "est_rgbnir": Arm(in_channels=4),
 }
+# Outside H1 and H2: it runs only when `--arms` names it.
+PLANNED_ARMS = ["est_rgb", "est_nir", "kd_nir", "kd_rgb"]
 
 
 # This runner does not hash its settings: the trainer refuses a state from other ones, by name.
@@ -71,7 +79,7 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--weights", default="", help="YOLOv8n state_dict; empty trains from scratch")
     parser.add_argument("--variant", choices=("wide", "nano"), default="wide")
     parser.add_argument("--epochs", type=int, default=80)
-    parser.add_argument("--arms", nargs="+", choices=sorted(ARMS), default=list(ARMS))
+    parser.add_argument("--arms", nargs="+", choices=sorted(ARMS), default=PLANNED_ARMS)
     parser.add_argument("--folds", type=int, nargs="+", default=[0, 1, 2, 3, 4])
     parser.add_argument("--seeds", type=int, nargs="+", default=[42])
     parser.add_argument("--checkpoints-root", type=Path, default=Path("checkpoints/v4_small"))
@@ -115,6 +123,8 @@ def plan_arm(args, arm_name: str, fold: int, seed: int) -> list[tuple[str, list[
         f"student_variant={args.variant}",
         *args.extra_override,
     ]
+    if arm.in_channels != 3:
+        data.append(f"student_in_channels={arm.in_channels}")
     if arm.reads_nir:
         # The dataset pads NIR with its mean and RGB with 114. This keeps the pad of
         # the NIR student equal to the one its KD input has as a teacher.

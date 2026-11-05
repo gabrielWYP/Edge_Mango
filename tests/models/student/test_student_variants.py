@@ -87,3 +87,52 @@ def test_config_defaults_keep_todays_student_and_refuse_a_typo() -> None:
     assert config.student_variant == "wide" and config.student_pretrained_path == ""
     with pytest.raises(ValueError, match="student_variant"):
         TrainingConfig(student_variant="small")
+
+
+@pytest.mark.parametrize("variant", ["wide", "nano"])
+def test_the_two_modality_student_stacks_nir_after_rgb(variant) -> None:
+    model = StudentModel(num_classes=2, variant=variant, in_channels=4).eval()
+    rgb, nir = torch.rand(1, 3, 64, 64), torch.rand(1, 1, 64, 64)
+    assert model.backbone.stem[0].conv.in_channels == 4
+    with torch.no_grad():
+        output = model(rgb, nir)
+        other = model(rgb, torch.zeros_like(nir))
+    assert output["preds"][0].shape[1] == 6
+    assert not torch.equal(output["preds"][0], other["preds"][0])
+
+
+def test_the_two_modality_student_refuses_to_run_without_nir() -> None:
+    with pytest.raises(ValueError, match="needs the NIR"):
+        StudentModel(num_classes=2, variant="nano", in_channels=4)(torch.zeros(1, 3, 64, 64))
+
+
+def test_the_rgb_student_is_unchanged_by_a_nir_argument() -> None:
+    torch.manual_seed(0)
+    model = StudentModel(num_classes=2, variant="nano").eval()
+    rgb = torch.rand(1, 3, 64, 64)
+    with torch.no_grad():
+        assert torch.equal(model(rgb)["preds"][0], model(rgb, torch.rand(1, 1, 64, 64))["preds"][0])
+
+
+@pytest.mark.parametrize("bad", [1, 5])
+def test_only_rgb_or_rgb_and_nir_are_valid_inputs(bad) -> None:
+    with pytest.raises(ValueError, match="in_channels"):
+        StudentModel(num_classes=2, in_channels=bad)
+    with pytest.raises(ValueError, match="student_in_channels"):
+        TrainingConfig(student_in_channels=bad)
+
+
+def test_the_nir_filter_starts_as_the_mean_of_the_rgb_filters(tmp_path) -> None:
+    rgb_student = StudentModel(num_classes=2, variant="nano")
+    official = _official_state(rgb_student)
+    first = official["model.0.conv.weight"]
+    official["model.0.conv.weight"] = torch.arange(first.numel(), dtype=first.dtype).reshape(first.shape)
+    path = tmp_path / "official.pt"
+    torch.save(official, path)
+    model = StudentModel(num_classes=2, variant="nano", in_channels=4)
+    report = load_yolov8n_weights(model, path)
+    weight = model.backbone.stem[0].conv.weight.detach()
+    source = official["model.0.conv.weight"]
+    assert "backbone.stem.0.conv.weight" not in report["skipped"]
+    assert torch.equal(weight[:, :3], source)
+    assert torch.allclose(weight[:, 3], source.mean(dim=1))

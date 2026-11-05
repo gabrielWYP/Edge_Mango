@@ -237,6 +237,7 @@ class TrainingConfig:
     # Student architecture and starting weights (src/models/student). Off by default, so
     # every existing config and checkpoint keeps the student it has today.
     student_variant: str = "wide"
+    student_in_channels: int = 3
     student_pretrained_path: str = ""
     pixel_cache_dir: str = ""
 
@@ -419,6 +420,10 @@ class TrainingConfig:
             raise ValueError(
                 f"Invalid student_variant '{self.student_variant}'. "
                 f"Must be one of: {sorted(STUDENT_VARIANT_NAMES)}"
+            )
+        if self.student_in_channels not in (3, 4):
+            raise ValueError(
+                f"Invalid student_in_channels {self.student_in_channels}: 3 is RGB, 4 is RGB and NIR."
             )
         validate_roi_crop(self.roi_crop_margin, self.roi_crop_jitter)
         validate_neck_norm(self.neck_norm, self.neck_gn_groups)

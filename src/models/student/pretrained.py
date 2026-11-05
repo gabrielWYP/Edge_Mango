@@ -2,7 +2,8 @@
 
 The file holds the tensors of the official checkpoint under their own names, `model.<i>...`, so
 loading it needs no ultralytics package. Its head predicts 80 classes and 64 box values, so only
-what has the same shape is copied. The backbone must match in full: both variants have it.
+what has the same shape is copied. The backbone must match in full: both variants have it. A
+student with a NIR input channel starts that channel from the mean of the three RGB filters.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ _BACKBONE = {
     "stem.0": 0, "stem.1": 1, "stage1": 2, "stage2.0": 3, "stage2.1": 4,
     "stage3.0": 5, "stage3.1": 6, "stage4.0": 7, "stage4.1": 8, "sppf": 9,
 }
+_FIRST_FILTER = "backbone.stem.0.conv.weight"
 _NANO_NECK = {
     "td_c2f_4": 12, "td_c2f_3": 15, "bu_conv_3": 16, "bu_c2f_4": 18, "bu_conv_4": 19, "bu_c2f_5": 21,
 }
@@ -46,6 +48,8 @@ def load_yolov8n_weights(model: torch.nn.Module, path: str | Path) -> dict:
     loaded, skipped = {}, []
     for key, value in state.items():
         source = official.get(official_key(key, model.variant))
+        if key == _FIRST_FILTER and source is not None and value.shape[1] == source.shape[1] + 1:
+            source = torch.cat([source, source.mean(dim=1, keepdim=True)], dim=1)
         if source is not None and source.shape == value.shape:
             loaded[key] = source.to(value.dtype)
         else:
