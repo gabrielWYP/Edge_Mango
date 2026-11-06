@@ -422,6 +422,27 @@ una prueba aparte.
   en lugar del elegido por validación, porque el AP50 de validación salta de una época a otra y la mejor época puede
   ser un pico de ruido. Se reporta junto al resultado principal, que sigue siendo el de 8.1.
 
+### 8.7 Resultado preliminar con la semilla 42 en los cinco folds (registrado el 2026-11-06, antes de leerlo)
+
+**Qué se mira.** A pedido del autor, para redactar resultados preliminares, se lee el test de la semilla 42 de
+`est_rgb`, `est_rgbnir`, `kd_rgb` y `kd_rgbnir` en los cinco folds; los folds 0 y 1 ya se leyeron en 8.6. Las
+20 corridas terminaron el 2026-11-06 a las 14:10. Se reportan el AP50 latente de cada brazo por fold, las diferencias
+de H1, H2, la secundaria y la exploratoria, y el análisis completo de 8.4 sobre esas cinco diferencias: IC 95%
+corregido, `P(left)` / `P(rope)` / `P(right)` con la ROPE de ±0.02, k/5 y el sign-flip con su piso. Se agregan los
+descriptivos de 8.5 y 8.6 (efecto por lote, puntos de operación y sensibilidad a la selección con la época 80). Es
+una excepción a la regla de 8.1, como la de 8.6, y se declara aquí antes de leer.
+
+**Cómo se rotula.** "Preliminar, una semilla". La frase de la tabla de decisión se cita como la que licenciaría ese
+resultado, no como la conclusión de H1 o H2. El resultado confirmatorio es el del mayor conjunto de semillas completo
+(8.1). Si las semillas 1337 y 2024 no terminan en los cuatro brazos y los cinco folds, ese conjunto es {42} y este
+resultado pasa a ser el reportado, sin cambios.
+
+**Qué no se hace con eso.** El protocolo sigue congelado como en 8.6: las semillas 1337 y 2024 corren en las otras
+dos máquinas con `final_seed.sh` y el commit `b34668f`, y `est_nir` corre con sus tres semillas en la principal, sin
+cambiar ningún argumento. Ninguna corrida se repite ni se detiene por lo que se vea, y el conjunto de semillas no se
+extiende ni se recorta. El test de `est_nir` no entra en este vistazo. Un cambio posterior a cualquiera de estos puntos
+se reporta como exploratorio (sección 9).
+
 ## 9. Reglas para no tener que pensar después
 
 1. **Nada se ajusta mirando el lote de test**: ni épocas, ni umbrales, ni augmentations, ni la definición de latente.
@@ -473,3 +494,4 @@ Estado al 2026-11-02: los puntos 1 a 9 tienen su código y pruebas, y los comand
 | 2026-11-05 | Análisis exploratorio del AP por zona de impacto frente a la iluminación y la posición del daño (`scripts/zone_analysis.py`, `reports/zone-analysis/`). No cambia ninguna prueba. | Pregunta del director sobre los estratos por zona: si el AP bajo de `derecha`, `superior` e `inferior` se debe a la iluminación. | Después de leer test de los folds 0 y 1, semilla 42 (sección 8.6); exploratorio |
 | 2026-11-06 | Cambia el orden de las corridas: `est_nir` con la semilla 42 corre justo después de la fase de semilla 42 de los cuatro brazos de las pruebas, antes de las semillas 1337 y 2024; sus otras dos semillas siguen al final. Mismos argumentos y mismo commit (`b34668f`); solo cambia el lanzador (`final2.sh`). No cambia ninguna prueba ni qué se reporta. | Decisión del autor: asegurar al menos una semilla de la referencia descriptiva si el plazo no alcanza, y redactar antes con su validación. Retrasa unas 2.75 h las semillas 1337 y 2024. No se basa en resultados de test. | Durante la fase de semilla 42 (15 de 20 corridas terminadas); sin leer test de ningún brazo fuera de la sección 8.6 |
 | 2026-11-06 | Las semillas 1337 y 2024 de los cuatro brazos de las pruebas corren en paralelo en dos máquinas más con el mismo hardware (RTX 6000 Ada), una semilla por máquina, con el mismo commit (`b34668f`), los mismos argumentos (`final_seed.sh`), el mismo dataset (`index.csv` sha256 `5acf70d0…`, `report.json` `b9170b72…`) y los mismos pesos COCO. La máquina principal termina la semilla 42 y corre `est_nir` con las tres semillas. Cada estudiante KD se destila de su maestro entrenado en la misma máquina, fold y semilla. Los resultados se juntan en `runs/final` sin solaparse (cada ruta lleva la semilla). | Se consiguieron dos máquinas iguales; adelanta el conjunto de tres semillas en unas 14 h. La ejecución en GPU no es determinista ni en una sola máquina, así que repartir las semillas no cambia lo que se puede afirmar. No se basa en resultados de test. | Durante la fase de semilla 42 (18 de 20 corridas terminadas); sin leer test de ningún brazo fuera de la sección 8.6 |
+| 2026-11-06 | Se agrega la sección 8.7: lectura preliminar del test de la semilla 42 de los cuatro brazos de las pruebas en los cinco folds, con el análisis de 8.4 rotulado "preliminar, una semilla". El protocolo sigue congelado y el resultado confirmatorio sigue siendo el de 8.1. | Pedido del autor para redactar resultados preliminares mientras corren las semillas 1337 y 2024. | Antes de leer test de los folds 2, 3 y 4; los de 0 y 1 ya se leyeron en 8.6. El runner ya había escrito los resultados de las 20 corridas sin abrirlos |
