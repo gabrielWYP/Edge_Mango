@@ -33,7 +33,7 @@ python scripts/export_run_results.py --runs-root ~/edge_mango/runs/final \
 
 - **Tabla principal:** `differences.csv` filtrado por `split=test`, `checkpoint=best` y `metric=latent_ap50`.
 - **Sensibilidad a la selección:** lo mismo con `checkpoint=epoch80`.
-- **Curvas de entrenamiento:** `training_history.csv`, con `ap50_class_1` por época, suavizado como en `scripts/plot_run_curves.py`.
+- **Curvas de entrenamiento:** `training_history.csv`, con `ap50_class_1` por época, suavizado como en `scripts/plot_run_curves.py`. El AP30 por época (checkpoints cada 5 épocas, solo validación) está en [`../final-runs-progress/epoch_curve_val.csv`](../final-runs-progress/epoch_curve_val.csv), de `scripts/eval_epoch_curve.py`.
 - **Clasificación por foto a cualquier umbral t:** en `photos.csv`, con `primary_metric_photo=1`; positiva = `hour` distinto de `sano`, predicha positiva = `max_damage_score >= t`.
 - **Puntos de operación de cajas:** en `pr_grid.csv`, la fila del umbral.
 

@@ -50,12 +50,12 @@ from src.evaluation.v4_metrics import (  # noqa: E402
     read_predictions,
 )
 
-ARMS = {  # arm: (colour by what the model or its teacher reads, line style, label)
+ARMS = {  # arm: (colour, line style, label). One solid colour per arm, as in plot_run_curves.py.
     "est_rgb": ("#2a78d6", "-", "est_rgb (RGB)"),
     "est_rgbnir": ("#eb6834", "-", "est_rgbnir (RGB+NIR)"),
-    "kd_rgb": ("#2a78d6", (0, (4, 2)), "kd_rgb (RGB, maestro RGB)"),
-    "kd_rgbnir": ("#eb6834", (0, (4, 2)), "kd_rgbnir (RGB, maestro RGB+NIR)"),
-    "est_nir": ("#6b6a66", "-", "est_nir (NIR)"),
+    "kd_rgb": ("#1baf7a", "-", "kd_rgb (RGB, maestro RGB)"),
+    "kd_rgbnir": ("#e1c300", "-", "kd_rgbnir (RGB, maestro RGB+NIR)"),
+    "est_nir": ("#3d3c39", "-", "est_nir (NIR, referencia)"),
 }
 RUN_DIR = re.compile(r"fold(\d+)_seed(\d+)")
 
