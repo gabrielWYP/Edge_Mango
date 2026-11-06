@@ -99,3 +99,6 @@ reports/v4/
 reports/e0-detectability/boxes-final/patches.csv
 checkpoints/v4_small/
 reports/v4_small/
+
+# Downloaded release weights (models/README.md)
+models/weights/
