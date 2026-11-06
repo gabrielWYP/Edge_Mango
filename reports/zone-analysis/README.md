@@ -38,10 +38,14 @@ El panel 3 de la figura y `zone_within.csv` (opción `--photos-export`) cruzan `
 
 **5. La posición explica las demás.** Fuera de `izquierda`, el AP baja con la distancia del daño al centro de la fruta en la imagen: `centro` (0.22) > `derecha` (0.32) > `superior` (0.59) ≈ `inferior` (0.73). Dentro de cada una de las cinco zonas, la mitad de las fotos con el daño más cerca del centro tiene más aciertos que la mitad más lejana (`zone_within.csv`): 0.80 frente a 0.74 en `centro`, 0.84 frente a 0.68 en `izquierda`, 0.73 frente a 0.24 en `derecha`, 0.42 frente a 0.15 en `superior` y 0.51 frente a 0.19 en `inferior`. Dividir por brillo dentro de cada zona da signos opuestos según la zona, porque dentro de una zona el brillo depende de dónde cae la caja respecto del lado iluminado.
 
+**6. A igual distancia, más luz no da más aciertos.** Dentro de cada mitad de distancia de cada zona, la mitad más iluminada no acierta más que la menos iluminada (`zone_light_at_distance.csv`): las diferencias van de −0.14 a +0.07 y en 7 de 10 casos son ≤ 0. En `derecha` son +0.01 (cerca) y +0.07 (lejos), y aun ahí la mitad más iluminada está más cerca del centro (0.23 frente a 0.32 y 0.46 frente a 0.59), así que la distancia alcanza para explicarlas. Esto vale dentro del rango de luz observado en cada zona: en `derecha` el brillo relativo va de 0.6 a 0.8, lejos del 1.5-1.9 de `izquierda`.
+
+**7. Qué no se puede afirmar con estos datos.** Que un foco del lado de `derecha` subiría su AP. La luz estuvo siempre en el mismo lugar, así que no hay fotos de `derecha` bien iluminada; lo único con luz fuerte y lateral es `izquierda`, y su ventaja puede venir de la luz o de otra cosa propia de ese lado. Confirmarlo requiere capturar: por ejemplo, fotografiar las mismas caras con la fruta girada 180°, de modo que el daño de `derecha` quede del lado iluminado, y evaluarlas con los modelos ya entrenados.
+
 ## Lectura
 
 - La afirmación "las tres zonas malas son malas por la iluminación" no se sostiene: esas zonas no comparten la condición de luz, y la más oscura es la mejor de las tres.
-- La iluminación sí importa, pero explica por qué `izquierda` es buena: es el lado iluminado.
+- La iluminación sí acompaña a la mejor zona, `izquierda`, el lado iluminado; pero dentro del rango de luz de cada zona, más luz a igual distancia no da más aciertos, así que no se puede afirmar que iluminar `derecha` la mejore.
 - La explicación consistente con todas las zonas es la posición: cerca del borde de la fruta la superficie queda oblicua a la cámara, y el daño se ve comprimido y con menos contraste, salvo en el lado iluminado.
 
 ## Límites
@@ -58,5 +62,6 @@ El panel 3 de la figura y `zone_within.csv` (opción `--photos-export`) cruzan `
 | `zone_ap.csv` | AP50 por zona de cada evaluación, de todas las horas y de la ventana latente, con el número de cajas |
 | `zone_photos.csv` | Una fila por foto con daño: posición, tamaño, brillo y contraste de la caja |
 | `zone_conditions.csv` | Medianas por zona, de todas las horas y de la ventana latente |
+| `zone_light_at_distance.csv` | Lo mismo, partiendo por brillo dentro de cada mitad de distancia |
 | `zone_within.csv` | Aciertos por zona, partidos por la mediana de brillo y de distancia dentro de la zona |
 | `zone_analysis.png` | La figura |

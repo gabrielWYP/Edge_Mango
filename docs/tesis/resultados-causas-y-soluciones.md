@@ -263,6 +263,8 @@ Pregunta planteada después de ver los estratos por zona: el AP de daño es bajo
 - **La luz no explica las tres zonas malas.** No comparten condición de luz (`superior` está más iluminada que el promedio de la fruta; `derecha` e `inferior`, menos), y la más oscura, `derecha`, es la mejor de las tres en las 20 evaluaciones.
 - **La luz sí explica la mejor zona.** La iluminación entra por el lado derecho de la imagen en los cinco lotes, y `izquierda` cae ahí: su caja está un 70 % más iluminada que la fruta y tiene un contraste 3 a 6 veces mayor que el de las demás zonas.
 - **La posición explica el resto.** Fuera de `izquierda`, el AP baja con la distancia del daño al centro de la fruta en la imagen, y dentro de cada una de las cinco zonas la mitad de las fotos con el daño más cerca del centro tiene más aciertos que la más lejana (en `derecha`, 0.73 frente a 0.24). Cerca del borde la superficie queda oblicua a la cámara y el daño se ve comprimido y con menos contraste, salvo en el lado iluminado.
+- **A igual distancia, más luz no da más aciertos** dentro del rango de luz de cada zona (diferencias de −0.14 a +0.07, 7 de 10 ≤ 0). Por eso no se puede afirmar con estos datos que un foco del lado de `derecha` subiría su AP: nunca hubo fotos de `derecha` bien iluminada. Confirmarlo requiere capturar, por ejemplo las mismas caras con la fruta girada 180°.
+- **El reflector no igualó la luz:** el brillo relativo de la fruta va de 0.64 en el borde izquierdo de la imagen a 1.72 en el derecho, en los cinco lotes. Es una limitación de la captura, que conviene declarar.
 - Es descriptivo: cinco zonas, con la luz y la cámara fijas, así que zona, posición y luz están parcialmente confundidas.
 
 ### Condiciones de captura por lote

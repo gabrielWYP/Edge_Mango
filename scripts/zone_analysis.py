@@ -174,6 +174,33 @@ def within_zone(photos: list[dict], export: Path) -> list[dict]:
     return out
 
 
+def light_at_distance(photos: list[dict], export: Path) -> list[dict]:
+    """The light split of `within_zone` repeated inside each distance half of each zone, so that the two halves of
+    light are compared at a similar distance to the centre of the fruit."""
+    cond = {p["stem"]: p for p in photos if p.get("luma_ratio") is not None}
+    evals = [r for r in csv.DictReader(export.open())
+             if r["checkpoint"] == "best" and r["hour"] in {"0", "2", "4", "6"} and r["stem"] in cond]
+    rate = lambda rows: sum(int(r["tp_at_0.25"]) > 0 for r in rows) / len(rows) if rows else None  # noqa: E731
+    med = lambda rows, key: statistics.median(cond[r["stem"]][key] for r in rows)  # noqa: E731
+    out = []
+    for zone in ZONES:
+        rows = [r for r in evals if r["zona"] == zone]
+        distance = med(rows, "dist_center")
+        for half, sub in (("near", [r for r in rows if cond[r["stem"]]["dist_center"] < distance]),
+                          ("far", [r for r in rows if cond[r["stem"]]["dist_center"] >= distance])):
+            light = med(sub, "luma_ratio")
+            low = [r for r in sub if cond[r["stem"]]["luma_ratio"] < light]
+            high = [r for r in sub if cond[r["stem"]]["luma_ratio"] >= light]
+            out.append({
+                "zone": zone, "distance_half": half, "n_low": len(low), "n_high": len(high),
+                "hit_low_light": rate(low), "hit_high_light": rate(high),
+                "difference": rate(high) - rate(low),
+                "luma_ratio_low": med(low, "luma_ratio"), "luma_ratio_high": med(high, "luma_ratio"),
+                "dist_low": med(low, "dist_center"), "dist_high": med(high, "dist_center"),
+            })
+    return out
+
+
 def write_csv(path: Path, rows: list[dict]) -> None:
     keys = list(dict.fromkeys(k for r in rows for k in r))
     with path.open("w", newline="") as fh:
@@ -194,6 +221,7 @@ def main(argv=None) -> int:
     write_csv(args.output / "zone_conditions.csv", summarize_conditions(photos))
     if args.photos_export:
         write_csv(args.output / "zone_within.csv", within_zone(photos, args.photos_export))
+        write_csv(args.output / "zone_light_at_distance.csv", light_at_distance(photos, args.photos_export))
     print(f"{len(photos)} photos measured -> {args.output}")
     return 0
 
