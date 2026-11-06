@@ -3,7 +3,7 @@
 | | |
 | :-- | :-- |
 | **Fecha** | 2026-10-25 |
-| **Estado** | Captura y anotación completas. El 2026-11-03 H1 y H2 se reformulan a modelos chicos por el cómputo disponible (sección 1). E0 está hecho; E1 y E2 se reemplazan por los cuatro brazos de `scripts/run_small_arms.py`. Ningún resultado de test se usó para decidir; hubo una exposición del fold 0 registrada en la sección 11. Resultados y causas en [`resultados-causas-y-soluciones.md`](resultados-causas-y-soluciones.md). |
+| **Estado** | Captura y anotación completas. El 2026-11-03 H1 y H2 pasaron a modelos chicos por el cómputo disponible, y el 2026-11-05 a comparar `est_rgbnir` y `kd_rgbnir` con sus bases RGB (sección 1). E0 está hecho; E1 y E2 se reemplazan por los brazos vigentes de la sección 1, en `scripts/run_small_arms.py`. Ningún resultado de test se usó para decidir; hubo una exposición del fold 0 registrada en la sección 11. Resultados y causas en [`resultados-causas-y-soluciones.md`](resultados-causas-y-soluciones.md). |
 | **Dataset** | 125 mangos en 5 lotes de 25, 4 caras, 8 momentos (`sano` + t = 0, 2, 4, 6, 8, 10, 12 h): 500 pares sanos y 3500 con daño. Protocolo en [`capture/README.md`](../../capture/README.md). |
 | **Reemplaza** | Los experimentos sobre los 286 pares de v3 (`docs/findings/2026-10-18`, `reports/`). Esos resultados quedan como desarrollo y motivación, no como evidencia de la tesis. |
 
@@ -31,9 +31,9 @@ maestro con NIR le enseña al estudiante dónde mirar (*learning using privilege
 
 H1 y H2 se prueban en **secuencia fija** (sección 8.3): H2 solo se evalúa como confirmatoria si H1 se acepta.
 
-### Reformulación del 2026-11-03
+### Reformulación del 2026-11-03 (reemplazada)
 
-La tabla anterior es el diseño original. Lo reemplaza este, por tres razones medidas solo en validación o en tiempo, sin leer test:
+La tabla anterior es el diseño original. Lo reemplazó este, a su vez sustituido por la reformulación del 2026-11-05, por tres razones medidas solo en validación o en tiempo, sin leer test:
 
 - **Cómputo.** El maestro grande tarda unas 12.7 h por entrenamiento en la única GPU, y el plazo es el 2026-11-08. Los 90 entrenamientos del plan original superan las 800 h.
 - **Maestro.** En el fold 0, `maestro_rgbnir` conserva casi todo su AP50 sin RGB en inferencia (0.229 frente a 0.215) y lo pierde sin NIR (0.006), así que en la práctica ya detecta desde el NIR.
@@ -44,17 +44,38 @@ La tabla anterior es el diseño original. Lo reemplaza este, por tres razones me
 | **H1** | Con la misma arquitectura chica, el NIR detecta el daño latente mejor que el RGB. | `est_nir` frente a `est_rgb` |
 | **H2** | Un estudiante RGB destilado de un maestro NIR detecta el daño latente mejor que uno destilado de un maestro RGB. | `kd_nir` frente a `kd_rgb` |
 
-Además se reporta `kd_nir` frente a `est_rgb`, como comparación secundaria. El maestro RGB+NIR entrenado queda como caso de estudio y no entra en estas pruebas.
+Además se reportaba `kd_nir` frente a `est_rgb`, como comparación secundaria. El maestro RGB+NIR entrenado quedaba como caso de estudio.
 
-**Alcance.** Con una semilla y cinco folds no se separa la variación entre semillas, así que **estos resultados se reportan como evidencia preliminar, no como confirmación**: análisis pareado por fold con intervalos, sin afirmar que una hipótesis queda probada. Además, las cajas latentes se dibujaron mirando sobre todo el NIR (sección 3.2), y eso favorece a `est_nir` en H1. Por eso, un H1 positivo sigue siendo evidencia débil.
+### Reformulación del 2026-11-05 (vigente)
+
+`est_nir` frente a `est_rgb` mide si una modalidad detecta mejor que la otra, no si el NIR agrega algo al RGB. Además, en `kd_nir` el maestro no ve el RGB que sí recibe su estudiante. La tesis necesita responder dos preguntas: si el NIR agrega señal al RGB y si esa señal llega a un estudiante que solo usa RGB. El maestro grande (48 M) sale de las pruebas: sus resultados quedan como desarrollo. Todos los brazos usan la arquitectura `nano`.
+
+| Brazo | Entrada del estudiante | Entrenamiento | Rol |
+| :-- | :-- | :-- | :-- |
+| `est_rgb` | RGB | Solo etiquetas | Base de H1 |
+| `est_rgbnir` | RGB+NIR | Solo etiquetas | Tratamiento de H1 y maestro de `kd_rgbnir` |
+| `kd_rgb` | RGB | Destilado de `est_rgb` del mismo fold y semilla | Control de H2 |
+| `kd_rgbnir` | RGB | Destilado de `est_rgbnir` del mismo fold y semilla | Tratamiento de H2 |
+| `est_nir` | NIR (CLAHE) | Solo etiquetas | Referencia descriptiva, fuera de las pruebas |
+
+| | Hipótesis | Comparación |
+| :-- | :-- | :-- |
+| **H1: señal del NIR** | Con la misma arquitectura, agregar NIR a la entrada detecta el daño latente mejor que usar solo RGB. | `est_rgbnir` frente a `est_rgb` |
+| **H2: transferencia** | Un estudiante RGB destilado de un maestro RGB+NIR detecta el daño latente mejor que uno destilado de un maestro RGB. | `kd_rgbnir` frente a `kd_rgb` |
+| **Secundaria** | Ganancia práctica de destilar del maestro RGB+NIR, usando solo RGB en inferencia. | `kd_rgbnir` frente a `est_rgb` |
+| **Exploratoria** | Efecto de destilar sin NIR. | `kd_rgb` frente a `est_rgb` |
+
+**Por qué se mantiene un maestro RGB.** `kd_rgb` no transfiere NIR: es el control. Destilar puede mejorar a un estudiante aunque el maestro vea la misma modalidad, así que una mejora de `kd_rgbnir` sobre `est_rgb` no se podría atribuir al NIR sin este brazo. Los dos maestros comparten arquitectura, y lo que los separa es el NIR en su entrada.
+
+**Alcance.** Con cinco lotes (n = 5 en la inferencia) y a lo sumo tres semillas, **estos resultados se reportan como evidencia preliminar, no como confirmación**: análisis pareado por fold con intervalos, sin afirmar que una hipótesis queda probada. Además, las cajas latentes se dibujaron mirando sobre todo el NIR (sección 3.2), y eso favorece a `est_rgbnir` en H1 y puede favorecer a `kd_rgbnir` en H2. Por eso, un resultado positivo sigue siendo evidencia débil.
 
 ### Qué significa cada combinación
 
 | H1 | H2 | Conclusión de la tesis |
 | :-- | :-- | :-- |
-| sí | sí | Resultado esperado: el NIR aporta y ese aporte se transfiere a un estudiante RGB. |
-| sí | no | El NIR ve cosas que el RGB no captura en la ventana latente. Hallazgo válido: para daño latente en el edge hace falta el sensor NIR, o la destilación solo ayuda en parte del rango (ver curva por hora de E2). |
-| no | — | Con este setup el NIR no aporta. H2 pasa a exploratoria. Revisar E0 (¿el NIR ve el daño?) y E5 (¿la fusión lo desperdicia?). |
+| sí | sí | Resultado esperado: el NIR agrega señal al RGB y parte de ese aporte llega a un estudiante que solo usa RGB. |
+| sí | no | El NIR agrega señal, pero no se transfirió con este diseño, así que el sensor seguiría haciendo falta en el edge. Si `kd_rgbnir` supera a `est_rgb`, esa ganancia no se atribuye al NIR. |
+| no | — | Con este setup no se observa que el NIR agregue señal. H2 pasa a exploratoria. Revisar E0 (¿el NIR ve el daño?) y `est_nir`. |
 
 ---
 
@@ -126,8 +147,8 @@ Resumen y orden de ejecución:
 | # | Experimento | Pregunta | Rol | Costo |
 | :-- | :-- | :-- | :-- | :-- |
 | **E0** | Curva de detectabilidad sin deep learning | ¿Desde qué hora ve el daño cada modalidad? | Descriptivo, valida H0 y la ventana latente | Bajo (CPU) |
-| **E1** | Maestro RGB / NIR / RGB+NIR | H1 | **Confirmatorio** | Alto |
-| **E2** | Matriz de destilación | H2 | **Confirmatorio** | Alto |
+| **E1** | Maestro RGB / NIR / RGB+NIR (diseño original, reemplazado por `est_rgbnir` frente a `est_rgb`) | H1 | **Confirmatorio** | Alto |
+| **E2** | Matriz de destilación (diseño original, reemplazado por `kd_rgbnir` frente a `kd_rgb`) | H2 | **Confirmatorio** | Alto |
 | **E3** | Generalización temporal | ¿Lo latente se aprende de lo visible? | Exploratorio | Medio |
 | **E4** | Curva de aprendizaje por número de mangos | ¿Cuántos datos hacen falta? | Exploratorio | Medio |
 | **E5** | Arquitectura de fusión | ¿Qué fusión aprovecha mejor el NIR? | Exploratorio (solo si E1 sale débil) | Medio |
@@ -175,7 +196,7 @@ Resultado preliminar del lote 1: [`reports/e0-detectability/`](../../reports/e0-
 
 ### E1. Maestro: ¿aporta el NIR? (H1)
 
-> **Reemplazado el 2026-11-03** por los cuatro brazos de la sección 1. Se conserva como diseño original.
+> **Reemplazado el 2026-11-03**. Los brazos vigentes son los de la reformulación del 2026-11-05 (sección 1). Se conserva como diseño original.
 
 **Brazos** (misma arquitectura, mismo presupuesto, mismas semillas):
 
@@ -200,7 +221,7 @@ latente; se escribe así.
 
 ### E2. Destilación: ¿se transfiere el NIR al estudiante? (H2)
 
-> **Reemplazado el 2026-11-03** por los cuatro brazos de la sección 1. Se conserva como diseño original.
+> **Reemplazado el 2026-11-03**. Los brazos vigentes son los de la reformulación del 2026-11-05 (sección 1). Se conserva como diseño original.
 
 **Brazos** (estudiante YOLOv8-nano, solo RGB en inferencia, mismas semillas):
 
@@ -303,20 +324,25 @@ Se sigue el skill [`experiment-statistics`](../../.claude/skills/experiment-stat
 ### 8.1 Pre-registro (se completa y se commitea antes de la primera evaluación en test)
 
 ```
-H1:          baseline = est_rgb,  treatment = est_nir
-H2:          baseline = kd_rgb,   treatment = kd_nir
-Secundaria:  baseline = est_rgb,  treatment = kd_nir
+H1:          baseline = est_rgb,  treatment = est_rgbnir
+H2:          baseline = kd_rgb,   treatment = kd_rgbnir
+Secundaria:  baseline = est_rgb,  treatment = kd_rgbnir
+Exploratoria: baseline = est_rgb, treatment = kd_rgb
+Referencia:  est_nir, descriptiva, sin prueba
 Sensibilidad: las mismas comparaciones sin las fotos latentes con visible_rgb = yes (146 de 1987), porque ahí la marca ya se veía en RGB
 Variante:    nano, fijada el 2026-11-04 (sección 11)
-Épocas:      se fijan con la validación de los pilotos, antes de leer test
-Clase mango: se decide con la validación de los pilotos, antes de leer test (sección 11)
-EMA:         se decide con la validación de los pilotos, antes de leer test (sección 11)
-NIR:         variante nir_clahe en los brazos de E1 y E2
-Recorte:     al mango con rgb_mango_mask, margen 0.10 y jitter 0.5 en train, en los cuatro brazos (el brazo NIR recibe la ventana desde RGB)
+Épocas:      80. En los pilotos la mejor época de validación cae entre la 56 y la 79, con el LR casi en 0 al final (sección 11)
+Clase mango: se mantiene. Con la regla de la sección 11, quitarla no mejora est_rgb (-0.0001 de AP50 latente medio de validación) aunque mejora est_nir (+0.009)
+EMA:         no se usa. Su piloto se interrumpió en la época 15 con AP50 de daño en validación cercano a 0 en las tres corridas, y no hay tiempo para diagnosticarlo
+NIR:         variante nir_clahe en todos los brazos que leen NIR
+Warm-up:     corregido en todos los brazos; ninguna base ni maestro viene de una corrida anterior a la corrección
+Recorte:     al mango con rgb_mango_mask, margen 0.10 y jitter 0.5 en train, en todos los brazos (el brazo NIR recibe la ventana desde RGB)
 Metric:      test damage AP50 en ventana latente (t ∈ {0,2,4,6} + sano), media sobre semillas por fold
 ROPE:        ±0.02 AP50
 Threshold:   P(right) >= 0.95
-Seeds:       42 (una sola, por cómputo: resultado preliminar)
+Seeds:       42, 1337 y 2024. Primero corre la 42 en est_rgb, est_rgbnir, kd_rgb y kd_rgbnir en los cinco folds,
+             después las otras dos, y est_nir al final. Se reporta el mayor conjunto de semillas completo en esos cuatro
+             brazos y los cinco folds; una semilla incompleta no se reporta. Ningún resultado de test se lee antes de que terminen las corridas que se reportan
 Folds:       los cinco de configs/folds/v4_lot_5fold.json (ninguno descartado)
 Selección:   checkpoint por damage AP50 del lote de validación (todas las horas), nunca el de test
 Exclusiones: reglas de la sección 3.1
@@ -347,7 +373,54 @@ frase se toma de la tabla de decisión del skill (sección 4). Nunca "significat
 Las curvas por hora llevan intervalos **descriptivos** por bootstrap de mangos dentro de cada lote; la
 inferencia confirmatoria es solo la de nivel lote.
 
+### 8.5 Análisis exploratorio por lote (registrado el 2026-11-05, antes de leer test)
+
+**Pregunta.** ¿La ventaja de `est_rgbnir` sobre `est_rgb` (H1), y la de `kd_rgbnir` sobre `kd_rgb` (H2), cambia con las condiciones de captura del lote de test? Los lotes se capturaron en días distintos, con otro balance de blancos y otra deriva de luz, y la teoría del autor es que el modelo rinde distinto por fold por esas condiciones. La dificultad de un lote afecta a todos los brazos y se cancela en la diferencia pareada; lo que interesa aquí es si la **diferencia** entre brazos cambia con el lote.
+
+**Datos.** Por fold: el AP50 latente de test de cada brazo y las diferencias de H1, H2 y la secundaria, con la media de las semillas presentes en los dos brazos de cada diferencia. Las mismas corridas de la prueba confirmatoria, sin entrenar nada más.
+
+**Descriptores** (`scripts/lot_descriptors.py`, calculados el 2026-11-05 en [`reports/lot-descriptors/`](../../reports/lot-descriptors/README.md), sin salidas de modelos): para el lote de test de cada fold, su valor y su distancia a la media de los tres lotes de entrenamiento del fold. Primarios, fijados antes de leer test:
+
+| Descriptor | Qué mide | Expectativa de la teoría |
+| :-- | :-- | :-- |
+| `rgb_fruit_r_over_b` | Tono del RGB en la fruta (R/B) | Más ventaja del NIR cuanto más se aleja del entrenamiento |
+| `rgb_fruit_luma` | Brillo del RGB en la fruta | Ídem |
+| `rgb_border_spread` | Deriva de la luz durante la jornada (p90 - p10 del brillo del fondo) | Más ventaja del NIR con más deriva |
+| `latent_contrast_ratio` | Contraste del daño latente en NIR dividido por el de RGB, en la caja anotada | Más ventaja del NIR cuanto mayor |
+| `residual_shift_px` | Corrección del registro RGB-NIR aplicada por foto | Menos ventaja del NIR cuanto mayor, si el registro queda peor |
+| `latent_visible_rgb_yes_share` | Fotos latentes con la marca visible en RGB según la anotación | Confusor del lado de las etiquetas: menos ventaja del NIR cuanto mayor |
+
+Los demás descriptores del CSV se reportan como tabla, sin lectura.
+
+**Salida.** `scripts/lot_effects.py --split test`: una tabla por fold y un gráfico por descriptor primario. Con cinco lotes **no** se calcula correlación, intervalo ni p-valor. Se describe si el orden de los folds por la diferencia sigue el de algún descriptor, y nada se escribe como causa. A lo sumo: "consistente con" la teoría o "no consistente". El lote 1 concentra casi todas las diferencias de captura (5300 K frente a 4600-4800 K, la fruta más roja, la mayor deriva de luz), así que un patrón que dependa solo del fold 0, que prueba en el lote 1, se reporta como un solo lote.
+
 ---
+
+### 8.6 Vistazo intermedio a test de los folds 0 y 1 (registrado el 2026-11-05, antes de leerlo)
+
+**Qué se mira.** A pedido del autor, para un informe de avance, se leen los resultados de test de la semilla 42 de
+`est_rgb`, `est_rgbnir`, `kd_rgb` y `kd_rgbnir` en los folds 0 y 1, apenas terminen sus evaluaciones. Se reportan
+el AP50 latente de cada brazo y las diferencias de H1, H2, la secundaria y la exploratoria, por fold. Es una excepción
+a la regla de 8.1 ("ningún resultado de test se lee antes de que terminen las corridas que se reportan"), y se
+declara aquí antes de leerlo.
+
+**Qué no se hace con eso.** Con dos folds y una semilla no se calcula intervalo, probabilidad ni p-valor, ni se
+escribe que una hipótesis se cumple. El vistazo no decide nada: antes de leerlo se congela el protocolo completo,
+es decir, todo lo de 8.1 a 8.5 y lo que sigue. Las semillas quedan fijas en 42, 1337 y 2024 para los cuatro brazos y
+para `est_nir`, sin pasar por la regla de 8.2. Las corridas siguen en el orden y con la configuración del lanzamiento
+del 2026-11-05 (commit `b34668f`). Un cambio posterior a cualquiera de estos puntos se reporta como exploratorio
+(sección 9). El informe final usa las mismas corridas: los dos folds vistos son parte de la prueba confirmatoria, no
+una prueba aparte.
+
+**Análisis descriptivos agregados antes del vistazo**, sin inferencia, para todas las corridas que se reporten:
+
+- **Puntos de operación** (`scripts/val_operating_points.py --split test`): precisión, recall y falsos positivos
+  por foto de las cajas de daño a confianza 0.25 y 0.5, curvas precisión-recall, y la clasificación por foto
+  (sensibilidad, especificidad, exactitud balanceada). Los umbrales son el punto de operación vigente (0.25) y 0.5;
+  no se eligen con test.
+- **Sensibilidad a la selección del checkpoint:** las mismas diferencias con el checkpoint de la última época (80)
+  en lugar del elegido por validación, porque el AP50 de validación salta de una época a otra y la mejor época puede
+  ser un pico de ruido. Se reporta junto al resultado principal, que sigue siendo el de 8.1.
 
 ## 9. Reglas para no tener que pensar después
 
@@ -392,3 +465,8 @@ Estado al 2026-11-02: los puntos 1 a 9 tienen su código y pruebas, y los comand
 | 2026-11-04 | Se fija la variante `nano`, sin pilotarla frente a `wide`. | Decisión del autor: es el modelo que describe el plan y tiene menos de la mitad de parámetros (3.0 M frente a 6.9 M). No se basa en resultados de test. | Después de la exposición parcial de test |
 | 2026-11-04 | Pilotos solo en validación: `est_rgb` y `est_nir`, `nano`, fold 0, 3 semillas y 80 épocas, con y sin la clase mango. Regla para quitarla: el AP50 latente medio de validación debe mejorar en ambos brazos, comparando medias de 3 semillas y nunca la diferencia entre brazos. | Decisión del autor: el mango consume pérdida y anclas en una tarea ya resuelta. No se basa en resultados de test. | Después de la exposición parcial de test |
 | 2026-11-04 | Se corrige el warm-up, cuya primera época entrenaba con el LR completo. Se agrega una prueba con EMA (`ema_decay=0.9994`) y warm-up corregido, sobre la condición de mango que resulte de los pilotos. Si EMA se adopta, se aplica igual a todos los brazos. | Decisión del autor tras ver saltos del AP50 de daño en validación. El warm-up afecta a todas las corridas anteriores. No se basa en resultados de test. | Después de la exposición parcial de test |
+| 2026-11-05 | H1 pasa a `est_rgbnir` frente a `est_rgb`, y H2 a `kd_rgbnir` frente a `kd_rgb`. Secundaria: `kd_rgbnir` frente a `est_rgb`. Exploratoria: `kd_rgb` frente a `est_rgb`. `est_nir` queda como referencia descriptiva y `kd_nir` fuera del plan. El maestro de 48 M sale de las pruebas. Las bases y los maestros se reentrenan con el warm-up corregido. | Decisión del autor: las pruebas deben medir si el NIR agrega señal al RGB y si esa señal se transfiere a un estudiante RGB; `kd_rgb` queda como control del efecto de destilar. Ya se conocía la validación del fold 0 de los pilotos de `est_rgb` y `est_nir` (warm-up anterior) y de `est_rgbnir` hasta la época 21 (warm-up corregido). No se basa en resultados de test. | Después de la exposición parcial de test (fold 0, semilla 42, de `maestro_rgbnir`, `est_nir` y `est_rgb`); `est_rgbnir` y los brazos KD siguen sin evaluación en test |
+| 2026-11-05 | Se fijan las épocas (80), la clase mango (se mantiene), EMA (no se usa) y las semillas (42, 1337 y 2024, con la 42 primero; sección 8.1). Los brazos de las pruebas corren primero y `est_nir`, la referencia, al final. Los pilotos de la clase mango corrieron antes del arreglo del warm-up; las corridas definitivas lo incluyen y se vuelven a correr todas, también el fold 0. | Pilotos de fold 0 solo en validación: `est_rgb` y `est_nir` con 3 semillas, con y sin la clase mango, y `est_rgbnir` completo con 3 semillas (0.201 de AP50 latente, entre `est_rgb` y `est_nir`), conocido antes de commitear esta fila y la reformulación. EMA se descarta por plazo, sin diagnóstico. No se basa en resultados de test. | Después de la exposición parcial de test; antes de la primera evaluación en test de cualquier brazo vigente |
+| 2026-11-05 | Las corridas definitivas lanzadas a las 14:19 con los brazos del 2026-11-03 (`est_rgb`, `est_nir`, `kd_rgb`, `kd_nir`, commit `b77d4af`) se detienen a los 15 minutos, en la época 8 de 80 de sus tres primeras corridas y sin ninguna evaluación, y se apartan en `runs/aborted_final_b77d4af`. Se relanzan con los brazos vigentes. | Adoptar la reformulación del 2026-11-05. | Antes de cualquier evaluación en test de esas corridas |
+| 2026-11-05 | Se agrega el análisis exploratorio por lote de la sección 8.5, con sus descriptores primarios fijados. | Teoría del autor: las condiciones de captura cambian por lote y pueden cambiar la ventaja del NIR. Los descriptores salen de imágenes, metadatos y etiquetas, sin salidas de modelos. | Antes de leer cualquier resultado de test de los brazos vigentes; el runner ya había escrito los de `est_rgb` y `est_rgbnir` del fold 0, semilla 42, sin abrirlos |
+| 2026-11-05 | Se agrega el vistazo intermedio de la sección 8.6 (test de los folds 0 y 1, semilla 42, de los cuatro brazos de las pruebas) y se congela el protocolo: semillas fijas en 42, 1337 y 2024 sin la regla de 8.2. Se agregan como descriptivos los puntos de operación a 0.25 y 0.5 y la sensibilidad a la selección con la última época. | Pedido del autor para un informe de avance. Los descriptivos responden a los saltos del AP50 de validación y a la clasificación por foto cercana al azar en validación. | Antes de leer cualquier resultado de test de los brazos vigentes; el runner ya había escrito los de seis corridas de los folds 0 y 1 sin abrirlos |

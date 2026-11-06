@@ -784,7 +784,7 @@ class Trainer:
 
             try:
                 with autocast_ctx(self.device.type, self.config.precision):
-                    if self.config.model_type == "student":
+                    if self.config.model_type == "student" and self.config.student_in_channels == 3:
                         output = self.model(rgb)
                     else:
                         output = self.model(rgb, nir)
@@ -928,7 +928,7 @@ class Trainer:
             nir = batch["nir"].to(self.device)
 
             with autocast_ctx(self.device.type, self.config.precision):
-                if self.config.model_type == "student":
+                if self.config.model_type == "student" and self.config.student_in_channels == 3:
                     output = model(rgb)
                 else:
                     output = model(rgb, nir)

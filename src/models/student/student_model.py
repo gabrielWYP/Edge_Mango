@@ -62,6 +62,8 @@ def strip_legacy_kd_adapter_keys(state_dict: dict[str, Tensor]) -> dict[str, Ten
 # "wide" is the student of the v4 plan; "nano" has the neck and head channels of YOLOv8n.
 STUDENT_VARIANTS = ("wide", "nano")
 NANO_STEM_CHANNELS = [64, 64, 64]
+# 3: RGB, the student of the plan. 4: RGB and NIR stacked at the input, for `est_rgbnir`, the arm of H1 and the teacher of `kd_rgbnir`.
+STUDENT_IN_CHANNELS = (3, 4)
 
 
 class StudentModel(nn.Module):
@@ -73,16 +75,22 @@ class StudentModel(nn.Module):
 
     Args:
         num_classes: Number of detection classes (default 2: sano, danado).
+        in_channels: 3 reads `x` alone. 4 stacks `nir` after `x`, and then needs both at inference.
     """
 
-    def __init__(self, num_classes: int = NUM_CLASSES, variant: str = "wide") -> None:
+    def __init__(
+        self, num_classes: int = NUM_CLASSES, variant: str = "wide", in_channels: int = 3
+    ) -> None:
         super().__init__()
         if variant not in STUDENT_VARIANTS:
             raise ValueError(f"Unknown student variant {variant!r}: {sorted(STUDENT_VARIANTS)}")
+        if in_channels not in STUDENT_IN_CHANNELS:
+            raise ValueError(f"Unknown student in_channels {in_channels}: {STUDENT_IN_CHANNELS}")
         self.num_classes = num_classes
         self.variant = variant
+        self.in_channels = in_channels
 
-        self.backbone = CSPDarknetNano()
+        self.backbone = CSPDarknetNano(in_channels)
         if variant == "nano":
             self.neck = NanoPANet()
             self.head = YOLOStudentHead(
@@ -94,12 +102,13 @@ class StudentModel(nn.Module):
             self.neck = PANet()
             self.head = YOLOStudentHead(num_classes=num_classes)
 
-    def forward(self, x: Tensor) -> dict[str, Any]:
+    def forward(self, x: Tensor, nir: Tensor | None = None) -> dict[str, Any]:
         """
         Forward pass: backbone → neck → head → 7-key output dict.
 
         Args:
             x: (N, 3, 640, 640) RGB input tensor.
+            nir: (N, 1, 640, 640) NIR tensor, required with `in_channels=4` and unused otherwise.
 
         Returns:
             dict with exactly 7 keys:
@@ -111,6 +120,11 @@ class StudentModel(nn.Module):
                 'distill_head_cls': [(N,64,80,80), (N,128,40,40), (N,256,20,20)]
                 'distill_head_reg': [(N,64,80,80), (N,128,40,40), (N,256,20,20)]
         """
+        if self.in_channels == 4:
+            if nir is None:
+                raise ValueError("A student with in_channels=4 needs the NIR tensor.")
+            x = torch.cat([x, nir], dim=1)
+
         # Backbone: extract multi-scale features
         stages, (s3, s4) = self.backbone(x)
 

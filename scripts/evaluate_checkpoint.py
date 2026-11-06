@@ -462,7 +462,11 @@ def _load_model(model_type: str, checkpoint_path: str, config: TrainingConfig, d
         )
         check_norm_compatible(model, state_dict, source=f"Checkpoint at {checkpoint_path}")
     else:
-        model = StudentModel(num_classes=config.num_classes, variant=config.student_variant)
+        model = StudentModel(
+            num_classes=config.num_classes,
+            variant=config.student_variant,
+            in_channels=config.student_in_channels,
+        )
         # Pre-fix KD checkpoints stored the training-only adapters inside
         # `model_state_dict`; they are not part of the student.
         state_dict = strip_legacy_kd_adapter_keys(state_dict)
@@ -498,7 +502,7 @@ def _run_assigner_stats(
             bboxes = [b.to(device) for b in batch["bboxes"]]
             labels = [l.to(device) for l in batch["labels"]]
 
-            if config.model_type == "student":
+            if config.model_type == "student" and config.student_in_channels == 3:
                 output = model(rgb)
             else:
                 output = model(rgb, nir)

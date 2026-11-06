@@ -1,4 +1,4 @@
-"""KD from a frozen student: the same architecture as a teacher, on RGB or on NIR."""
+"""KD from a frozen student: the same architecture as a teacher, on RGB, on NIR or on both."""
 
 from __future__ import annotations
 
@@ -34,16 +34,17 @@ class _Loader:
         return (_batch() for _ in range(self.n))
 
 
-def _teacher_file(tmp_path: Path, variant: str = "wide") -> Path:
-    path = tmp_path / f"teacher_{variant}.pt"
-    model = StudentModel(num_classes=2, variant=variant)
-    torch.save({"model_state_dict": model.state_dict(), "config": {"student_variant": variant}}, path)
+def _teacher_file(tmp_path: Path, variant: str = "wide", in_channels: int = 3) -> Path:
+    path = tmp_path / f"teacher_{variant}_{in_channels}.pt"
+    model = StudentModel(num_classes=2, variant=variant, in_channels=in_channels)
+    config = {"student_variant": variant, "student_in_channels": in_channels}
+    torch.save({"model_state_dict": model.state_dict(), "config": config}, path)
     return path
 
 
 def _trainer(tmp_path: Path, teacher_input: str, variant: str = "wide", n: int = 1) -> KDTrainer:
     config = KDConfig(
-        teacher_checkpoint=str(_teacher_file(tmp_path, variant)),
+        teacher_checkpoint=str(_teacher_file(tmp_path, variant, 4 if teacher_input == "rgbnir" else 3)),
         teacher_kind="student",
         teacher_input=teacher_input,
         num_classes=2,
@@ -96,9 +97,40 @@ def test_teacher_reads_the_requested_modality(tmp_path, teacher_input, expected_
         assert torch.allclose(seen["x"], nir_as_rgb_tensor(batch["nir"], 0.3, 0.1))
 
 
-@pytest.mark.parametrize("variant", ["wide", "nano"])
-def test_one_epoch_trains_student_and_adapters_and_leaves_the_teacher(tmp_path, variant) -> None:
-    trainer = _trainer(tmp_path, "nir", variant)
+def test_an_rgbnir_teacher_reads_rgb_and_the_nir_as_given(tmp_path) -> None:
+    trainer = _trainer(tmp_path, "rgbnir")
+    seen = {}
+    real = trainer.teacher.forward
+
+    def spy(x, nir=None):
+        seen.update(x=x, nir=nir)
+        return real(x, nir)
+
+    trainer.teacher.forward = spy
+    batch = _batch()
+
+    features = trainer._teacher_features(batch["rgb"], batch["nir"])
+
+    assert torch.equal(seen["x"], batch["rgb"]) and torch.equal(seen["nir"], batch["nir"])
+    assert trainer.teacher.in_channels == 4 and set(features) == {"backbone", "fpn", "head_cls", "head_reg"}
+
+
+@pytest.mark.parametrize("teacher_input, in_channels", [("rgbnir", 3), ("rgb", 4), ("nir", 4)])
+def test_an_input_that_does_not_fit_the_teacher_is_refused(tmp_path, teacher_input, in_channels) -> None:
+    config = KDConfig(
+        teacher_checkpoint=str(_teacher_file(tmp_path, "nano", in_channels)),
+        teacher_kind="student",
+        teacher_input=teacher_input,
+        output_dir=str(tmp_path / "out"),
+        device="cpu",
+    )
+    with pytest.raises(ValueError, match="teacher_input"):
+        KDTrainer._load_student_teacher(config)
+
+
+@pytest.mark.parametrize("variant, teacher_input", [("wide", "nir"), ("nano", "nir"), ("nano", "rgbnir")])
+def test_one_epoch_trains_student_and_adapters_and_leaves_the_teacher(tmp_path, variant, teacher_input) -> None:
+    trainer = _trainer(tmp_path, teacher_input, variant)
     teacher_before = {k: v.clone() for k, v in trainer.teacher.state_dict().items()}
     student_before = trainer.model.backbone.stem[0].conv.weight.clone()
     adapter_before = next(trainer.kd_adapters.parameters()).clone()

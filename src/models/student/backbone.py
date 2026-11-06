@@ -123,12 +123,12 @@ class CSPDarknetNano(nn.Module):
 
     STAGE_CHANNELS = [32, 64, 128, 256]
 
-    def __init__(self) -> None:
+    def __init__(self, in_channels: int = 3) -> None:
         super().__init__()
 
         # Stem: two stride-2 convolutions (stride 4 total)
         self.stem = nn.Sequential(
-            Conv_BN_SiLU(3, 16, 3, 2),    # -> 16ch, 320x320
+            Conv_BN_SiLU(in_channels, 16, 3, 2),    # -> 16ch, 320x320
             Conv_BN_SiLU(16, 32, 3, 2),   # -> 32ch, 160x160
         )
 
