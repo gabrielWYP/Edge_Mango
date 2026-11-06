@@ -1,6 +1,6 @@
-# Resultados, causas y soluciones hasta el 2026-11-05
+# Resultados, causas y soluciones hasta el 2026-11-06
 
-**Todavía no hay evidencia para aceptar ni rechazar H1 o H2.** El 2026-11-05 H1 y H2 se reformularon hacia el estudiante RGB+NIR (ver [Cómo cambiaron H1 y H2](#cómo-cambiaron-h1-y-h2)). Los pilotos del fold 0 terminaron y fijaron la configuración, y las corridas definitivas de los brazos vigentes empezaron el mismo día. Los resultados anteriores sirven como desarrollo y motivan los cambios de diseño, pero no prueban las hipótesis.
+**Todavía no hay evidencia para aceptar ni rechazar H1 o H2.** El resultado preliminar con la semilla 42 en los cinco folds (2026-11-06) pone a H1 a favor del NIR en los 5 lotes, con P(right) = 0.939, justo debajo del umbral de 0.95, y a H2 en 0 ([resultado preliminar](#resultado-preliminar-en-test-semilla-42-cinco-folds-2026-11-06)). El 2026-11-05 H1 y H2 se reformularon hacia el estudiante RGB+NIR (ver [Cómo cambiaron H1 y H2](#cómo-cambiaron-h1-y-h2)). Los pilotos del fold 0 terminaron y fijaron la configuración, y las corridas definitivas de los brazos vigentes empezaron el mismo día. Los resultados anteriores sirven como desarrollo y motivan los cambios de diseño, pero no prueban las hipótesis.
 
 Este documento reúne lo medido y no reemplaza al [plan experimental](plan-experimental.md), que sigue fijando las reglas de análisis.
 
@@ -16,8 +16,8 @@ Este documento reúne lo medido y no reemplaza al [plan experimental](plan-exper
 
 | Pregunta | Respuesta hoy | Fuerza de la evidencia |
 | :-- | :-- | :-- |
-| ¿El NIR agrega señal al RGB con el mismo modelo? (H1) | En validación del fold 0, con 3 semillas, `est_rgbnir` da 0.201 de AP50 latente frente a 0.148 de `est_rgb`, pero queda por debajo de `est_nir` (0.242), la referencia. `est_rgbnir` corrió con el warm-up corregido y los otros dos no. Sin los demás folds no se puede generalizar. | Muy débil: un fold y validación |
-| ¿La destilación transfiere el NIR al estudiante RGB? (H2) | Sin datos sobre v4. KD ya corre sobre v4 y, con 3 corridas a la vez, una época cuesta casi lo mismo que la de un estudiante sin destilar. En validación del fold 0, `kd_rgbnir` no supera a `kd_rgb` (ver [Corridas definitivas](#corridas-definitivas-avance-en-validación)). | Ninguna |
+| ¿El NIR agrega señal al RGB con el mismo modelo? (H1) | En test, semilla 42, `est_rgbnir` supera a `est_rgb` en los 5 lotes: 0.254 frente a 0.174 de AP50 latente, Δ +0.080, IC 95% corregido [−0.005, +0.165] y P(right) = 0.939. No llega al umbral de 0.95, así que es no concluyente por poco. Sin las fotos visibles en RGB y con la época 80, el resultado es el mismo. | Preliminar: una semilla, cinco lotes, cajas dibujadas mirando el NIR |
+| ¿La destilación transfiere el NIR al estudiante RGB? (H2) | En test, semilla 42, no: `kd_rgbnir` y `kd_rgb` quedan iguales (0.192 y 0.190; Δ +0.002, P(rope) = 0.50, 3 de 5 folds). Los dos destilados quedan cerca de +0.02 sobre `est_rgb`, sin concluir. | Preliminar: una semilla, cinco lotes |
 | ¿Destilar ayudó en v3? | Sin conclusión: la diferencia media es positiva en test y negativa en validación. | Débil: split aleatorio, tres semillas |
 | ¿El RGB y el NIR ven el daño latente sin deep learning? (E0) | Los dos dan AUROC cercano a 0.55-0.60, sin ventaja clara del NIR. | Descriptiva: intervalos sin remuestreo de lotes y controles que no siempre cubren 0.5 |
 
@@ -247,6 +247,79 @@ Leído a pedido del autor para un informe de avance, con el protocolo congelado 
 - **El checkpoint elegido por validación rinde más en test que el de la época 80 en los ocho casos** (0.010-0.041 más de AP50 latente): la selección por validación no solo sube el número de validación, también elige modelos que generalizan mejor al lote de test.
 - En AP30 latente el patrón es el mismo: H1 +0.053 y +0.045, H2 −0.018 y +0.020.
 
+### Resultado preliminar en test: semilla 42, cinco folds (2026-11-06)
+
+Leído según la sección 8.7 del plan. Esa sección se registró y se publicó en el commit `13da84f` antes de abrir los folds 2 a 4. **Es un resultado preliminar con una semilla.** El confirmatorio es el del mayor conjunto de semillas completo en los cuatro brazos y los cinco folds (sección 8.1). Si las semillas 1337 y 2024 no terminan, ese conjunto es este. Los folds 0 y 1 son los del [vistazo intermedio](#vistazo-intermedio-a-test-folds-0-y-1-semilla-42-2026-11-05). Las 20 corridas terminaron el 2026-11-06 a las 14:10, con el commit `b34668f`.
+
+**AP50 latente en test** (lote de test entre paréntesis):
+
+| Fold | `est_rgb` | `est_rgbnir` | `kd_rgb` | `kd_rgbnir` | Δ H1 | Δ H2 | Δ secundaria | Δ exploratoria |
+| :-- | --: | --: | --: | --: | --: | --: | --: | --: |
+| 0 (lote 1) | 0.186 | 0.228 | 0.212 | 0.186 | +0.042 | −0.026 | +0.001 | +0.027 |
+| 1 (lote 2) | 0.205 | 0.255 | 0.220 | 0.242 | +0.050 | +0.022 | +0.037 | +0.015 |
+| 2 (lote 3) | 0.169 | 0.246 | 0.206 | 0.211 | +0.077 | +0.005 | +0.043 | +0.038 |
+| 3 (lote 4) | 0.140 | 0.288 | 0.116 | 0.167 | +0.149 | +0.051 | +0.027 | −0.024 |
+| 4 (lote 5) | 0.170 | 0.251 | 0.194 | 0.152 | +0.081 | −0.041 | −0.018 | +0.023 |
+| **Media** | **0.174** | **0.254** | **0.190** | **0.192** | **+0.080** | **+0.002** | **+0.018** | **+0.016** |
+
+Δ H1 = `est_rgbnir` − `est_rgb`; Δ H2 = `kd_rgbnir` − `kd_rgb`; Δ secundaria = `kd_rgbnir` − `est_rgb`; Δ exploratoria = `kd_rgb` − `est_rgb`.
+
+**Inferencia a nivel lote** (sección 8.4; `scripts/aggregate_kfold.py --seeds 42 --rope 0.02`, n = 5, gl = 4, razón test/train 1/3):
+
+| Comparación | Δ medio | IC 95% corregido | p corregido | P(left) | P(rope) | P(right) | Folds a favor | Sign-flip (piso 0.0625) |
+| :-- | --: | :-- | --: | --: | --: | --: | --: | --: |
+| H1 | +0.080 | [−0.005, +0.165] | 0.060 | 0.016 | 0.046 | 0.939 | 5/5 | 0.0625 |
+| H2 | +0.002 | [−0.072, +0.077] | 0.937 | 0.227 | 0.500 | 0.273 | 3/5 | 0.875 |
+| Secundaria | +0.018 | [−0.034, +0.070] | 0.390 | 0.056 | 0.482 | 0.462 | 4/5 | 0.188 |
+| Exploratoria | +0.016 | [−0.032, +0.063] | 0.408 | 0.052 | 0.538 | 0.409 | 4/5 | 0.250 |
+
+ROPE ±0.02 y umbral P ≥ 0.95, los dos pre-registrados. Con Holm sobre la secundaria y la exploratoria, ninguna baja de α (0.390 > 0.025).
+
+- **H1: no concluyente con cinco lotes y una semilla, por poco.** Ninguna de las tres probabilidades llega a 0.95: P(right) = 0.939. Al mismo tiempo, `est_rgbnir` supera a `est_rgb` en los 5 folds, con una diferencia media de +0.080, cuatro veces la ROPE. El IC corregido apenas incluye el 0 (−0.005). La probabilidad de que el NIR empeore o no cambie el resultado (P(left) + P(rope)) es 0.06. Con n = 5, el sign-flip no puede bajar de 0.0625, así que solo dice que 5 de 5 folds mejoraron. En AP30 latente, que es una métrica secundaria, P(right) = 0.967 con IC [+0.014, +0.129]. Eso no cambia el veredicto de la métrica primaria.
+- **`est_rgbnir` es el mejor brazo en los cinco folds.** Su ventaja más grande sobre `est_rgb` está en el fold 3 (lote 4, +0.149), donde los dos estudiantes RGB caen a su valor más bajo (0.140 y 0.116).
+- **H2: centrada en 0.** La diferencia media es +0.002, con P(rope) = 0.50 y 3 de 5 folds a favor. Como H1 no se acepta en este corte, H2 se lee como exploratoria (sección 8.3). Con estos datos, destilar desde el maestro RGB+NIR no da un estudiante RGB mejor que destilar desde el maestro RGB.
+- **Secundaria y exploratoria: los dos estudiantes destilados quedan cerca de +0.02 sobre `est_rgb`,** con 4 de 5 folds a favor, y las dos son no concluyentes. `kd_rgbnir` y `kd_rgb` quedan prácticamente iguales (0.192 y 0.190). Si destilar aporta algo, no depende de que el maestro lea NIR.
+
+**Otras métricas de test** (media de los cinco folds; los valores por fold están en [`reports/final-runs-export/runs.csv`](../../reports/final-runs-export/README.md)):
+
+| Brazo | AP50 latente | AP30 latente | AP50 desarrollado | AUROC por cara | FP por foto sana (conf ≥ 0.25) |
+| :-- | --: | --: | --: | --: | --: |
+| `est_rgb` | 0.174 | 0.269 | 0.192 | 0.588 | 6.15 |
+| `est_rgbnir` | 0.254 | 0.341 | 0.306 | 0.628 | 5.16 |
+| `kd_rgb` | 0.190 | 0.288 | 0.208 | 0.594 | 5.26 |
+| `kd_rgbnir` | 0.192 | 0.289 | 0.216 | 0.607 | 4.90 |
+
+**AP50 por hora** (solo las fotos con daño de esa hora, media de los cinco folds; descriptivo):
+
+| Brazo | 0 h | 2 h | 4 h | 6 h | 8 h | 10 h | 12 h |
+| :-- | --: | --: | --: | --: | --: | --: | --: |
+| `est_rgb` | 0.213 | 0.218 | 0.228 | 0.188 | 0.171 | 0.207 | 0.221 |
+| `est_rgbnir` | 0.292 | 0.305 | 0.316 | 0.267 | 0.284 | 0.347 | 0.312 |
+| `kd_rgb` | 0.230 | 0.249 | 0.230 | 0.210 | 0.214 | 0.217 | 0.216 |
+| `kd_rgbnir` | 0.229 | 0.233 | 0.247 | 0.209 | 0.212 | 0.235 | 0.221 |
+
+- La ventaja de `est_rgbnir` aparece desde las 0 h y se mantiene en todas las horas: entre +0.08 y +0.14 sobre `est_rgb`. También es mayor en el daño desarrollado: 0.306 frente a 0.192.
+- El AUROC por cara queda entre 0.59 y 0.63 en los cuatro brazos. Decidir si una foto muestra daño sigue cerca del azar, aunque las cajas mejoren.
+- Que la ventaja exista desde la hora 0 es compatible con la tensión abierta de la [lectura rápida](#lectura-rápida): las cajas latentes se dibujaron mirando sobre todo el NIR. Por eso un H1 positivo sigue siendo evidencia débil (sección 11 del plan, 2026-11-02).
+
+**Sensibilidad sin las fotos latentes visibles en RGB** (pre-registrada en 8.1; `scripts/visible_rgb_sensitivity.py`, en [`reports/interim-test-seed42/visible-rgb-sensitivity/`](../../reports/interim-test-seed42/visible-rgb-sensitivity/sensitivity_test.md)): se quitan las fotos latentes con `visible_rgb = yes` y nada cambia. H1 queda en +0.078, con IC [−0.005, +0.161], P(right) = 0.938 y 5 de 5 folds a favor. H2 queda en +0.003, con P(rope) = 0.49. La secundaria y la exploratoria quedan en +0.017 y +0.013. La ventaja del NIR no viene de las fotos donde la marca ya se veía en RGB.
+
+**Sensibilidad a la selección del checkpoint** (`scripts/eval_last_epoch.py`; cifras en `differences.csv` con `checkpoint=epoch80`). Son las mismas diferencias con el checkpoint de la época 80:
+
+| Comparación | Δ por fold (0-4) | Δ medio | IC 95% corregido | P(right) | P(rope) | Folds a favor |
+| :-- | :-- | --: | :-- | --: | --: | --: |
+| H1 | +0.071, +0.024, +0.036, +0.118, +0.090 | +0.068 | [−0.010, +0.146] | 0.919 | 0.064 | 5/5 |
+| H2 | −0.018, +0.022, +0.026, +0.003, −0.016 | +0.003 | [−0.038, +0.045] | 0.166 | 0.737 | 3/5 |
+| Secundaria | +0.028, +0.032, +0.051, +0.018, −0.003 | +0.025 | [−0.015, +0.065] | 0.631 | 0.352 | 4/5 |
+| Exploratoria | +0.046, +0.010, +0.025, +0.015, +0.013 | +0.022 | [−0.008, +0.052] | 0.560 | 0.431 | 5/5 |
+
+- **Con la época 80, las conclusiones se mantienen.** H1 sigue a favor en los 5 folds (+0.068) y sin llegar al umbral. H2 sigue en 0. La secundaria y la exploratoria siguen cerca de +0.02.
+- **Con cinco folds, el checkpoint elegido por validación ya no gana siempre.** En los folds 0 y 1 rendía más en test que el de la época 80 en las 8 corridas. Con los cinco folds, eso pasa en 12 de 20, con una diferencia media de +0.005 y un rango de −0.059 a +0.041. La selección por validación casi no cambia el resultado en test.
+
+**Efecto por lote** (sección 8.5; `scripts/lot_effects.py --split test --seeds 42`, en [`reports/interim-test-seed42/lot-effects/`](../../reports/interim-test-seed42/lot-effects/lot_effects_test.md)). Es descriptivo, sin correlación ni p-valor. El orden de los folds por Δ H1, de mayor a menor, es 3, 4, 2, 1, 0 (lotes 4, 5, 3, 2, 1). Ese orden coincide con el de `residual_shift_px`, la corrección de registro por foto (176.6 px en el lote 5, 151.9 en el 4, 120.1 en el 3, 35.1 en el 2 y 10.2 en el 1), salvo que los dos primeros aparecen invertidos. La expectativa pre-registrada era la contraria: menos ventaja del NIR con más corrección. Con cinco lotes, solo se puede decir que **no es consistente** con esa expectativa. El fold 0 (lote 1), el de captura más distinta, tiene la menor ventaja (+0.042), pero sigue a favor del NIR.
+
+**Puntos de operación en test** (`scripts/val_operating_points.py --split test --folds 0 1 2 3 4 --seeds 42`, en [`reports/interim-test-seed42/`](../../reports/interim-test-seed42/operating_points_test.md)): el patrón de los folds 0 y 1 se repite en los cinco. A 0.25, casi todas las fotos sanas tienen alguna caja de daño (especificidad 0-0.08). A 0.5, la exactitud balanceada por foto queda entre 0.49 y 0.58. En los cinco folds, `est_rgbnir` tiene a 0.25 una precisión de cajas mayor o igual que la de `est_rgb`.
+
 ### AP por zona de impacto: ¿iluminación o posición? (exploratorio)
 
 Pregunta planteada después de ver los estratos por zona: el AP de daño es bajo en `derecha`, `superior` e `inferior` y alto en `centro` e `izquierda`, y la hipótesis era que se debe a la iluminación. Detalle, datos y figura en [`reports/zone-analysis/`](../../reports/zone-analysis/README.md) (`scripts/zone_analysis.py`). Se usan 12 evaluaciones de validación (folds 0-3) y 8 de test (folds 0 y 1, semilla 42, según la sección 8.6 del plan), y las 3466 fotos con daño del dataset para medir luz y posición.
@@ -415,11 +488,11 @@ Las corridas definitivas incluyen el arreglo del warm-up, así que el fold 0 se 
 
 | Brazo | Rol | Pilotos (fold 0, solo validación) | Definitivas (5 folds, val y test) |
 | :-- | :-- | :-- | :-- |
-| `est_rgb` | Base de H1 y maestro de `kd_rgb` | 6 de 6 terminadas, con warm-up anterior | En curso desde el 2026-11-05 |
-| `est_rgbnir` | Tratamiento de H1 y maestro de `kd_rgbnir` | 3 de 3 terminadas, con warm-up corregido | En curso desde el 2026-11-05 |
-| `kd_rgb` | Control de H2 | Sin piloto | En cola tras su maestro del mismo fold y semilla |
-| `kd_rgbnir` | Tratamiento de H2 | Sin piloto | En cola tras su maestro del mismo fold y semilla |
-| `est_nir` | Referencia descriptiva | 6 de 6 terminadas, con warm-up anterior | Al final, después de las 3 semillas de los otros cuatro |
+| `est_rgb` | Base de H1 y maestro de `kd_rgb` | 6 de 6 terminadas, con warm-up anterior | Semilla 42 terminada (5 folds); 1337 y 2024 en las máquinas B y C |
+| `est_rgbnir` | Tratamiento de H1 y maestro de `kd_rgbnir` | 3 de 3 terminadas, con warm-up corregido | Semilla 42 terminada (5 folds); 1337 y 2024 en las máquinas B y C |
+| `kd_rgb` | Control de H2 | Sin piloto | Semilla 42 terminada (5 folds); 1337 y 2024 en las máquinas B y C |
+| `kd_rgbnir` | Tratamiento de H2 | Sin piloto | Semilla 42 terminada (5 folds); 1337 y 2024 en las máquinas B y C |
+| `est_nir` | Referencia descriptiva | 6 de 6 terminadas, con warm-up anterior | Semilla 42 en curso desde el 2026-11-06 a las 14:10; después 1337 y 2024, en la máquina principal |
 | `kd_nir` | Fuera del plan | Prueba de 2 épocas | No corre |
 | EMA | — | Interrumpido en la época 15 | Descartado |
 
@@ -432,6 +505,8 @@ Los pilotos están en `~/edge_mango/runs/pilots*/` y las corridas definitivas en
 El 2026-11-04, al revisar los artefactos, se imprimieron en la sesión de trabajo los resultados de test del fold 0, semilla 42, de `maestro_rgbnir`, `est_nir` y `est_rgb`. El evaluador del runner los había generado de forma automática. No se incluyen acá y no deben influir en la elección de variante y épocas. Queda registrado en la sección 11 del plan.
 
 El 2026-11-05, a pedido del autor, se leyeron los resultados de test de los folds 0 y 1, semilla 42, de los cuatro brazos de las pruebas, después de congelar el protocolo (sección 8.6 del plan). Están en el [vistazo intermedio](#vistazo-intermedio-a-test-folds-0-y-1-semilla-42-2026-11-05).
+
+El 2026-11-06, a pedido del autor, se leyeron los resultados de test de la semilla 42 de los cuatro brazos de las pruebas en los cinco folds. La sección 8.7 del plan se registró y se publicó antes (commit `13da84f`). Están en el [resultado preliminar](#resultado-preliminar-en-test-semilla-42-cinco-folds-2026-11-06). El test de `est_nir` y el de las semillas 1337 y 2024 siguen sin leerse.
 
 ### Lista antes de escribir la discusión
 

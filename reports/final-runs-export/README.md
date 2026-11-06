@@ -1,10 +1,10 @@
 # Datos de las corridas definitivas
 
-Todo lo necesario para armar las tablas y figuras de las corridas definitivas sin la máquina de entrenamiento. Corte: 2026-11-05 a las 21:00. Las corridas siguen; este directorio se regenera con el mismo comando cuando terminen más.
+Todo lo necesario para armar las tablas y figuras de las corridas definitivas sin la máquina de entrenamiento. Corte: 2026-11-06 a las 15:00, con las 20 corridas de la semilla 42 de los cuatro brazos de las pruebas terminadas. Las corridas siguen; este directorio se regenera con el mismo comando cuando terminen más.
 
 ```bash
 python scripts/export_run_results.py --runs-root ~/edge_mango/runs/final \
-    --dataset ~/edge_mango/data/v4_captura_v3_final --test-folds 0 1 --test-seeds 42 \
+    --dataset ~/edge_mango/data/v4_captura_v3_final --test-folds 0 1 2 3 4 --test-seeds 42 \
     --output reports/final-runs-export
 ```
 
@@ -12,10 +12,10 @@ python scripts/export_run_results.py --runs-root ~/edge_mango/runs/final \
 
 | | Validación | Test |
 | :-- | :-- | :-- |
-| Checkpoint elegido por validación (`best`) | Las 9 corridas terminadas de la semilla 42 | Solo folds 0 y 1, semilla 42, de los cuatro brazos de las pruebas |
-| Checkpoint de la época 80 (`epoch80`) | Folds 0 y 1, semilla 42 | Folds 0 y 1, semilla 42 |
+| Checkpoint elegido por validación (`best`) | Las 20 corridas de la semilla 42 | Las mismas 20 corridas: semilla 42, cinco folds, cuatro brazos de las pruebas |
+| Checkpoint de la época 80 (`epoch80`) | Las mismas 20 corridas | Las mismas 20 corridas |
 
-Los resultados de test de los demás folds y semillas no se exportan: el plan prohíbe leerlos antes de completar el conjunto de semillas que se reporta (secciones 8.1 y 8.6 de [`plan-experimental.md`](../../docs/tesis/plan-experimental.md)). El test de los folds 0 y 1 se leyó como vistazo intermedio, con el protocolo congelado antes.
+`est_nir` y las semillas 1337 y 2024 no se exportan todavía. El plan prohíbe leer su test antes de completar el conjunto de semillas que se reporta (secciones 8.1, 8.6 y 8.7 de [`plan-experimental.md`](../../docs/tesis/plan-experimental.md)). El test de la semilla 42 se leyó como resultado preliminar, con el protocolo congelado antes: los folds 0 y 1 según 8.6 y los cinco según 8.7. Cuidado al regenerar: el script exporta el test de todos los brazos que encuentre para los folds y semillas dados, `est_nir` incluido, así que hay que correrlo antes de que existan evaluaciones de test no autorizadas, o filtrarlas.
 
 ## Archivos
 
@@ -37,6 +37,6 @@ Los resultados de test de los demás folds y semillas no se exportan: el plan pr
 - **Clasificación por foto a cualquier umbral t:** en `photos.csv`, con `primary_metric_photo=1`; positiva = `hour` distinto de `sano`, predicha positiva = `max_damage_score >= t`.
 - **Puntos de operación de cajas:** en `pr_grid.csv`, la fila del umbral.
 
-Las cifras coinciden con las del [documento de resultados](../../docs/tesis/resultados-causas-y-soluciones.md). Las figuras están en [`final-runs-progress/`](../final-runs-progress/) (validación) e [`interim-test-folds01/`](../interim-test-folds01/) (test de los folds 0 y 1).
+Las cifras coinciden con las del [documento de resultados](../../docs/tesis/resultados-causas-y-soluciones.md). Las figuras están en [`final-runs-progress/`](../final-runs-progress/) (validación) , [`interim-test-folds01/`](../interim-test-folds01/) (test de los folds 0 y 1) e [`interim-test-seed42/`](../interim-test-seed42/) (test de la semilla 42 en los cinco folds: puntos de operación, efecto por lote y sensibilidad sin las fotos visibles en RGB).
 
 Lo que no está aquí y queda en la máquina de entrenamiento (`~/edge_mango/runs/final`, con copia en `checkpoints/v4_final` del disco de Windows): checkpoints, logs de TensorBoard y los `predictions.jsonl` completos, con todas las cajas.
