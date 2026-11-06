@@ -164,7 +164,7 @@ Son medidas de pocas épocas iniciales, y otros procesos compartieron la máquin
 
 ### Corridas definitivas: avance en validación
 
-Semilla 42, corte del 2026-11-05 a las 20:10: 8 de las 20 corridas de la semilla 42 terminaron. Son métricas de **validación**, la misma que elige el checkpoint, así que sirven para seguir el avance y no son evidencia de H1 ni de H2. El test de los folds 0 y 1 está en la sección siguiente, leído según la sección 8.6 del plan.
+Semilla 42, corte del 2026-11-05 a las 21:00: 9 de las 20 corridas de la semilla 42 terminaron. Son métricas de **validación**, la misma que elige el checkpoint, así que sirven para seguir el avance y no son evidencia de H1 ni de H2. El test de los folds 0 y 1 está en la sección siguiente, leído según la sección 8.6 del plan.
 
 | Fold (lote de validación) | Brazo | AP50 latente | AP30 latente | AP50 desarrollado | AUROC por cara | FP por imagen sana |
 | :-- | :-- | :-- | :-- | :-- | :-- | :-- |
@@ -176,6 +176,7 @@ Semilla 42, corte del 2026-11-05 a las 20:10: 8 de las 20 corridas de la semilla
 | 1 (lote 3) | `est_rgbnir` | 0.294 | 0.381 | 0.486 | 0.604 | 4.13 |
 | 1 (lote 3) | `kd_rgb` | 0.197 | 0.313 | 0.311 | 0.545 | 3.90 |
 | 1 (lote 3) | `kd_rgbnir` | 0.220 | 0.318 | 0.323 | 0.592 | 3.75 |
+| 2 (lote 4) | `est_rgb` | 0.171 | 0.244 | 0.196 | 0.541 | 7.02 |
 
 - **H1 va en la dirección esperada en los dos folds:** `est_rgbnir` supera a `est_rgb` en AP50 latente por 0.046 y 0.119, y en el fold 1 la ventaja aparece en todas las horas.
 - **H2 no se ve en el fold 0 y sí en el fold 1:** en el fold 0 `kd_rgbnir` queda 0.016 por debajo de `kd_rgb`, dentro de la ROPE; en el fold 1 queda 0.023 por encima. En ese fold el maestro RGB+NIR le saca solo 0.046 al RGB, así que tiene poco para transferir.
@@ -231,7 +232,7 @@ Leído a pedido del autor para un informe de avance, con el protocolo congelado 
 - **Destilar desde RGB+NIR no supera al estudiante RGB solo en el fold 0** (+0.001) y sí en el fold 1 (+0.037).
 - **El AUROC por cara no sigue al AP:** queda entre 0.58 y 0.68 en todos los brazos, sin un orden estable. Clasificar la foto como dañada o sana sigue cerca del azar (ver abajo).
 
-**Puntos de operación en test** (`scripts/val_operating_points.py --split test --folds 0 1 --seeds 42`, en [`reports/interim-test-folds01/`](../../reports/interim-test-folds01/)): igual que en validación, a 0.25 todas las fotos sanas tienen alguna caja de daño (especificidad 0-0.02), y a 0.5 la exactitud balanceada queda entre 0.50 y 0.58. A 0.5 las cajas tienen precisión de 0.45-0.73 con recall de 0.05-0.19.
+**Puntos de operación en test** (datos crudos de todo lo reportado en [`reports/final-runs-export/`](../../reports/final-runs-export/README.md); `scripts/val_operating_points.py --split test --folds 0 1 --seeds 42`, en [`reports/interim-test-folds01/`](../../reports/interim-test-folds01/)): igual que en validación, a 0.25 todas las fotos sanas tienen alguna caja de daño (especificidad 0-0.02), y a 0.5 la exactitud balanceada queda entre 0.50 y 0.58. A 0.5 las cajas tienen precisión de 0.45-0.73 con recall de 0.05-0.19.
 
 **Sensibilidad a la selección del checkpoint** (`scripts/eval_last_epoch.py`, en `runs/final/reports_epoch80/`): las mismas diferencias en test con el checkpoint de la época 80 en lugar del elegido por validación.
 
