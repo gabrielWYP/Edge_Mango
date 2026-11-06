@@ -178,7 +178,25 @@ Semilla 42, corte del 2026-11-05 a las 18:50: 6 de las 20 corridas de la semilla
 - **H1 va en la dirección esperada en los dos folds:** `est_rgbnir` supera a `est_rgb` en AP50 latente por 0.046 y 0.119, y en el fold 1 la ventaja aparece en todas las horas.
 - **H2 no se ve en el fold 0:** `kd_rgbnir` queda 0.016 por debajo de `kd_rgb`, dentro de la ROPE. En ese fold el maestro RGB+NIR le saca solo 0.046 al RGB, así que tiene poco para transferir.
 - **Destilar sin NIR ayuda un poco en el fold 0:** `kd_rgb` supera a `est_rgb` por 0.022. Es el efecto que `kd_rgb` controla en H2.
-- **Las curvas** ([`curves_seed42.png`](../../reports/final-runs-progress/curves_seed42.png), `scripts/plot_run_curves.py`) muestran el mismo patrón que los pilotos: el AP50 de validación sube hasta la época 45-65 y después se estanca, mientras la pérdida de detección en train sigue bajando. `est_rgbnir` tiene la pérdida más baja de los cuatro brazos.
+- **Las curvas** ([`curves_seed42.png`](../../reports/final-runs-progress/curves_seed42.png), `scripts/plot_run_curves.py`) muestran el mismo patrón que los pilotos: el AP50 de validación sube hasta la época 45-65 y después se estanca, mientras la pérdida de detección en train sigue bajando. `est_rgbnir` tiene la pérdida más baja de los cuatro brazos. El AP se dibuja con un suavizado exponencial (w = 0.8, unas 5 épocas). Sin suavizar salta de época en época: el conjunto de validación es fijo, así que el salto viene de los pesos (AdamW con LR 1e-3 y batch 8) y se apaga en las épocas 70-80, cuando el coseno baja el LR. El punto de cada curva es el AP sin suavizar de la época elegida, que por eso queda por encima de la línea.
+
+#### Puntos de operación y clasificación por foto (validación)
+
+`scripts/val_operating_points.py` aplica umbrales de confianza a las predicciones guardadas (decodificadas a 0.001), sin reentrenar, sobre las fotos de la métrica primaria (ventana latente + sanas). Salidas en [`reports/final-runs-progress/`](../../reports/final-runs-progress/): `pr_curves_val.png`, `operating_points_val.md` y `.csv`. El AP de sus curvas coincide con `latent_ap50` en las seis corridas. El umbral de operación vigente es `conf_threshold = 0.25` (el AP se calcula a 0.001).
+
+| Fold | Brazo | Cajas a 0.25: P / R / FP por foto | Cajas a 0.5: P / R | Fotos a 0.5: sensibilidad / especificidad |
+| :-- | :-- | :-- | :-- | :-- |
+| 0 | `est_rgb` | 0.07 / 0.52 / 5.2 | 0.40 / 0.03 | 0.06 / 0.97 |
+| 0 | `est_rgbnir` | 0.11 / 0.47 / 3.1 | 0.55 / 0.06 | 0.10 / 0.98 |
+| 0 | `kd_rgb` | 0.08 / 0.50 / 4.9 | 0.46 / 0.05 | 0.09 / 0.95 |
+| 0 | `kd_rgbnir` | 0.06 / 0.44 / 5.3 | 0.45 / 0.09 | 0.17 / 0.91 |
+| 1 | `est_rgb` | 0.08 / 0.51 / 5.0 | 0.47 / 0.07 | 0.13 / 0.94 |
+| 1 | `est_rgbnir` | 0.10 / 0.60 / 4.2 | 0.63 / 0.12 | 0.16 / 0.92 |
+
+- **A 0.25 ningún modelo sirve como clasificador de foto:** todas las fotos sanas tienen al menos una caja de daño por encima del umbral (especificidad 0-0.01), así que "la foto tiene daño" sale sí para todas. La exactitud de 0.80 es solo la proporción de fotos latentes (394 de 494); la exactitud balanceada es 0.50.
+- **A 0.5 el modelo se vuelve conservador:** encuentra pocas cajas (recall 0.03-0.12) pero acierta casi la mitad o más, y deja pasar casi todas las sanas. La exactitud balanceada queda entre 0.51 y 0.54: la clasificación por foto está cerca del azar en los dos umbrales, en línea con el AUROC por cara de `metrics_v4.json` (0.60 en `est_rgb`, fold 0).
+- **`est_rgbnir` domina a `est_rgb` en toda la curva PR del fold 1**, no solo en el AP: a 0.5 tiene más precisión (0.63 contra 0.47) y casi el doble de recall. En el fold 0 las curvas se cruzan.
+- Estos números son de validación, semilla 42: describen el punto de operación y no son evidencia para H1 o H2. El umbral no se ajusta con test.
 
 ### Condiciones de captura por lote
 

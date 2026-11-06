@@ -5,10 +5,10 @@ Reads the TensorBoard logs only (validation, never test). Colour is what the mod
 orange RGB+NIR); a dashed line is a distilled student. The detection loss is box + cls, the same in every arm: the
 total loss of a KD run also holds its distillation term.
 
-The AP curve is drawn twice: the raw values faint, and over them an exponential smoothing with bias correction
-(the TensorBoard one), smoothed_t = (1 - w) * sum_i w^(t-i) * ap_i / (1 - w^t). The weight w is the optional third
-argument (default 0.8, about 5 epochs; 0 turns it off). Smoothing changes only the drawing: the dot is still the raw
-best epoch, the checkpoint the run selected.
+The AP curve is drawn with an exponential smoothing with bias correction (the TensorBoard one),
+smoothed_t = (1 - w) * sum_i w^(t-i) * ap_i / (1 - w^t). The weight w is the optional third argument (default 0.8,
+about 5 epochs; 0 draws the raw values). Smoothing changes only the drawing: the dot is the raw AP of the best epoch,
+the checkpoint the run selected, so it sits above the smoothed line.
 
     python scripts/plot_run_curves.py runs/final reports/final-runs-progress/curves_seed42.png [0.8]
 """
@@ -63,10 +63,7 @@ for col, fold in enumerate(folds):
         box, cls = s.get("Phase1/train/box_loss", {}), s.get("Phase1/train/cls_loss", {})
         if not ap: continue
         ep = sorted(ap)
-        raw = [ap[e] for e in ep]
-        if SMOOTH:
-            axes[0][col].plot(ep, raw, color=color, ls=ls, lw=1, alpha=0.25)
-        axes[0][col].plot(ep, smooth(raw, SMOOTH), color=color, ls=ls, lw=2, label=label)
+        axes[0][col].plot(ep, smooth([ap[e] for e in ep], SMOOTH), color=color, ls=ls, lw=2, label=label)
         best = max(ep, key=ap.get)
         axes[0][col].plot([best], [ap[best]], "o", ms=8, color=color, mec=SURFACE, mew=2)
         le = sorted(set(box) & set(cls))
@@ -78,7 +75,7 @@ for col, fold in enumerate(folds):
 axes[0][0].set_ylabel("AP50 de daño en validación\n(todas las horas; ● = mejor época)")
 if SMOOTH:
     axes[0][0].set_ylabel(
-        f"AP50 de daño en validación, suavizado w={SMOOTH:g}\n(tenue = valor por época; ● = mejor época)"
+        f"AP50 de daño en validación, suavizado w={SMOOTH:g}\n(● = AP sin suavizar de la mejor época)"
     )
 axes[1][0].set_ylabel("Pérdida de detección en train\n(caja + clase)")
 handles, labels = axes[0][0].get_legend_handles_labels()
