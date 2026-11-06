@@ -396,6 +396,32 @@ Los demás descriptores del CSV se reportan como tabla, sin lectura.
 
 ---
 
+### 8.6 Vistazo intermedio a test de los folds 0 y 1 (registrado el 2026-11-05, antes de leerlo)
+
+**Qué se mira.** A pedido del autor, para un informe de avance, se leen los resultados de test de la semilla 42 de
+`est_rgb`, `est_rgbnir`, `kd_rgb` y `kd_rgbnir` en los folds 0 y 1, apenas terminen sus evaluaciones. Se reportan
+el AP50 latente de cada brazo y las diferencias de H1, H2, la secundaria y la exploratoria, por fold. Es una excepción
+a la regla de 8.1 ("ningún resultado de test se lee antes de que terminen las corridas que se reportan"), y se
+declara aquí antes de leerlo.
+
+**Qué no se hace con eso.** Con dos folds y una semilla no se calcula intervalo, probabilidad ni p-valor, ni se
+escribe que una hipótesis se cumple. El vistazo no decide nada: antes de leerlo se congela el protocolo completo,
+es decir, todo lo de 8.1 a 8.5 y lo que sigue. Las semillas quedan fijas en 42, 1337 y 2024 para los cuatro brazos y
+para `est_nir`, sin pasar por la regla de 8.2. Las corridas siguen en el orden y con la configuración del lanzamiento
+del 2026-11-05 (commit `b34668f`). Un cambio posterior a cualquiera de estos puntos se reporta como exploratorio
+(sección 9). El informe final usa las mismas corridas: los dos folds vistos son parte de la prueba confirmatoria, no
+una prueba aparte.
+
+**Análisis descriptivos agregados antes del vistazo**, sin inferencia, para todas las corridas que se reporten:
+
+- **Puntos de operación** (`scripts/val_operating_points.py --split test`): precisión, recall y falsos positivos
+  por foto de las cajas de daño a confianza 0.25 y 0.5, curvas precisión-recall, y la clasificación por foto
+  (sensibilidad, especificidad, exactitud balanceada). Los umbrales son el punto de operación vigente (0.25) y 0.5;
+  no se eligen con test.
+- **Sensibilidad a la selección del checkpoint:** las mismas diferencias con el checkpoint de la última época (80)
+  en lugar del elegido por validación, porque el AP50 de validación salta de una época a otra y la mejor época puede
+  ser un pico de ruido. Se reporta junto al resultado principal, que sigue siendo el de 8.1.
+
 ## 9. Reglas para no tener que pensar después
 
 1. **Nada se ajusta mirando el lote de test**: ni épocas, ni umbrales, ni augmentations, ni la definición de latente.
@@ -443,3 +469,4 @@ Estado al 2026-11-02: los puntos 1 a 9 tienen su código y pruebas, y los comand
 | 2026-11-05 | Se fijan las épocas (80), la clase mango (se mantiene), EMA (no se usa) y las semillas (42, 1337 y 2024, con la 42 primero; sección 8.1). Los brazos de las pruebas corren primero y `est_nir`, la referencia, al final. Los pilotos de la clase mango corrieron antes del arreglo del warm-up; las corridas definitivas lo incluyen y se vuelven a correr todas, también el fold 0. | Pilotos de fold 0 solo en validación: `est_rgb` y `est_nir` con 3 semillas, con y sin la clase mango, y `est_rgbnir` completo con 3 semillas (0.201 de AP50 latente, entre `est_rgb` y `est_nir`), conocido antes de commitear esta fila y la reformulación. EMA se descarta por plazo, sin diagnóstico. No se basa en resultados de test. | Después de la exposición parcial de test; antes de la primera evaluación en test de cualquier brazo vigente |
 | 2026-11-05 | Las corridas definitivas lanzadas a las 14:19 con los brazos del 2026-11-03 (`est_rgb`, `est_nir`, `kd_rgb`, `kd_nir`, commit `b77d4af`) se detienen a los 15 minutos, en la época 8 de 80 de sus tres primeras corridas y sin ninguna evaluación, y se apartan en `runs/aborted_final_b77d4af`. Se relanzan con los brazos vigentes. | Adoptar la reformulación del 2026-11-05. | Antes de cualquier evaluación en test de esas corridas |
 | 2026-11-05 | Se agrega el análisis exploratorio por lote de la sección 8.5, con sus descriptores primarios fijados. | Teoría del autor: las condiciones de captura cambian por lote y pueden cambiar la ventaja del NIR. Los descriptores salen de imágenes, metadatos y etiquetas, sin salidas de modelos. | Antes de leer cualquier resultado de test de los brazos vigentes; el runner ya había escrito los de `est_rgb` y `est_rgbnir` del fold 0, semilla 42, sin abrirlos |
+| 2026-11-05 | Se agrega el vistazo intermedio de la sección 8.6 (test de los folds 0 y 1, semilla 42, de los cuatro brazos de las pruebas) y se congela el protocolo: semillas fijas en 42, 1337 y 2024 sin la regla de 8.2. Se agregan como descriptivos los puntos de operación a 0.25 y 0.5 y la sensibilidad a la selección con la última época. | Pedido del autor para un informe de avance. Los descriptivos responden a los saltos del AP50 de validación y a la clasificación por foto cercana al azar en validación. | Antes de leer cualquier resultado de test de los brazos vigentes; el runner ya había escrito los de seis corridas de los folds 0 y 1 sin abrirlos |
