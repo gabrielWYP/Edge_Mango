@@ -233,7 +233,18 @@ Leído a pedido del autor para un informe de avance, con el protocolo congelado 
 
 **Puntos de operación en test** (`scripts/val_operating_points.py --split test --folds 0 1 --seeds 42`, en [`reports/interim-test-folds01/`](../../reports/interim-test-folds01/)): igual que en validación, a 0.25 todas las fotos sanas tienen alguna caja de daño (especificidad 0-0.02), y a 0.5 la exactitud balanceada queda entre 0.50 y 0.58. A 0.5 las cajas tienen precisión de 0.45-0.73 con recall de 0.05-0.19.
 
-**Sensibilidad a la selección (checkpoint de la época 80):** en curso, con `scripts/eval_last_epoch.py`.
+**Sensibilidad a la selección del checkpoint** (`scripts/eval_last_epoch.py`, en `runs/final/reports_epoch80/`): las mismas diferencias en test con el checkpoint de la época 80 en lugar del elegido por validación.
+
+| Fold | Checkpoint | `est_rgb` | `est_rgbnir` | `kd_rgb` | `kd_rgbnir` | Δ H1 | Δ H2 | Δ secundaria | Δ exploratoria |
+| :-- | :-- | --: | --: | --: | --: | --: | --: | --: | --: |
+| 0 | mejor de validación | 0.186 | 0.228 | 0.212 | 0.186 | +0.042 | −0.026 | +0.001 | +0.027 |
+| 0 | época 80 | 0.148 | 0.219 | 0.194 | 0.176 | +0.071 | −0.018 | +0.028 | +0.046 |
+| 1 | mejor de validación | 0.205 | 0.255 | 0.220 | 0.242 | +0.050 | +0.022 | +0.037 | +0.015 |
+| 1 | época 80 | 0.190 | 0.214 | 0.200 | 0.222 | +0.024 | +0.022 | +0.032 | +0.010 |
+
+- **Las diferencias conservan el signo en las 8 comparaciones.** H1 sigue a favor de `est_rgbnir` en los dos folds (+0.071 y +0.024), H2 sigue dividida (−0.018 y +0.022), y la secundaria y la exploratoria siguen positivas. Con estos dos folds, las conclusiones no dependen de haber elegido un pico ruidoso de validación.
+- **El checkpoint elegido por validación rinde más en test que el de la época 80 en los ocho casos** (0.010-0.041 más de AP50 latente): la selección por validación no solo sube el número de validación, también elige modelos que generalizan mejor al lote de test.
+- En AP30 latente el patrón es el mismo: H1 +0.053 y +0.045, H2 −0.018 y +0.020.
 
 ### Condiciones de captura por lote
 
