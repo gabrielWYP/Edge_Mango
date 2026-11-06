@@ -247,6 +247,24 @@ Leído a pedido del autor para un informe de avance, con el protocolo congelado 
 - **El checkpoint elegido por validación rinde más en test que el de la época 80 en los ocho casos** (0.010-0.041 más de AP50 latente): la selección por validación no solo sube el número de validación, también elige modelos que generalizan mejor al lote de test.
 - En AP30 latente el patrón es el mismo: H1 +0.053 y +0.045, H2 −0.018 y +0.020.
 
+### AP por zona de impacto: ¿iluminación o posición? (exploratorio)
+
+Pregunta planteada después de ver los estratos por zona: el AP de daño es bajo en `derecha`, `superior` e `inferior` y alto en `centro` e `izquierda`, y la hipótesis era que se debe a la iluminación. Detalle, datos y figura en [`reports/zone-analysis/`](../../reports/zone-analysis/README.md) (`scripts/zone_analysis.py`). Se usan 12 evaluaciones de validación (folds 0-3) y 8 de test (folds 0 y 1, semilla 42, según la sección 8.6 del plan), y las 3466 fotos con daño del dataset para medir luz y posición.
+
+| Zona | AP50 latente, validación | AP50 latente, test | Distancia al centro | Brillo caja / fruta |
+| :-- | --: | --: | --: | --: |
+| `izquierda` | 0.501 | 0.673 | 0.62 | 1.70 |
+| `centro` | 0.402 | 0.501 | 0.22 | 0.95 |
+| `derecha` | 0.203 | 0.154 | 0.32 | 0.71 |
+| `superior` | 0.096 | 0.046 | 0.59 | 1.15 |
+| `inferior` | 0.046 | 0.084 | 0.73 | 0.75 |
+
+- **Las zonas están nombradas desde la fruta, espejadas respecto de la imagen:** `izquierda` cae en el borde derecho de la foto, `superior` abajo, `inferior` arriba y `derecha` a la izquierda, cerca del centro.
+- **La luz no explica las tres zonas malas.** No comparten condición de luz (`superior` está más iluminada que el promedio de la fruta; `derecha` e `inferior`, menos), y la más oscura, `derecha`, es la mejor de las tres en las 20 evaluaciones.
+- **La luz sí explica la mejor zona.** La iluminación entra por el lado derecho de la imagen en los cinco lotes, y `izquierda` cae ahí: su caja está un 70 % más iluminada que la fruta y tiene un contraste 3 a 6 veces mayor que el de las demás zonas.
+- **La posición explica el resto.** Fuera de `izquierda`, el AP baja con la distancia del daño al centro de la fruta en la imagen, y dentro de cada una de las cinco zonas la mitad de las fotos con el daño más cerca del centro tiene más aciertos que la más lejana (en `derecha`, 0.73 frente a 0.24). Cerca del borde la superficie queda oblicua a la cámara y el daño se ve comprimido y con menos contraste, salvo en el lado iluminado.
+- Es descriptivo: cinco zonas, con la luz y la cámara fijas, así que zona, posición y luz están parcialmente confundidas.
+
 ### Condiciones de captura por lote
 
 Medidas con `scripts/lot_descriptors.py` sobre las 3966 fotos del dataset, sin salidas de modelos ([`reports/lot-descriptors/`](../../reports/lot-descriptors/README.md)). Son los descriptores del análisis exploratorio por lote (sección 8.5 del plan).
