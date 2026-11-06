@@ -164,7 +164,7 @@ Son medidas de pocas épocas iniciales, y otros procesos compartieron la máquin
 
 ### Corridas definitivas: avance en validación
 
-Semilla 42, corte del 2026-11-05 a las 18:50: 6 de las 20 corridas de la semilla 42 terminaron. Son métricas de **validación**, la misma que elige el checkpoint, así que sirven para seguir el avance y no son evidencia de H1 ni de H2. Los resultados de test que el runner ya escribió no se leyeron.
+Semilla 42, corte del 2026-11-05 a las 20:10: 8 de las 20 corridas de la semilla 42 terminaron. Son métricas de **validación**, la misma que elige el checkpoint, así que sirven para seguir el avance y no son evidencia de H1 ni de H2. El test de los folds 0 y 1 está en la sección siguiente, leído según la sección 8.6 del plan.
 
 | Fold (lote de validación) | Brazo | AP50 latente | AP30 latente | AP50 desarrollado | AUROC por cara | FP por imagen sana |
 | :-- | :-- | :-- | :-- | :-- | :-- | :-- |
@@ -174,9 +174,11 @@ Semilla 42, corte del 2026-11-05 a las 18:50: 6 de las 20 corridas de la semilla
 | 0 (lote 2) | `kd_rgbnir` | 0.157 | 0.254 | 0.168 | 0.628 | 5.45 |
 | 1 (lote 3) | `est_rgb` | 0.175 | 0.272 | 0.276 | 0.587 | 5.33 |
 | 1 (lote 3) | `est_rgbnir` | 0.294 | 0.381 | 0.486 | 0.604 | 4.13 |
+| 1 (lote 3) | `kd_rgb` | 0.197 | 0.313 | 0.311 | 0.545 | 3.90 |
+| 1 (lote 3) | `kd_rgbnir` | 0.220 | 0.318 | 0.323 | 0.592 | 3.75 |
 
 - **H1 va en la dirección esperada en los dos folds:** `est_rgbnir` supera a `est_rgb` en AP50 latente por 0.046 y 0.119, y en el fold 1 la ventaja aparece en todas las horas.
-- **H2 no se ve en el fold 0:** `kd_rgbnir` queda 0.016 por debajo de `kd_rgb`, dentro de la ROPE. En ese fold el maestro RGB+NIR le saca solo 0.046 al RGB, así que tiene poco para transferir.
+- **H2 no se ve en el fold 0 y sí en el fold 1:** en el fold 0 `kd_rgbnir` queda 0.016 por debajo de `kd_rgb`, dentro de la ROPE; en el fold 1 queda 0.023 por encima. En ese fold el maestro RGB+NIR le saca solo 0.046 al RGB, así que tiene poco para transferir.
 - **Destilar sin NIR ayuda un poco en el fold 0:** `kd_rgb` supera a `est_rgb` por 0.022. Es el efecto que `kd_rgb` controla en H2.
 - **Las curvas** ([`curves_seed42.png`](../../reports/final-runs-progress/curves_seed42.png), `scripts/plot_run_curves.py`) muestran el mismo patrón que los pilotos: el AP50 de validación sube hasta la época 45-65 y después se estanca, mientras la pérdida de detección en train sigue bajando. `est_rgbnir` tiene la pérdida más baja de los cuatro brazos. El AP se dibuja con un suavizado exponencial (w = 0.8, unas 5 épocas). Sin suavizar salta de época en época: el conjunto de validación es fijo, así que el salto viene de los pesos (AdamW con LR 1e-3 y batch 8) y se apaga en las épocas 70-80, cuando el coseno baja el LR. El punto de cada curva es el AP sin suavizar de la época elegida, que por eso queda por encima de la línea.
 
@@ -197,6 +199,41 @@ Semilla 42, corte del 2026-11-05 a las 18:50: 6 de las 20 corridas de la semilla
 - **A 0.5 el modelo se vuelve conservador:** encuentra pocas cajas (recall 0.03-0.12) pero acierta casi la mitad o más, y deja pasar casi todas las sanas. La exactitud balanceada queda entre 0.51 y 0.54: la clasificación por foto está cerca del azar en los dos umbrales, en línea con el AUROC por cara de `metrics_v4.json` (0.60 en `est_rgb`, fold 0).
 - **`est_rgbnir` domina a `est_rgb` en toda la curva PR del fold 1**, no solo en el AP: a 0.5 tiene más precisión (0.63 contra 0.47) y casi el doble de recall. En el fold 0 las curvas se cruzan.
 - Estos números son de validación, semilla 42: describen el punto de operación y no son evidencia para H1 o H2. El umbral no se ajusta con test.
+
+### Vistazo intermedio a test: folds 0 y 1, semilla 42 (2026-11-05)
+
+Leído a pedido del autor para un informe de avance, con el protocolo congelado antes de abrirlo (sección 8.6 del plan, commit `576af91`). Son 2 de 5 folds y 1 de 3 semillas: no hay intervalo, probabilidad ni p-valor, y nada de esto dice si H1 o H2 se cumplen. Las corridas son las mismas que entrarán al análisis final.
+
+**AP50 latente en test** (lote de test entre paréntesis):
+
+| Fold | `est_rgb` | `est_rgbnir` | `kd_rgb` | `kd_rgbnir` | Δ H1 | Δ H2 | Δ secundaria | Δ exploratoria |
+| :-- | --: | --: | --: | --: | --: | --: | --: | --: |
+| 0 (lote 1) | 0.186 | 0.228 | 0.212 | 0.186 | +0.042 | −0.026 | +0.001 | +0.027 |
+| 1 (lote 2) | 0.205 | 0.255 | 0.220 | 0.242 | +0.050 | +0.022 | +0.037 | +0.015 |
+
+Δ H1 = `est_rgbnir` − `est_rgb`; Δ H2 = `kd_rgbnir` − `kd_rgb`; Δ secundaria = `kd_rgbnir` − `est_rgb`; Δ exploratoria = `kd_rgb` − `est_rgb`. ROPE pre-registrada: ±0.02.
+
+**Otras métricas de test:**
+
+| Fold | Brazo | AP30 latente | AP50 desarrollado | AUROC por cara | FP por foto sana (conf ≥ 0.25) |
+| :-- | :-- | --: | --: | --: | --: |
+| 0 | `est_rgb` | 0.254 | 0.121 | 0.581 | 5.10 |
+| 0 | `est_rgbnir` | 0.327 | 0.196 | 0.605 | 4.77 |
+| 0 | `kd_rgb` | 0.323 | 0.198 | 0.619 | 4.66 |
+| 0 | `kd_rgbnir` | 0.304 | 0.161 | 0.631 | 5.67 |
+| 1 | `est_rgb` | 0.280 | 0.174 | 0.675 | 6.57 |
+| 1 | `est_rgbnir` | 0.324 | 0.221 | 0.651 | 6.33 |
+| 1 | `kd_rgb` | 0.290 | 0.167 | 0.650 | 4.53 |
+| 1 | `kd_rgbnir` | 0.308 | 0.201 | 0.629 | 3.62 |
+
+- **H1 va en la dirección esperada en test en los dos folds**, por más que la ROPE (+0.042 y +0.050). Se repite en AP30 latente (+0.073 y +0.044) y en AP50 desarrollado. En validación la ventaja del fold 1 era mayor (+0.119); en test se parece a la del fold 0.
+- **H2 se divide:** −0.026 en el fold 0 y +0.022 en el fold 1, los dos apenas fuera de la ROPE y con signo opuesto. El fold 0 es el que prueba en el lote 1, el de captura más distinta (sección 8.5 del plan).
+- **Destilar desde RGB+NIR no supera al estudiante RGB solo en el fold 0** (+0.001) y sí en el fold 1 (+0.037).
+- **El AUROC por cara no sigue al AP:** queda entre 0.58 y 0.68 en todos los brazos, sin un orden estable. Clasificar la foto como dañada o sana sigue cerca del azar (ver abajo).
+
+**Puntos de operación en test** (`scripts/val_operating_points.py --split test --folds 0 1 --seeds 42`, en [`reports/interim-test-folds01/`](../../reports/interim-test-folds01/)): igual que en validación, a 0.25 todas las fotos sanas tienen alguna caja de daño (especificidad 0-0.02), y a 0.5 la exactitud balanceada queda entre 0.50 y 0.58. A 0.5 las cajas tienen precisión de 0.45-0.73 con recall de 0.05-0.19.
+
+**Sensibilidad a la selección (checkpoint de la época 80):** en curso, con `scripts/eval_last_epoch.py`.
 
 ### Condiciones de captura por lote
 
@@ -361,6 +398,8 @@ Los pilotos están en `~/edge_mango/runs/pilots*/` y las corridas definitivas en
 ### Declaración sobre test
 
 El 2026-11-04, al revisar los artefactos, se imprimieron en la sesión de trabajo los resultados de test del fold 0, semilla 42, de `maestro_rgbnir`, `est_nir` y `est_rgb`. El evaluador del runner los había generado de forma automática. No se incluyen acá y no deben influir en la elección de variante y épocas. Queda registrado en la sección 11 del plan.
+
+El 2026-11-05, a pedido del autor, se leyeron los resultados de test de los folds 0 y 1, semilla 42, de los cuatro brazos de las pruebas, después de congelar el protocolo (sección 8.6 del plan). Están en el [vistazo intermedio](#vistazo-intermedio-a-test-folds-0-y-1-semilla-42-2026-11-05).
 
 ### Lista antes de escribir la discusión
 

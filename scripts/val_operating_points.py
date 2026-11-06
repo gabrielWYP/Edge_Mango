@@ -65,6 +65,8 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--reports-root", type=Path, required=True, help="<arm>/fold<k>_seed<s>/<split>/")
     parser.add_argument("--dataset", type=Path, required=True, help="v4 dataset with index.csv and folds_lot/")
     parser.add_argument("--split", default="val", choices=("val", "test"))
+    parser.add_argument("--folds", type=int, nargs="+", default=None, help="only these folds (default: all found)")
+    parser.add_argument("--seeds", type=int, nargs="+", default=None, help="only these seeds (default: all found)")
     parser.add_argument("--thresholds", type=float, nargs="+", default=[0.25, 0.5])
     parser.add_argument("--output", type=Path, required=True)
     return parser.parse_args(argv)
@@ -167,6 +169,8 @@ def main(argv=None) -> int:
             if not match or not (split_dir / "metrics_v4.json").exists():
                 continue  # evaluation not finished
             fold, seed = int(match[1]), int(match[2])
+            if (args.folds and fold not in args.folds) or (args.seeds and seed not in args.seeds):
+                continue
             photos = latent_photos(split_dir, args.dataset, fold, args.split, index)
             ranked, n_gt = ranked_boxes(photos)
             scores, precision, recall = pr_curve(ranked, n_gt)
