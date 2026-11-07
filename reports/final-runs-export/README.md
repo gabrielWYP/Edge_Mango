@@ -1,10 +1,10 @@
 # Datos de las corridas definitivas
 
-Todo lo necesario para armar las tablas y figuras de las corridas definitivas sin la máquina de entrenamiento. Corte: 2026-11-06 a las 15:00, con las 20 corridas de la semilla 42 de los cuatro brazos de las pruebas terminadas. Las corridas siguen; este directorio se regenera con el mismo comando cuando terminen más.
+Todo lo necesario para armar las tablas y figuras de las corridas definitivas sin la máquina de entrenamiento. Corte: 2026-11-06 a las 19:30, con las 20 corridas de la semilla 42 de los cuatro brazos de las pruebas y las 8 corridas terminadas de `est_nir` (semilla 42 en los cinco folds y 1337 en los folds 0-2; solo validación). Las corridas siguen; este directorio se regenera con el mismo comando cuando terminen más.
 
 ```bash
 python scripts/export_run_results.py --runs-root ~/edge_mango/runs/final \
-    --dataset ~/edge_mango/data/v4_captura_v3_final --test-folds 0 1 2 3 4 --test-seeds 42 \
+    --dataset ~/edge_mango/data/v4_captura_v3_final --test-folds 0 1 2 3 4 --test-seeds 42 --test-arms est_rgb est_rgbnir kd_rgb kd_rgbnir \
     --output reports/final-runs-export
 ```
 
@@ -12,10 +12,10 @@ python scripts/export_run_results.py --runs-root ~/edge_mango/runs/final \
 
 | | Validación | Test |
 | :-- | :-- | :-- |
-| Checkpoint elegido por validación (`best`) | Las 20 corridas de la semilla 42 | Las mismas 20 corridas: semilla 42, cinco folds, cuatro brazos de las pruebas |
+| Checkpoint elegido por validación (`best`) | Las 20 corridas de la semilla 42 y las 8 terminadas de `est_nir` | Las mismas 20 corridas: semilla 42, cinco folds, cuatro brazos de las pruebas |
 | Checkpoint de la época 80 (`epoch80`) | Las mismas 20 corridas | Las mismas 20 corridas |
 
-`est_nir` y las semillas 1337 y 2024 no se exportan todavía. El plan prohíbe leer su test antes de completar el conjunto de semillas que se reporta (secciones 8.1, 8.6 y 8.7 de [`plan-experimental.md`](../../docs/tesis/plan-experimental.md)). El test de la semilla 42 se leyó como resultado preliminar, con el protocolo congelado antes: los folds 0 y 1 según 8.6 y los cinco según 8.7. Cuidado al regenerar: el script exporta el test de todos los brazos que encuentre para los folds y semillas dados, `est_nir` incluido, así que hay que correrlo antes de que existan evaluaciones de test no autorizadas, o filtrarlas.
+`est_nir` y las semillas 1337 y 2024 no se exportan todavía. El plan prohíbe leer su test antes de completar el conjunto de semillas que se reporta (secciones 8.1, 8.6 y 8.7 de [`plan-experimental.md`](../../docs/tesis/plan-experimental.md)). El test de la semilla 42 se leyó como resultado preliminar, con el protocolo congelado antes: los folds 0 y 1 según 8.6 y los cinco según 8.7. `--test-arms` limita el test a los cuatro brazos de las pruebas: sin esa opción, el script exporta el test de todos los brazos que encuentre para los folds y semillas dados, `est_nir` incluido.
 
 ## Archivos
 
@@ -33,7 +33,7 @@ python scripts/export_run_results.py --runs-root ~/edge_mango/runs/final \
 
 - **Tabla principal:** `differences.csv` filtrado por `split=test`, `checkpoint=best` y `metric=latent_ap50`.
 - **Sensibilidad a la selección:** lo mismo con `checkpoint=epoch80`.
-- **Curvas de entrenamiento:** `training_history.csv`, con `ap50_class_1` por época, suavizado como en `scripts/plot_run_curves.py`.
+- **Curvas de entrenamiento:** `training_history.csv`, con `ap50_class_1` por época, suavizado como en `scripts/plot_run_curves.py`. El AP30 por época (checkpoints cada 5 épocas, solo validación) está en [`../final-runs-progress/epoch_curve_val.csv`](../final-runs-progress/epoch_curve_val.csv), de `scripts/eval_epoch_curve.py`.
 - **Clasificación por foto a cualquier umbral t:** en `photos.csv`, con `primary_metric_photo=1`; positiva = `hour` distinto de `sano`, predicha positiva = `max_damage_score >= t`.
 - **Puntos de operación de cajas:** en `pr_grid.csv`, la fila del umbral.
 

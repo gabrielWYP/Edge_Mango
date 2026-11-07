@@ -1,4 +1,1284 @@
 {
+ "est_nir/fold0/seed1337/val/best": {
+  "metrics": {
+   "map50": 0.6258973926305771,
+   "map_50_95": 0.5007593938762511,
+   "per_class_ap_50": {
+    "0": 1.0,
+    "1": 0.2517947852611542
+   },
+   "per_class_ap_50_95": {
+    "0": 0.9156305775046348,
+    "1": 0.08588821024786739
+   },
+   "per_class_counts": {
+    "0": {
+     "fn": 0,
+     "fp": 0,
+     "tp": 792
+    },
+    "1": {
+     "fn": 377,
+     "fp": 1479,
+     "tp": 315
+    }
+   },
+   "per_class_f1": {
+    "0": 1.0,
+    "1": 0.25341914722445696
+   },
+   "per_class_precision": {
+    "0": 1.0,
+    "1": 0.17558528428093645
+   },
+   "per_class_recall": {
+    "0": 1.0,
+    "1": 0.4552023121387283
+   },
+   "roi_crop": true,
+   "roi_crop_margin": 0.1
+  },
+  "metrics_v4": {
+   "ap50_by_hour": {
+    "0": {
+     "ap": 0.2541322708129883,
+     "n_gt": 99,
+     "n_images": 99
+    },
+    "10": {
+     "ap": 0.28155696392059326,
+     "n_gt": 100,
+     "n_images": 100
+    },
+    "12": {
+     "ap": 0.19889461994171143,
+     "n_gt": 100,
+     "n_images": 100
+    },
+    "2": {
+     "ap": 0.3982844352722168,
+     "n_gt": 96,
+     "n_images": 96
+    },
+    "4": {
+     "ap": 0.3712678551673889,
+     "n_gt": 99,
+     "n_images": 99
+    },
+    "6": {
+     "ap": 0.24562326073646545,
+     "n_gt": 100,
+     "n_images": 100
+    },
+    "8": {
+     "ap": 0.26366522908210754,
+     "n_gt": 98,
+     "n_images": 98
+    }
+   },
+   "ap50_by_provenance": {
+    "dibujada": {
+     "ap": 0.28810253739356995,
+     "n_gt": 419,
+     "n_images": 419
+    },
+    "proyectada": {
+     "ap": 0.2542276680469513,
+     "n_gt": 273,
+     "n_images": 273
+    }
+   },
+   "ap50_by_zone": {
+    "centro": {
+     "ap": 0.8574126958847046,
+     "n_gt": 160,
+     "n_images": 160
+    },
+    "derecha": {
+     "ap": 0.16975635290145874,
+     "n_gt": 145,
+     "n_images": 145
+    },
+    "inferior": {
+     "ap": 0.08903148770332336,
+     "n_gt": 149,
+     "n_images": 149
+    },
+    "izquierda": {
+     "ap": 0.47608712315559387,
+     "n_gt": 98,
+     "n_images": 98
+    },
+    "superior": {
+     "ap": 0.02738674357533455,
+     "n_gt": 140,
+     "n_images": 140
+    }
+   },
+   "ap50_developed": {
+    "ap": 0.23655231297016144,
+    "n_gt": 298,
+    "n_images": 298
+   },
+   "damage_class_id": 1,
+   "developed_hours": [
+    8,
+    10,
+    12
+   ],
+   "face_auroc": {
+    "auroc": 0.6840862944162437,
+    "n_negative": 100,
+    "n_negative_no_detection": 0,
+    "n_paired_faces": 100,
+    "n_positive": 394,
+    "n_positive_no_detection": 0
+   },
+   "latent_ap30": {
+    "ap": 0.31649208068847656,
+    "n_gt": 394,
+    "n_images": 494
+   },
+   "latent_ap50": {
+    "ap": 0.26705992221832275,
+    "n_gt": 394,
+    "n_images": 494
+   },
+   "latent_hours": [
+    0,
+    2,
+    4,
+    6
+   ],
+   "num_images": 792,
+   "sano_fp_per_image": {
+    "conf_threshold": 0.25,
+    "fp_per_image": 2.26,
+    "n_fp": 226,
+    "n_images": 100
+   }
+  }
+ },
+ "est_nir/fold0/seed42/val/best": {
+  "metrics": {
+   "map50": 0.6023636534810066,
+   "map_50_95": 0.36223115953616797,
+   "per_class_ap_50": {
+    "0": 1.0,
+    "1": 0.20472730696201324
+   },
+   "per_class_ap_50_95": {
+    "0": 0.6642005365574732,
+    "1": 0.060261782514862715
+   },
+   "per_class_counts": {
+    "0": {
+     "fn": 0,
+     "fp": 157,
+     "tp": 792
+    },
+    "1": {
+     "fn": 387,
+     "fp": 2609,
+     "tp": 305
+    }
+   },
+   "per_class_f1": {
+    "0": 0.909821941412981,
+    "1": 0.16916250693288964
+   },
+   "per_class_precision": {
+    "0": 0.8345626975763962,
+    "1": 0.10466712422786548
+   },
+   "per_class_recall": {
+    "0": 1.0,
+    "1": 0.4407514450867052
+   },
+   "roi_crop": true,
+   "roi_crop_margin": 0.1
+  },
+  "metrics_v4": {
+   "ap50_by_hour": {
+    "0": {
+     "ap": 0.2548483610153198,
+     "n_gt": 99,
+     "n_images": 99
+    },
+    "10": {
+     "ap": 0.2303350269794464,
+     "n_gt": 100,
+     "n_images": 100
+    },
+    "12": {
+     "ap": 0.1547120064496994,
+     "n_gt": 100,
+     "n_images": 100
+    },
+    "2": {
+     "ap": 0.3273245394229889,
+     "n_gt": 96,
+     "n_images": 96
+    },
+    "4": {
+     "ap": 0.2864546775817871,
+     "n_gt": 99,
+     "n_images": 99
+    },
+    "6": {
+     "ap": 0.19985496997833252,
+     "n_gt": 100,
+     "n_images": 100
+    },
+    "8": {
+     "ap": 0.15570753812789917,
+     "n_gt": 98,
+     "n_images": 98
+    }
+   },
+   "ap50_by_provenance": {
+    "dibujada": {
+     "ap": 0.22078882157802582,
+     "n_gt": 419,
+     "n_images": 419
+    },
+    "proyectada": {
+     "ap": 0.21279974281787872,
+     "n_gt": 273,
+     "n_images": 273
+    }
+   },
+   "ap50_by_zone": {
+    "centro": {
+     "ap": 0.6692315340042114,
+     "n_gt": 160,
+     "n_images": 160
+    },
+    "derecha": {
+     "ap": 0.12997746467590332,
+     "n_gt": 145,
+     "n_images": 145
+    },
+    "inferior": {
+     "ap": 0.051717281341552734,
+     "n_gt": 149,
+     "n_images": 149
+    },
+    "izquierda": {
+     "ap": 0.4764198958873749,
+     "n_gt": 98,
+     "n_images": 98
+    },
+    "superior": {
+     "ap": 0.022095562890172005,
+     "n_gt": 140,
+     "n_images": 140
+    }
+   },
+   "ap50_developed": {
+    "ap": 0.1790945678949356,
+    "n_gt": 298,
+    "n_images": 298
+   },
+   "damage_class_id": 1,
+   "developed_hours": [
+    8,
+    10,
+    12
+   ],
+   "face_auroc": {
+    "auroc": 0.6886294416243655,
+    "n_negative": 100,
+    "n_negative_no_detection": 0,
+    "n_paired_faces": 100,
+    "n_positive": 394,
+    "n_positive_no_detection": 0
+   },
+   "latent_ap30": {
+    "ap": 0.3025149703025818,
+    "n_gt": 394,
+    "n_images": 494
+   },
+   "latent_ap50": {
+    "ap": 0.22966258227825165,
+    "n_gt": 394,
+    "n_images": 494
+   },
+   "latent_hours": [
+    0,
+    2,
+    4,
+    6
+   ],
+   "num_images": 792,
+   "sano_fp_per_image": {
+    "conf_threshold": 0.25,
+    "fp_per_image": 3.82,
+    "n_fp": 382,
+    "n_images": 100
+   }
+  }
+ },
+ "est_nir/fold1/seed1337/val/best": {
+  "metrics": {
+   "map50": 0.6933484822511673,
+   "map_50_95": 0.5250667387474095,
+   "per_class_ap_50": {
+    "0": 1.0,
+    "1": 0.3866969645023346
+   },
+   "per_class_ap_50_95": {
+    "0": 0.9028338100761175,
+    "1": 0.14729966741870157
+   },
+   "per_class_counts": {
+    "0": {
+     "fn": 0,
+     "fp": 0,
+     "tp": 797
+    },
+    "1": {
+     "fn": 218,
+     "fp": 3150,
+     "tp": 479
+    }
+   },
+   "per_class_f1": {
+    "0": 1.0,
+    "1": 0.22145168747110494
+   },
+   "per_class_precision": {
+    "0": 1.0,
+    "1": 0.1319922843758611
+   },
+   "per_class_recall": {
+    "0": 1.0,
+    "1": 0.6872309899569584
+   },
+   "roi_crop": true,
+   "roi_crop_margin": 0.1
+  },
+  "metrics_v4": {
+   "ap50_by_hour": {
+    "0": {
+     "ap": 0.36203116178512573,
+     "n_gt": 100,
+     "n_images": 100
+    },
+    "10": {
+     "ap": 0.5994679927825928,
+     "n_gt": 100,
+     "n_images": 100
+    },
+    "12": {
+     "ap": 0.5504021644592285,
+     "n_gt": 100,
+     "n_images": 100
+    },
+    "2": {
+     "ap": 0.3215509057044983,
+     "n_gt": 100,
+     "n_images": 100
+    },
+    "4": {
+     "ap": 0.32450735569000244,
+     "n_gt": 100,
+     "n_images": 100
+    },
+    "6": {
+     "ap": 0.3788851797580719,
+     "n_gt": 97,
+     "n_images": 97
+    },
+    "8": {
+     "ap": 0.42907077074050903,
+     "n_gt": 100,
+     "n_images": 100
+    }
+   },
+   "ap50_by_provenance": {
+    "dibujada": {
+     "ap": 0.41012200713157654,
+     "n_gt": 509,
+     "n_images": 509
+    },
+    "proyectada": {
+     "ap": 0.42392879724502563,
+     "n_gt": 188,
+     "n_images": 188
+    }
+   },
+   "ap50_by_zone": {
+    "centro": {
+     "ap": 0.546230673789978,
+     "n_gt": 161,
+     "n_images": 161
+    },
+    "derecha": {
+     "ap": 0.3165721595287323,
+     "n_gt": 166,
+     "n_images": 166
+    },
+    "inferior": {
+     "ap": 0.09051641821861267,
+     "n_gt": 56,
+     "n_images": 56
+    },
+    "izquierda": {
+     "ap": 0.7063487768173218,
+     "n_gt": 133,
+     "n_images": 133
+    },
+    "superior": {
+     "ap": 0.28344622254371643,
+     "n_gt": 181,
+     "n_images": 181
+    }
+   },
+   "ap50_developed": {
+    "ap": 0.5224425196647644,
+    "n_gt": 300,
+    "n_images": 300
+   },
+   "damage_class_id": 1,
+   "developed_hours": [
+    8,
+    10,
+    12
+   ],
+   "face_auroc": {
+    "auroc": 0.6102518891687657,
+    "n_negative": 100,
+    "n_negative_no_detection": 0,
+    "n_paired_faces": 100,
+    "n_positive": 397,
+    "n_positive_no_detection": 0
+   },
+   "latent_ap30": {
+    "ap": 0.36045965552330017,
+    "n_gt": 397,
+    "n_images": 497
+   },
+   "latent_ap50": {
+    "ap": 0.29899096488952637,
+    "n_gt": 397,
+    "n_images": 497
+   },
+   "latent_hours": [
+    0,
+    2,
+    4,
+    6
+   ],
+   "num_images": 797,
+   "sano_fp_per_image": {
+    "conf_threshold": 0.25,
+    "fp_per_image": 4.08,
+    "n_fp": 408,
+    "n_images": 100
+   }
+  }
+ },
+ "est_nir/fold1/seed42/val/best": {
+  "metrics": {
+   "map50": 0.6893798857927322,
+   "map_50_95": 0.5252916262102645,
+   "per_class_ap_50": {
+    "0": 1.0,
+    "1": 0.3787597715854645
+   },
+   "per_class_ap_50_95": {
+    "0": 0.9100294694304466,
+    "1": 0.14055378299008225
+   },
+   "per_class_counts": {
+    "0": {
+     "fn": 0,
+     "fp": 0,
+     "tp": 797
+    },
+    "1": {
+     "fn": 209,
+     "fp": 3883,
+     "tp": 488
+    }
+   },
+   "per_class_f1": {
+    "0": 1.0,
+    "1": 0.1925808997632202
+   },
+   "per_class_precision": {
+    "0": 1.0,
+    "1": 0.11164493250972317
+   },
+   "per_class_recall": {
+    "0": 1.0,
+    "1": 0.7001434720229556
+   },
+   "roi_crop": true,
+   "roi_crop_margin": 0.1
+  },
+  "metrics_v4": {
+   "ap50_by_hour": {
+    "0": {
+     "ap": 0.3897460699081421,
+     "n_gt": 100,
+     "n_images": 100
+    },
+    "10": {
+     "ap": 0.6094798445701599,
+     "n_gt": 100,
+     "n_images": 100
+    },
+    "12": {
+     "ap": 0.4889828562736511,
+     "n_gt": 100,
+     "n_images": 100
+    },
+    "2": {
+     "ap": 0.3020513355731964,
+     "n_gt": 100,
+     "n_images": 100
+    },
+    "4": {
+     "ap": 0.2875901758670807,
+     "n_gt": 100,
+     "n_images": 100
+    },
+    "6": {
+     "ap": 0.3880453407764435,
+     "n_gt": 97,
+     "n_images": 97
+    },
+    "8": {
+     "ap": 0.47652268409729004,
+     "n_gt": 100,
+     "n_images": 100
+    }
+   },
+   "ap50_by_provenance": {
+    "dibujada": {
+     "ap": 0.4097079336643219,
+     "n_gt": 509,
+     "n_images": 509
+    },
+    "proyectada": {
+     "ap": 0.4140993058681488,
+     "n_gt": 188,
+     "n_images": 188
+    }
+   },
+   "ap50_by_zone": {
+    "centro": {
+     "ap": 0.6296249628067017,
+     "n_gt": 161,
+     "n_images": 161
+    },
+    "derecha": {
+     "ap": 0.33345040678977966,
+     "n_gt": 166,
+     "n_images": 166
+    },
+    "inferior": {
+     "ap": 0.0479881688952446,
+     "n_gt": 56,
+     "n_images": 56
+    },
+    "izquierda": {
+     "ap": 0.6422342658042908,
+     "n_gt": 133,
+     "n_images": 133
+    },
+    "superior": {
+     "ap": 0.2164885401725769,
+     "n_gt": 181,
+     "n_images": 181
+    }
+   },
+   "ap50_developed": {
+    "ap": 0.51927649974823,
+    "n_gt": 300,
+    "n_images": 300
+   },
+   "damage_class_id": 1,
+   "developed_hours": [
+    8,
+    10,
+    12
+   ],
+   "face_auroc": {
+    "auroc": 0.6385138539042822,
+    "n_negative": 100,
+    "n_negative_no_detection": 0,
+    "n_paired_faces": 100,
+    "n_positive": 397,
+    "n_positive_no_detection": 0
+   },
+   "latent_ap30": {
+    "ap": 0.3938649594783783,
+    "n_gt": 397,
+    "n_images": 497
+   },
+   "latent_ap50": {
+    "ap": 0.293191522359848,
+    "n_gt": 397,
+    "n_images": 497
+   },
+   "latent_hours": [
+    0,
+    2,
+    4,
+    6
+   ],
+   "num_images": 797,
+   "sano_fp_per_image": {
+    "conf_threshold": 0.25,
+    "fp_per_image": 5.04,
+    "n_fp": 504,
+    "n_images": 100
+   }
+  }
+ },
+ "est_nir/fold2/seed1337/val/best": {
+  "metrics": {
+   "map50": 0.6344823390245438,
+   "map_50_95": 0.4809653154888565,
+   "per_class_ap_50": {
+    "0": 1.0,
+    "1": 0.2689646780490875
+   },
+   "per_class_ap_50_95": {
+    "0": 0.8740127274533733,
+    "1": 0.08791790352433963
+   },
+   "per_class_counts": {
+    "0": {
+     "fn": 0,
+     "fp": 0,
+     "tp": 799
+    },
+    "1": {
+     "fn": 321,
+     "fp": 2790,
+     "tp": 378
+    }
+   },
+   "per_class_f1": {
+    "0": 1.0,
+    "1": 0.19550038789759505
+   },
+   "per_class_precision": {
+    "0": 1.0,
+    "1": 0.11931818181818182
+   },
+   "per_class_recall": {
+    "0": 1.0,
+    "1": 0.5407725321888412
+   },
+   "roi_crop": true,
+   "roi_crop_margin": 0.1
+  },
+  "metrics_v4": {
+   "ap50_by_hour": {
+    "0": {
+     "ap": 0.2872166037559509,
+     "n_gt": 100,
+     "n_images": 100
+    },
+    "10": {
+     "ap": 0.3134095370769501,
+     "n_gt": 100,
+     "n_images": 100
+    },
+    "12": {
+     "ap": 0.3175349831581116,
+     "n_gt": 100,
+     "n_images": 100
+    },
+    "2": {
+     "ap": 0.2814632058143616,
+     "n_gt": 100,
+     "n_images": 100
+    },
+    "4": {
+     "ap": 0.28294822573661804,
+     "n_gt": 100,
+     "n_images": 100
+    },
+    "6": {
+     "ap": 0.31712740659713745,
+     "n_gt": 100,
+     "n_images": 100
+    },
+    "8": {
+     "ap": 0.321195513010025,
+     "n_gt": 99,
+     "n_images": 99
+    }
+   },
+   "ap50_by_provenance": {
+    "dibujada": {
+     "ap": 0.2976263165473938,
+     "n_gt": 699,
+     "n_images": 699
+    },
+    "proyectada": {
+     "ap": null,
+     "n_gt": 0,
+     "n_images": 0
+    }
+   },
+   "ap50_by_zone": {
+    "centro": {
+     "ap": 0.4094422161579132,
+     "n_gt": 174,
+     "n_images": 174
+    },
+    "derecha": {
+     "ap": 0.29984018206596375,
+     "n_gt": 119,
+     "n_images": 119
+    },
+    "inferior": {
+     "ap": 0.04318792745471001,
+     "n_gt": 126,
+     "n_images": 126
+    },
+    "izquierda": {
+     "ap": 0.5411065816879272,
+     "n_gt": 161,
+     "n_images": 161
+    },
+    "superior": {
+     "ap": 0.08506914228200912,
+     "n_gt": 119,
+     "n_images": 119
+    }
+   },
+   "ap50_developed": {
+    "ap": 0.3114374279975891,
+    "n_gt": 299,
+    "n_images": 299
+   },
+   "damage_class_id": 1,
+   "developed_hours": [
+    8,
+    10,
+    12
+   ],
+   "face_auroc": {
+    "auroc": 0.550125,
+    "n_negative": 100,
+    "n_negative_no_detection": 0,
+    "n_paired_faces": 100,
+    "n_positive": 400,
+    "n_positive_no_detection": 0
+   },
+   "latent_ap30": {
+    "ap": 0.3109939694404602,
+    "n_gt": 400,
+    "n_images": 500
+   },
+   "latent_ap50": {
+    "ap": 0.24505168199539185,
+    "n_gt": 400,
+    "n_images": 500
+   },
+   "latent_hours": [
+    0,
+    2,
+    4,
+    6
+   ],
+   "num_images": 799,
+   "sano_fp_per_image": {
+    "conf_threshold": 0.25,
+    "fp_per_image": 3.81,
+    "n_fp": 381,
+    "n_images": 100
+   }
+  }
+ },
+ "est_nir/fold2/seed42/val/best": {
+  "metrics": {
+   "map50": 0.6453406512737274,
+   "map_50_95": 0.5250887814831003,
+   "per_class_ap_50": {
+    "0": 1.0,
+    "1": 0.29068130254745483
+   },
+   "per_class_ap_50_95": {
+    "0": 0.9413901269435883,
+    "1": 0.10878743602261239
+   },
+   "per_class_counts": {
+    "0": {
+     "fn": 0,
+     "fp": 0,
+     "tp": 799
+    },
+    "1": {
+     "fn": 247,
+     "fp": 7454,
+     "tp": 452
+    }
+   },
+   "per_class_f1": {
+    "0": 1.0,
+    "1": 0.10505520046484601
+   },
+   "per_class_precision": {
+    "0": 1.0,
+    "1": 0.05717176827725778
+   },
+   "per_class_recall": {
+    "0": 1.0,
+    "1": 0.6466380543633763
+   },
+   "roi_crop": true,
+   "roi_crop_margin": 0.1
+  },
+  "metrics_v4": {
+   "ap50_by_hour": {
+    "0": {
+     "ap": 0.304570734500885,
+     "n_gt": 100,
+     "n_images": 100
+    },
+    "10": {
+     "ap": 0.3594406843185425,
+     "n_gt": 100,
+     "n_images": 100
+    },
+    "12": {
+     "ap": 0.37100648880004883,
+     "n_gt": 100,
+     "n_images": 100
+    },
+    "2": {
+     "ap": 0.29633769392967224,
+     "n_gt": 100,
+     "n_images": 100
+    },
+    "4": {
+     "ap": 0.31811875104904175,
+     "n_gt": 100,
+     "n_images": 100
+    },
+    "6": {
+     "ap": 0.33872997760772705,
+     "n_gt": 100,
+     "n_images": 100
+    },
+    "8": {
+     "ap": 0.29129162430763245,
+     "n_gt": 99,
+     "n_images": 99
+    }
+   },
+   "ap50_by_provenance": {
+    "dibujada": {
+     "ap": 0.3196251392364502,
+     "n_gt": 699,
+     "n_images": 699
+    },
+    "proyectada": {
+     "ap": null,
+     "n_gt": 0,
+     "n_images": 0
+    }
+   },
+   "ap50_by_zone": {
+    "centro": {
+     "ap": 0.5888466835021973,
+     "n_gt": 174,
+     "n_images": 174
+    },
+    "derecha": {
+     "ap": 0.35040879249572754,
+     "n_gt": 119,
+     "n_images": 119
+    },
+    "inferior": {
+     "ap": 0.05979262292385101,
+     "n_gt": 126,
+     "n_images": 126
+    },
+    "izquierda": {
+     "ap": 0.5114120244979858,
+     "n_gt": 161,
+     "n_images": 161
+    },
+    "superior": {
+     "ap": 0.05259525775909424,
+     "n_gt": 119,
+     "n_images": 119
+    }
+   },
+   "ap50_developed": {
+    "ap": 0.33802154660224915,
+    "n_gt": 299,
+    "n_images": 299
+   },
+   "damage_class_id": 1,
+   "developed_hours": [
+    8,
+    10,
+    12
+   ],
+   "face_auroc": {
+    "auroc": 0.52195,
+    "n_negative": 100,
+    "n_negative_no_detection": 0,
+    "n_paired_faces": 100,
+    "n_positive": 400,
+    "n_positive_no_detection": 0
+   },
+   "latent_ap30": {
+    "ap": 0.3170382082462311,
+    "n_gt": 400,
+    "n_images": 500
+   },
+   "latent_ap50": {
+    "ap": 0.2633548974990845,
+    "n_gt": 400,
+    "n_images": 500
+   },
+   "latent_hours": [
+    0,
+    2,
+    4,
+    6
+   ],
+   "num_images": 799,
+   "sano_fp_per_image": {
+    "conf_threshold": 0.25,
+    "fp_per_image": 10.42,
+    "n_fp": 1042,
+    "n_images": 100
+   }
+  }
+ },
+ "est_nir/fold3/seed42/val/best": {
+  "metrics": {
+   "map50": 0.6550073325634003,
+   "map_50_95": 0.5073647385634104,
+   "per_class_ap_50": {
+    "0": 1.0,
+    "1": 0.31001466512680054
+   },
+   "per_class_ap_50_95": {
+    "0": 0.907397922128439,
+    "1": 0.10733155499838176
+   },
+   "per_class_counts": {
+    "0": {
+     "fn": 0,
+     "fp": 0,
+     "tp": 787
+    },
+    "1": {
+     "fn": 250,
+     "fp": 4273,
+     "tp": 437
+    }
+   },
+   "per_class_f1": {
+    "0": 1.0,
+    "1": 0.16194181952936815
+   },
+   "per_class_precision": {
+    "0": 1.0,
+    "1": 0.09278131634819532
+   },
+   "per_class_recall": {
+    "0": 1.0,
+    "1": 0.636098981077147
+   },
+   "roi_crop": true,
+   "roi_crop_margin": 0.1
+  },
+  "metrics_v4": {
+   "ap50_by_hour": {
+    "0": {
+     "ap": 0.31628936529159546,
+     "n_gt": 99,
+     "n_images": 99
+    },
+    "10": {
+     "ap": 0.36158838868141174,
+     "n_gt": 100,
+     "n_images": 100
+    },
+    "12": {
+     "ap": 0.39534324407577515,
+     "n_gt": 90,
+     "n_images": 90
+    },
+    "2": {
+     "ap": 0.33726245164871216,
+     "n_gt": 100,
+     "n_images": 100
+    },
+    "4": {
+     "ap": 0.33459511399269104,
+     "n_gt": 98,
+     "n_images": 98
+    },
+    "6": {
+     "ap": 0.29858413338661194,
+     "n_gt": 100,
+     "n_images": 100
+    },
+    "8": {
+     "ap": 0.3404664993286133,
+     "n_gt": 100,
+     "n_images": 100
+    }
+   },
+   "ap50_by_provenance": {
+    "dibujada": {
+     "ap": 0.3315649926662445,
+     "n_gt": 687,
+     "n_images": 687
+    },
+    "proyectada": {
+     "ap": null,
+     "n_gt": 0,
+     "n_images": 0
+    }
+   },
+   "ap50_by_zone": {
+    "centro": {
+     "ap": 0.5502238869667053,
+     "n_gt": 161,
+     "n_images": 161
+    },
+    "derecha": {
+     "ap": 0.2477557510137558,
+     "n_gt": 112,
+     "n_images": 112
+    },
+    "inferior": {
+     "ap": 0.03866349905729294,
+     "n_gt": 141,
+     "n_images": 141
+    },
+    "izquierda": {
+     "ap": 0.6052207946777344,
+     "n_gt": 151,
+     "n_images": 151
+    },
+    "superior": {
+     "ap": 0.2917112410068512,
+     "n_gt": 122,
+     "n_images": 122
+    }
+   },
+   "ap50_developed": {
+    "ap": 0.3575538098812103,
+    "n_gt": 290,
+    "n_images": 290
+   },
+   "damage_class_id": 1,
+   "developed_hours": [
+    8,
+    10,
+    12
+   ],
+   "face_auroc": {
+    "auroc": 0.6713979848866499,
+    "n_negative": 100,
+    "n_negative_no_detection": 0,
+    "n_paired_faces": 100,
+    "n_positive": 397,
+    "n_positive_no_detection": 0
+   },
+   "latent_ap30": {
+    "ap": 0.3565270006656647,
+    "n_gt": 397,
+    "n_images": 497
+   },
+   "latent_ap50": {
+    "ap": 0.2799338102340698,
+    "n_gt": 397,
+    "n_images": 497
+   },
+   "latent_hours": [
+    0,
+    2,
+    4,
+    6
+   ],
+   "num_images": 787,
+   "sano_fp_per_image": {
+    "conf_threshold": 0.25,
+    "fp_per_image": 6.45,
+    "n_fp": 645,
+    "n_images": 100
+   }
+  }
+ },
+ "est_nir/fold4/seed42/val/best": {
+  "metrics": {
+   "map50": 0.6672747880220413,
+   "map_50_95": 0.5229857090002042,
+   "per_class_ap_50": {
+    "0": 1.0,
+    "1": 0.33454957604408264
+   },
+   "per_class_ap_50_95": {
+    "0": 0.9328206419944763,
+    "1": 0.11315077600593212
+   },
+   "per_class_counts": {
+    "0": {
+     "fn": 0,
+     "fp": 0,
+     "tp": 791
+    },
+    "1": {
+     "fn": 259,
+     "fp": 3760,
+     "tp": 432
+    }
+   },
+   "per_class_f1": {
+    "0": 1.0,
+    "1": 0.17694040548842926
+   },
+   "per_class_precision": {
+    "0": 1.0,
+    "1": 0.10305343511450382
+   },
+   "per_class_recall": {
+    "0": 1.0,
+    "1": 0.6251808972503617
+   },
+   "roi_crop": true,
+   "roi_crop_margin": 0.1
+  },
+  "metrics_v4": {
+   "ap50_by_hour": {
+    "0": {
+     "ap": 0.34058845043182373,
+     "n_gt": 100,
+     "n_images": 100
+    },
+    "10": {
+     "ap": 0.31706470251083374,
+     "n_gt": 99,
+     "n_images": 99
+    },
+    "12": {
+     "ap": 0.3511020541191101,
+     "n_gt": 95,
+     "n_images": 95
+    },
+    "2": {
+     "ap": 0.41027143597602844,
+     "n_gt": 100,
+     "n_images": 100
+    },
+    "4": {
+     "ap": 0.35281991958618164,
+     "n_gt": 99,
+     "n_images": 99
+    },
+    "6": {
+     "ap": 0.43048232793807983,
+     "n_gt": 100,
+     "n_images": 100
+    },
+    "8": {
+     "ap": 0.3442196249961853,
+     "n_gt": 98,
+     "n_images": 98
+    }
+   },
+   "ap50_by_provenance": {
+    "dibujada": {
+     "ap": 0.37406158447265625,
+     "n_gt": 528,
+     "n_images": 528
+    },
+    "proyectada": {
+     "ap": 0.3125300407409668,
+     "n_gt": 163,
+     "n_images": 163
+    }
+   },
+   "ap50_by_zone": {
+    "centro": {
+     "ap": 0.8379411697387695,
+     "n_gt": 118,
+     "n_images": 118
+    },
+    "derecha": {
+     "ap": 0.26062244176864624,
+     "n_gt": 167,
+     "n_images": 167
+    },
+    "inferior": {
+     "ap": 0.0850972980260849,
+     "n_gt": 136,
+     "n_images": 136
+    },
+    "izquierda": {
+     "ap": 0.7632774114608765,
+     "n_gt": 146,
+     "n_images": 146
+    },
+    "superior": {
+     "ap": 0.033159490674734116,
+     "n_gt": 124,
+     "n_images": 124
+    }
+   },
+   "ap50_developed": {
+    "ap": 0.33547908067703247,
+    "n_gt": 292,
+    "n_images": 292
+   },
+   "damage_class_id": 1,
+   "developed_hours": [
+    8,
+    10,
+    12
+   ],
+   "face_auroc": {
+    "auroc": 0.6689974937343358,
+    "n_negative": 100,
+    "n_negative_no_detection": 0,
+    "n_paired_faces": 100,
+    "n_positive": 399,
+    "n_positive_no_detection": 0
+   },
+   "latent_ap30": {
+    "ap": 0.3986842930316925,
+    "n_gt": 399,
+    "n_images": 499
+   },
+   "latent_ap50": {
+    "ap": 0.33817481994628906,
+    "n_gt": 399,
+    "n_images": 499
+   },
+   "latent_hours": [
+    0,
+    2,
+    4,
+    6
+   ],
+   "num_images": 791,
+   "sano_fp_per_image": {
+    "conf_threshold": 0.25,
+    "fp_per_image": 5.52,
+    "n_fp": 552,
+    "n_images": 100
+   }
+  }
+ },
  "est_rgb/fold0/seed42/test/best": {
   "metrics": {
    "map50": 0.577814057469368,

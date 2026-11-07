@@ -181,7 +181,36 @@ Semilla 42, corte del 2026-11-05 a las 21:00: 9 de las 20 corridas de la semilla
 - **H1 va en la dirección esperada en los dos folds:** `est_rgbnir` supera a `est_rgb` en AP50 latente por 0.046 y 0.119, y en el fold 1 la ventaja aparece en todas las horas.
 - **H2 no se ve en el fold 0 y sí en el fold 1:** en el fold 0 `kd_rgbnir` queda 0.016 por debajo de `kd_rgb`, dentro de la ROPE; en el fold 1 queda 0.023 por encima. En ese fold el maestro RGB+NIR le saca solo 0.046 al RGB, así que tiene poco para transferir.
 - **Destilar sin NIR ayuda un poco en el fold 0:** `kd_rgb` supera a `est_rgb` por 0.022. Es el efecto que `kd_rgb` controla en H2.
-- **Las curvas** ([`curves_seed42.png`](../../reports/final-runs-progress/curves_seed42.png), `scripts/plot_run_curves.py`) muestran el mismo patrón que los pilotos: el AP50 de validación sube hasta la época 45-65 y después se estanca, mientras la pérdida de detección en train sigue bajando. `est_rgbnir` tiene la pérdida más baja de los cuatro brazos. El AP se dibuja con un suavizado exponencial (w = 0.8, unas 5 épocas). Sin suavizar salta de época en época: el conjunto de validación es fijo, así que el salto viene de los pesos (AdamW con LR 1e-3 y batch 8) y se apaga en las épocas 70-80, cuando el coseno baja el LR. El punto de cada curva es el AP sin suavizar de la época elegida, que por eso queda por encima de la línea.
+- **Las curvas** ([`curves_seed42.png`](../../reports/final-runs-progress/curves_seed42.png), `scripts/plot_run_curves.py`; actualizadas el 2026-11-06 con las 25 corridas de la semilla 42, `est_nir` incluido) tienen tres filas por fold: AP50 de daño en validación, AP30 de daño en validación y pérdida de detección en train. Cada brazo tiene un color propio y todas las líneas son continuas. El AP50 sale de los logs de cada época. El AP30 no se registra durante el entrenamiento: `scripts/eval_epoch_curve.py` evalúa en validación los checkpoints que se guardan cada 5 épocas, con el mismo comando de evaluación del análisis principal, y escribe [`epoch_curve_val.csv`](../../reports/final-runs-progress/epoch_curve_val.csv) (AP50 y AP30, en todas las fotos y en la ventana latente). En esas 400 evaluaciones, el AP50 coincide con el de los logs, con una diferencia máxima de 0.0004. Las dos filas de AP usan suavizado exponencial: w = 0.8 por época, unas 5 épocas, y w⁵ para los puntos de AP30, que están cada 5 épocas, así que las dos tienen la misma constante de tiempo. Sin suavizar, el AP salta de época en época: el conjunto de validación es fijo, así que el salto viene de los pesos (AdamW con LR 1e-3 y batch 8) y se apaga en las épocas 70-80, cuando el coseno baja el LR. El punto de cada curva es el AP50 sin suavizar de la época elegida, que por eso queda por encima de la línea. El patrón es el de los pilotos: el AP sube hasta la época 45-65 y se estanca, mientras la pérdida sigue bajando. `est_rgb` tiene la pérdida más alta en los cinco folds. En AP50, la curva más alta es `est_rgbnir` o `est_nir` en los cinco folds. En AP30 el orden es parecido, salvo en el fold 0, donde `kd_rgb` termina arriba. Es validación: elige el checkpoint y no es evidencia.
+
+#### Los cinco brazos en validación, con `est_nir` (corte del 2026-11-06 a las 19:30)
+
+`est_nir` es la referencia descriptiva: un estudiante igual que los demás que solo lee NIR. Terminó la semilla 42 en los cinco folds, y la 1337 en los folds 0 a 2. Su test **no se lee todavía**: la sección 8.7 del plan dejó fuera a `est_nir`. Estas son métricas de **validación**, la misma que elige el checkpoint. Tienden a ser optimistas y no son evidencia.
+
+**AP50 latente en validación, semilla 42** (los datos completos están en [`reports/final-runs-export/runs.csv`](../../reports/final-runs-export/README.md)):
+
+| Fold | `est_rgb` | `est_rgbnir` | `kd_rgb` | `kd_rgbnir` | `est_nir` |
+| :-- | --: | --: | --: | --: | --: |
+| 0 | 0.151 | 0.197 | 0.173 | 0.157 | 0.230 |
+| 1 | 0.175 | 0.294 | 0.197 | 0.220 | 0.293 |
+| 2 | 0.171 | 0.265 | 0.155 | 0.165 | 0.263 |
+| 3 | 0.182 | 0.302 | 0.225 | 0.218 | 0.280 |
+| 4 | 0.253 | 0.386 | 0.276 | 0.249 | 0.338 |
+| **Media** | **0.186** | **0.289** | **0.205** | **0.202** | **0.281** |
+
+| Brazo (media de 5 folds, semilla 42) | AP30 latente | AP50 desarrollado | AUROC por cara | FP por foto sana (conf ≥ 0.25) |
+| :-- | --: | --: | --: | --: |
+| `est_rgb` | 0.278 | 0.207 | 0.603 | 6.21 |
+| `est_rgbnir` | 0.368 | 0.352 | 0.625 | 4.87 |
+| `kd_rgb` | 0.300 | 0.234 | 0.582 | 5.30 |
+| `kd_rgbnir` | 0.299 | 0.248 | 0.597 | 4.76 |
+| `est_nir` | 0.354 | 0.346 | 0.638 | 6.25 |
+
+- **En validación, `est_nir` queda casi igual que `est_rgbnir`** (0.281 frente a 0.289 de AP50 latente), y los dos quedan muy por encima de los estudiantes RGB, que están entre 0.186 y 0.205. Solo con NIR, el modelo ya alcanza lo que logra RGB+NIR. Agregar el RGB al NIR no sube el AP medio de validación.
+- **`est_nir` gana en el fold 0** (lote de validación 2): 0.230 frente a 0.197. En los folds 1 a 4, `est_rgbnir` queda igual o por encima.
+- **Semilla 1337 de `est_nir`** (folds 0-2): 0.267, 0.299 y 0.245, frente a 0.230, 0.293 y 0.263 con la 42. Entre semillas cambia hasta 0.04 en el mismo fold, más que varias de las diferencias entre brazos.
+- `est_nir` tiene el AUROC por cara más alto (0.638) pero también la mayor cantidad de falsos positivos en fotos sanas (6.25). Con la semilla 42, el fold 2 llega a 10.4.
+- Esto es coherente con la [tensión abierta](#lectura-rápida): las cajas latentes se dibujaron mirando el NIR, así que un modelo que solo ve NIR tiene ventaja de entrada.
 
 #### Puntos de operación y clasificación por foto (validación)
 
