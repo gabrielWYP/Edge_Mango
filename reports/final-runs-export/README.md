@@ -1,6 +1,6 @@
 # Datos de las corridas definitivas
 
-Todo lo necesario para armar las tablas y figuras de las corridas definitivas sin la máquina de entrenamiento. Corte: 2026-11-06 a las 19:30, con las 20 corridas de la semilla 42 de los cuatro brazos de las pruebas y las 8 corridas terminadas de `est_nir` (semilla 42 en los cinco folds y 1337 en los folds 0-2; solo validación). Las corridas siguen; este directorio se regenera con el mismo comando cuando terminen más.
+Todo lo necesario para armar las tablas y figuras de las corridas definitivas sin la máquina de entrenamiento. Corte: 2026-11-06 a las 21:30, con las 20 corridas de la semilla 42 de los cuatro brazos de las pruebas y las 11 corridas terminadas de `est_nir` (semillas 42 y 1337 en los cinco folds y 2024 en el fold 0; solo validación). Las corridas siguen; este directorio se regenera con el mismo comando cuando terminen más.
 
 ```bash
 python scripts/export_run_results.py --runs-root ~/edge_mango/runs/final \
@@ -12,7 +12,7 @@ python scripts/export_run_results.py --runs-root ~/edge_mango/runs/final \
 
 | | Validación | Test |
 | :-- | :-- | :-- |
-| Checkpoint elegido por validación (`best`) | Las 20 corridas de la semilla 42 y las 8 terminadas de `est_nir` | Las mismas 20 corridas: semilla 42, cinco folds, cuatro brazos de las pruebas |
+| Checkpoint elegido por validación (`best`) | Las 20 corridas de la semilla 42 y las 11 terminadas de `est_nir` | Las mismas 20 corridas: semilla 42, cinco folds, cuatro brazos de las pruebas |
 | Checkpoint de la época 80 (`epoch80`) | Las mismas 20 corridas | Las mismas 20 corridas |
 
 `est_nir` y las semillas 1337 y 2024 no se exportan todavía. El plan prohíbe leer su test antes de completar el conjunto de semillas que se reporta (secciones 8.1, 8.6 y 8.7 de [`plan-experimental.md`](../../docs/tesis/plan-experimental.md)). El test de la semilla 42 se leyó como resultado preliminar, con el protocolo congelado antes: los folds 0 y 1 según 8.6 y los cinco según 8.7. `--test-arms` limita el test a los cuatro brazos de las pruebas: sin esa opción, el script exporta el test de todos los brazos que encuentre para los folds y semillas dados, `est_nir` incluido.
