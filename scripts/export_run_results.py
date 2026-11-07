@@ -54,6 +54,9 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--dataset", type=Path, required=True)
     parser.add_argument("--test-folds", type=int, nargs="*", default=[])
     parser.add_argument("--test-seeds", type=int, nargs="*", default=[])
+    parser.add_argument("--test-arms", nargs="*", default=None,
+                        help="arms whose test results may be read (default: every arm); a test look the plan "
+                             "registers for some arms only must name them")
     parser.add_argument("--output", type=Path, required=True)
     return parser.parse_args(argv)
 
@@ -84,7 +87,8 @@ def evaluations(args, folds: dict):
                     continue
                 fold, seed = int(match[1]), int(match[2])
                 for split in ("val", "test"):
-                    if split == "test" and (fold not in args.test_folds or seed not in args.test_seeds):
+                    if split == "test" and (fold not in args.test_folds or seed not in args.test_seeds
+                                            or (args.test_arms is not None and arm not in args.test_arms)):
                         continue
                     if (run / split / "metrics_v4.json").exists():
                         yield arm, fold, seed, split, checkpoint, run / split
