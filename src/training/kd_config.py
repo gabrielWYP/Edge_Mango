@@ -13,6 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from .config import TrainingConfig
+from .kd_crosshead import KD_GATES, KD_MODES, NIR_GATES
 from .kd_loss import KD_LOSS_TYPES, validate_region_weights, validate_sublevels
 
 
@@ -44,6 +45,13 @@ class KDConfig(TrainingConfig):
         kd_sublevels: Optional map indices to distill per level, finest first,
             for example {"fpn": [0, 1]} for P3 and P4. A level left out keeps
             all its maps; an empty list turns it off. None (default) keeps all.
+        kd_mode: "feature" (default, FitNets-style MSE through adapters) or
+            "crosshead" (CrossKD: the student's mid head features go through the
+            frozen teacher head; no adapters). See `src/training/kd_crosshead.py`.
+        kd_gate: Per-cell weight of the crosshead term: "none" (whole map),
+            "nir_high" / "nir_low" (cells where the teacher's damage decision
+            depends most / least on NIR; needs `teacher_input="rgbnir"`) or
+            "teacher_better". Only with `kd_mode="crosshead"`.
         distill_levels: Per-level weights for KD loss (backbone, fpn, head_cls, head_reg).
     """
 
@@ -56,6 +64,8 @@ class KDConfig(TrainingConfig):
     kd_loss_type: str = "mse"
     kd_region_weights: dict | None = None
     kd_sublevels: dict | None = None
+    kd_mode: str = "feature"
+    kd_gate: str = "none"
     distill_levels: dict = field(default_factory=lambda: {
         "backbone": 1.0,
         "fpn": 0.1,
@@ -88,3 +98,24 @@ class KDConfig(TrainingConfig):
             )
         validate_region_weights(self.kd_region_weights)
         validate_sublevels(self.kd_sublevels, self.distill_levels)
+        self.validate_kd_mode()
+
+    def validate_kd_mode(self) -> None:
+        """Refuse a `kd_mode` / `kd_gate` combination that cannot run as named.
+
+        Also called by `KDTrainer`, because `kd_train --override` sets fields
+        after `__post_init__` has run.
+        """
+        if self.kd_mode not in KD_MODES:
+            raise ValueError(f"Invalid kd_mode '{self.kd_mode}'. Must be one of: {KD_MODES}")
+        if self.kd_gate not in KD_GATES:
+            raise ValueError(f"Invalid kd_gate '{self.kd_gate}'. Must be one of: {KD_GATES}")
+        if self.kd_mode == "crosshead":
+            if self.teacher_kind != "student":
+                raise ValueError("kd_mode=crosshead needs teacher_kind=student: it reuses the teacher's head.")
+            if self.ignore_classes:
+                raise ValueError("kd_mode=crosshead does not support ignore_classes.")
+        elif self.kd_gate != "none":
+            raise ValueError(f"kd_gate={self.kd_gate} needs kd_mode=crosshead.")
+        if self.kd_gate in NIR_GATES and self.teacher_input != "rgbnir":
+            raise ValueError(f"kd_gate={self.kd_gate} needs teacher_input=rgbnir.")

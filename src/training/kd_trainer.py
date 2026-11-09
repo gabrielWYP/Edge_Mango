@@ -46,6 +46,7 @@ from .fusion_modes import (
 )
 from .dataset import nir_as_rgb_tensor
 from .kd_config import KDConfig
+from .kd_crosshead import NIR_GATES, compute_gate, crosshead_loss, nir_dependence
 from .kd_loss import KDLoss
 from .loop import Trainer
 from .neck_norm import neck_norm_from_checkpoint
@@ -91,6 +92,7 @@ class KDTrainer(Trainer):
         # teacher's NIR is blanked by the dataset, so `nir_const` needs nothing
         # here.
         validate_kd_modality_ablation(config.modality_ablation)
+        config.validate_kd_mode()
         super().__init__(model, config, train_loader, val_loader)
 
         # Student → teacher adapters (FitNets regressors). Trainer-owned,
@@ -101,7 +103,12 @@ class KDTrainer(Trainer):
         #   - model.state_dict() (used in inherited _save_checkpoint)
         if config.teacher_kind == "student":
             self.teacher = self._load_student_teacher(config)
-            self.kd_adapters = self._student_teacher_adapters(model, self.teacher)
+            if config.kd_mode == "crosshead":
+                # The teacher's own head is the adapter: nothing to train here.
+                self._check_same_head_channels(model, self.teacher)
+                self.kd_adapters = nn.ModuleDict()
+            else:
+                self.kd_adapters = self._student_teacher_adapters(model, self.teacher)
         else:
             self.teacher = self._load_teacher(config)
             self.kd_adapters = nn.ModuleDict({
@@ -123,8 +130,9 @@ class KDTrainer(Trainer):
         ).to(self.device)
 
     def _auxiliary_param_groups(self, lr: float) -> list[dict]:
-        """Adapters train at the student's base LR, in their own group."""
-        return [{"params": list(self.kd_adapters.parameters()), "lr": lr}]
+        """Adapters train at the student's base LR, in their own group (none in crosshead mode)."""
+        params = list(self.kd_adapters.parameters())
+        return [{"params": params, "lr": lr}] if params else []
 
     def _auxiliary_checkpoint_state(self) -> dict:
         """Persist the adapters next to (not inside) `model_state_dict`."""
@@ -132,6 +140,18 @@ class KDTrainer(Trainer):
 
     def _load_auxiliary_checkpoint_state(self, state: dict) -> None:
         self.kd_adapters.load_state_dict(state["kd_adapters_state_dict"])
+
+    @staticmethod
+    def _check_same_head_channels(student: StudentModel, teacher: StudentModel) -> None:
+        """Cross-head KD feeds student features to the teacher head: channels must agree."""
+        def stems(model: StudentModel) -> list[int]:
+            return [h.cls_stem[0].conv.out_channels for h in model.head.heads]
+
+        if stems(student) != stems(teacher):
+            raise ValueError(
+                f"kd_mode=crosshead needs equal head stem channels (no adapters): "
+                f"student {stems(student)} vs teacher {stems(teacher)}."
+            )
 
     @staticmethod
     def _student_teacher_adapters(student: StudentModel, teacher: StudentModel) -> nn.ModuleDict:
@@ -173,15 +193,18 @@ class KDTrainer(Trainer):
               f"loaded from {ckpt_path}")
         return teacher
 
+    def _student_teacher_output(self, rgb: torch.Tensor, nir: torch.Tensor) -> dict:
+        """Full output of a student teacher on the modality it reads. Call under no_grad."""
+        if self.config.teacher_input == "rgbnir":
+            return self.teacher(rgb, nir)
+        if self.config.teacher_input == "nir":
+            return self.teacher(nir_as_rgb_tensor(nir, self.config.nir_mean, self.config.nir_std))
+        return self.teacher(rgb)
+
     def _teacher_features(self, rgb: torch.Tensor, nir: torch.Tensor) -> dict:
         """The teacher's features at the student's levels. Call under no_grad."""
         if self.config.teacher_kind == "student":
-            if self.config.teacher_input == "rgbnir":
-                t_out = self.teacher(rgb, nir)
-            elif self.config.teacher_input == "nir":
-                t_out = self.teacher(nir_as_rgb_tensor(nir, self.config.nir_mean, self.config.nir_std))
-            else:
-                t_out = self.teacher(rgb)
+            t_out = self._student_teacher_output(rgb, nir)
             return {
                 "backbone": t_out["distill_backbone"],
                 "fpn": t_out["distill_fpn"],
@@ -208,6 +231,28 @@ class KDTrainer(Trainer):
             "head_cls": select_by_strides(t_out["distill_head_cls"], strides, STUDENT_STRIDES),
             "head_reg": select_by_strides(t_out["distill_head_reg"], strides, STUDENT_STRIDES),
         }
+
+    def _crosshead_targets(self, rgb: torch.Tensor, nir: torch.Tensor) -> dict:
+        """Teacher output for CrossKD, plus its NIR dependence for the nir_* gates. Call under no_grad."""
+        targets = {"out": self._student_teacher_output(rgb, nir), "delta": None}
+        if self.config.kd_gate in NIR_GATES:
+            ablated = self._student_teacher_output(rgb, torch.zeros_like(nir))
+            targets["delta"] = nir_dependence(targets["out"]["cls_preds"], ablated["cls_preds"])
+        return targets
+
+    def _crosshead_kd(self, s_out: dict, targets: dict, bboxes: list, labels: list) -> torch.Tensor:
+        """CrossKD term for one batch, gated per cell as `config.kd_gate` says."""
+        t_out = targets["out"]
+        gates = compute_gate(
+            self.config.kd_gate,
+            teacher_cls_logits=t_out["cls_preds"],
+            student_cls_logits=s_out["cls_preds"],
+            nir_delta=targets["delta"],
+            bboxes=bboxes,
+            labels=labels,
+        )
+        kd_loss, _ = crosshead_loss(s_out, t_out, self.teacher.head, gates, self.criterion.strides)
+        return kd_loss
 
     @staticmethod
     def _load_teacher(config: KDConfig) -> MasterModel:
@@ -336,31 +381,39 @@ class KDTrainer(Trainer):
             try:
                 with autocast_ctx(self.device.type, self.config.precision):
                     # --- Teacher forward (no grad) ---
+                    crosshead = self.config.kd_mode == "crosshead"
                     with torch.no_grad():
-                        kd_teacher = self._teacher_features(rgb, nir)
+                        if crosshead:
+                            kd_teacher = self._crosshead_targets(rgb, nir)
+                        else:
+                            kd_teacher = self._teacher_features(rgb, nir)
 
                     # --- Student forward (RGB only) ---
                     s_out = self.model(rgb)
 
-                    # --- Adapters (student → teacher channels) ---
-                    # Deliberately OUTSIDE the no_grad block above: the KD
-                    # loss is the adapters' only gradient source.
-                    adapted_student = {
-                        "backbone": self.kd_adapters["backbone"](s_out["distill_backbone"]),
-                        "fpn": self.kd_adapters["fpn"](s_out["distill_fpn"]),
-                        "head_cls": self.kd_adapters["head_cls"](s_out["distill_head_cls"]),
-                        "head_reg": self.kd_adapters["head_reg"](s_out["distill_head_reg"]),
-                    }
+                    if not crosshead:
+                        # --- Adapters (student → teacher channels) ---
+                        # Deliberately OUTSIDE the no_grad block above: the KD
+                        # loss is the adapters' only gradient source.
+                        adapted_student = {
+                            "backbone": self.kd_adapters["backbone"](s_out["distill_backbone"]),
+                            "fpn": self.kd_adapters["fpn"](s_out["distill_fpn"]),
+                            "head_cls": self.kd_adapters["head_cls"](s_out["distill_head_cls"]),
+                            "head_reg": self.kd_adapters["head_reg"](s_out["distill_head_reg"]),
+                        }
 
                     # --- Detection loss ---
                     targets = {"bboxes": bboxes, "labels": labels}
                     det_loss, det_dict = self.criterion(s_out["preds"], targets)
 
                     # --- KD loss ---
-                    region_targets = (bboxes, labels) if self.config.kd_region_weights else ()
-                    kd_loss, kd_per_level = self.kd_criterion(
-                        kd_teacher, adapted_student, *region_targets
-                    )
+                    if crosshead:
+                        kd_loss = self._crosshead_kd(s_out, kd_teacher, bboxes, labels)
+                    else:
+                        region_targets = (bboxes, labels) if self.config.kd_region_weights else ()
+                        kd_loss, kd_per_level = self.kd_criterion(
+                            kd_teacher, adapted_student, *region_targets
+                        )
 
                     # --- Total loss ---
                     loss = det_loss + self.config.kd_weight * kd_loss

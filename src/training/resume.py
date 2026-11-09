@@ -26,6 +26,10 @@ RESUME_STATE = "resume_state.pt"
 # Where the files go does not change the model being trained.
 RESUME_IGNORED_CONFIG_KEYS = frozenset({"output_dir"})
 
+# Config fields added after a state may have been saved, with the value every
+# older run implicitly had. An older state resumes only into that value.
+RESUME_FIELD_DEFAULTS = {"kd_mode": "feature", "kd_gate": "none"}
+
 
 def atomic_torch_save(obj, path: Path) -> None:
     """`torch.save` that never leaves a partial file at `path`."""
@@ -61,6 +65,7 @@ def restore_rng_state(state: dict) -> None:
 
 def resume_config_mismatches(saved: dict, current: dict) -> list[str]:
     """Names of the config keys that differ, sorted. Empty means same experiment."""
+    saved = {**{k: v for k, v in RESUME_FIELD_DEFAULTS.items() if k in current}, **saved}
     keys = (set(saved) | set(current)) - RESUME_IGNORED_CONFIG_KEYS
     missing = object()
     return sorted(k for k in keys if saved.get(k, missing) != current.get(k, missing))

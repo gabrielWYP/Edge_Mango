@@ -73,6 +73,9 @@ REQUIRED_KEYS = [
     "distill_head_reg",
 ]
 
+# Cross-head KD inputs, added after the original 7-key contract.
+MID_KEYS = ["distill_head_cls_mid", "distill_head_reg_mid"]
+
 # Design estimated ~3.2M ±0.5M but actual count is ~6.87M due to:
 # - Neck PAN bottom-up path adds ~1.2M (stride-2 downsample convs + C2f fusion)
 # - Head P5 stems at 256ch with 2x 3x3 convs = ~2.36M per level
@@ -88,7 +91,7 @@ def test_forward_7keys(student_model, batch_input):
         out = student_model(batch_input)
 
     # Check all required keys exist
-    assert set(out.keys()) == set(REQUIRED_KEYS), (
+    assert set(out.keys()) == set(REQUIRED_KEYS + MID_KEYS), (
         f"Expected keys {REQUIRED_KEYS}, got {list(out.keys())}"
     )
 
@@ -209,9 +212,9 @@ def test_forward_cpu(student_model, batch_input):
     with torch.no_grad():
         out = student_model(batch_input)
 
-    # Basic sanity: output is a dict with 7 keys
+    # Basic sanity: the 7 original keys plus the 2 mid-feature keys
     assert isinstance(out, dict)
-    assert len(out) == 7
+    assert len(out) == 7 + len(MID_KEYS)
 
     # All values are lists of tensors
     for key in REQUIRED_KEYS:

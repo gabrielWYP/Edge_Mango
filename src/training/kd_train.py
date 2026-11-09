@@ -77,6 +77,24 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def apply_overrides(config: KDConfig, overrides: list[str]) -> None:
+    """Set `key=value` overrides on `config`, typed after the field's current value.
+
+    Never re-runs `__post_init__`, and skips keys the config does not have.
+    """
+    for override in overrides:
+        key, value = override.split("=")
+        if hasattr(config, key):
+            current = getattr(config, key)
+            if isinstance(current, bool):
+                value = value.lower() in ("true", "1", "yes")
+            elif isinstance(current, int):
+                value = int(value)
+            elif isinstance(current, float):
+                value = float(value)
+            setattr(config, key, value)
+
+
 def main():
     args = parse_args()
 
@@ -90,18 +108,7 @@ def main():
     # Load config
     config = KDConfig.from_yaml(args.config)
 
-    # Apply overrides
-    for override in args.override:
-        key, value = override.split("=")
-        if hasattr(config, key):
-            current = getattr(config, key)
-            if isinstance(current, bool):
-                value = value.lower() in ("true", "1", "yes")
-            elif isinstance(current, int):
-                value = int(value)
-            elif isinstance(current, float):
-                value = float(value)
-            setattr(config, key, value)
+    apply_overrides(config, args.override)
 
     # After the overrides, which never re-run __post_init__, and before anything
     # is written or loaded.
@@ -138,6 +145,7 @@ def main():
     print(f"  KD loss type: {config.kd_loss_type}")
     print(f"  KD region weights: {config.kd_region_weights}")
     print(f"  KD sublevels: {config.kd_sublevels}")
+    print(f"  KD mode: {config.kd_mode}, gate: {config.kd_gate}")
     print(f"  Distill levels: {config.distill_levels}")
     if config.modality_ablation != DEFAULT_MODALITY_ABLATION:
         print(f"  modality_ablation: {config.modality_ablation}")

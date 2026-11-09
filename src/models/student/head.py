@@ -24,6 +24,7 @@ import math
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch import Tensor
 
 from src.models.student.backbone import Conv_BN_SiLU
@@ -77,6 +78,11 @@ class DecoupledHead(nn.Module):
         bias_value = -math.log((1.0 - prior_prob) / prior_prob)
         nn.init.constant_(self.cls_pred.bias, bias_value)
 
+    @staticmethod
+    def _before_activation(block: Conv_BN_SiLU, x: Tensor) -> Tensor:
+        """Output of a Conv_BN_SiLU block without its SiLU, which is in-place."""
+        return block.bn(block.conv(x))
+
     def forward(self, x: Tensor) -> dict[str, Tensor]:
         """
         Args:
@@ -88,9 +94,16 @@ class DecoupledHead(nn.Module):
                 reg_logits: (N, 4, H, W)
                 distill_cls: (N, c_stem, H, W) — intermediate cls features for KD
                 distill_reg: (N, c_stem, H, W) — intermediate reg features for KD
+                distill_cls_mid: (N, c_stem, H, W) — first cls stem conv, before its SiLU
+                distill_reg_mid: (N, c_stem, H, W) — first reg stem conv, before its SiLU
+                (the two `*_mid` outputs feed cross-head distillation)
         """
-        cls_feat = self.cls_stem(x)
-        reg_feat = self.reg_stem(x)
+        # Same two convs as `self.cls_stem(x)`, split to expose the first output
+        # before its activation, the point where CrossKD aligns the features.
+        cls_mid = self._before_activation(self.cls_stem[0], x)
+        reg_mid = self._before_activation(self.reg_stem[0], x)
+        cls_feat = self.cls_stem[1](F.silu(cls_mid))
+        reg_feat = self.reg_stem[1](F.silu(reg_mid))
         cls_logits = self.cls_pred(cls_feat)
         reg_logits = self.reg_pred(reg_feat)
 
@@ -99,6 +112,8 @@ class DecoupledHead(nn.Module):
             "reg_logits": reg_logits,
             "distill_cls": cls_feat,
             "distill_reg": reg_feat,
+            "distill_cls_mid": cls_mid,
+            "distill_reg_mid": reg_mid,
         }
 
 
@@ -149,6 +164,8 @@ class YOLOStudentHead(nn.Module):
                 reg_preds:        list of (N, 4, H_i, W_i)
                 distill_head_cls: list of (N, stem_ch_i, H_i, W_i)
                 distill_head_reg: list of (N, stem_ch_i, H_i, W_i)
+                distill_head_cls_mid / distill_head_reg_mid: list of
+                    (N, stem_ch_i, H_i, W_i), output of the first stem conv
         """
         levels = [fpn_features["p3"], fpn_features["p4"], fpn_features["p5"]]
 
@@ -157,6 +174,8 @@ class YOLOStudentHead(nn.Module):
         all_reg = []
         distill_cls = []
         distill_reg = []
+        distill_cls_mid = []
+        distill_reg_mid = []
 
         for head, feat in zip(self.heads, levels):
             out = head(feat)
@@ -166,6 +185,8 @@ class YOLOStudentHead(nn.Module):
             all_reg.append(out["reg_logits"])
             distill_cls.append(out["distill_cls"])
             distill_reg.append(out["distill_reg"])
+            distill_cls_mid.append(out["distill_cls_mid"])
+            distill_reg_mid.append(out["distill_reg_mid"])
 
         return {
             "preds": all_preds,
@@ -173,4 +194,6 @@ class YOLOStudentHead(nn.Module):
             "reg_preds": all_reg,
             "distill_head_cls": distill_cls,
             "distill_head_reg": distill_reg,
+            "distill_head_cls_mid": distill_cls_mid,
+            "distill_head_reg_mid": distill_reg_mid,
         }
