@@ -42,6 +42,12 @@ DIFFERENCES = {
     "H2": ("kd_rgbnir", "kd_rgb"),
     "secondary": ("kd_rgbnir", "est_rgb"),
     "exploratory": ("kd_rgb", "est_rgb"),
+    # CrossKD arms, outside the plan: a comparison whose arms were not exported is skipped.
+    "crosskd_H2": ("crosskd_rgbnir", "crosskd_rgb"),
+    "crosskd_vs_mse": ("crosskd_rgbnir", "kd_rgbnir"),
+    "crosskd_vs_est": ("crosskd_rgbnir", "est_rgb"),
+    "gate_high_vs_low": ("crosskd_rgbnir_high", "crosskd_rgbnir_low"),
+    "gate_better_vs_none": ("crosskd_rgbnir_better", "crosskd_rgbnir"),
 }
 CHECKPOINTS = {"best": "reports", "epoch80": "reports_epoch80"}  # checkpoint label: reports directory under runs root
 GRID = [0.001] + [round(0.01 * i, 2) for i in range(1, 100)]
@@ -127,6 +133,23 @@ def photo_rows(directory: Path, labels_dir: Path, index: dict) -> tuple[list[dic
     return rows, ranked, n_gt
 
 
+def compute_differences(ap: dict) -> list[dict]:
+    """One row per run, split, checkpoint and metric for every `DIFFERENCES` pair whose two arms were exported.
+
+    `ap` maps (fold, seed, split, checkpoint, metric, arm) to the AP.
+    """
+    differences = []
+    for (fold, seed, split, checkpoint, metric, arm) in sorted({k[:5] + ("",) for k in ap}):
+        for name, (treatment, baseline) in DIFFERENCES.items():
+            t = ap.get((fold, seed, split, checkpoint, metric, treatment))
+            b = ap.get((fold, seed, split, checkpoint, metric, baseline))
+            if t is not None and b is not None:
+                differences.append({"fold": fold, "seed": seed, "split": split, "checkpoint": checkpoint,
+                                    "metric": metric, "comparison": name, "treatment": treatment,
+                                    "baseline": baseline, "treatment_ap": t, "baseline_ap": b, "delta": t - b})
+    return differences
+
+
 def main(argv=None) -> int:
     args = parse_args(argv)
     meta = json.loads((args.dataset / "folds_lot" / "folds_meta.json").read_text())["folds"]
@@ -162,15 +185,7 @@ def main(argv=None) -> int:
                          "precision": round(tp / len(kept), 5) if kept else None,
                          "recall": round(tp / n_gt, 5) if n_gt else None})
         print(f"{arm} fold{fold} seed{seed} {split} {checkpoint}: {len(rows)} photos", flush=True)
-    differences = []
-    for (fold, seed, split, checkpoint, metric, arm) in sorted({k[:5] + ("",) for k in ap}):
-        for name, (treatment, baseline) in DIFFERENCES.items():
-            t = ap.get((fold, seed, split, checkpoint, metric, treatment))
-            b = ap.get((fold, seed, split, checkpoint, metric, baseline))
-            if t is not None and b is not None:
-                differences.append({"fold": fold, "seed": seed, "split": split, "checkpoint": checkpoint,
-                                    "metric": metric, "comparison": name, "treatment": treatment,
-                                    "baseline": baseline, "treatment_ap": t, "baseline_ap": b, "delta": t - b})
+    differences = compute_differences(ap)
     history = []
     for arm in ARMS:
         for path in sorted(args.runs_root.glob(f"{arm}/fold*/seed*/metrics_history.csv")):

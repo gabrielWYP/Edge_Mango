@@ -56,6 +56,12 @@ ARMS = {  # arm: (colour, line style, label). One solid colour per arm, as in pl
     "kd_rgb": ("#1baf7a", "-", "kd_rgb (RGB, maestro RGB)"),
     "kd_rgbnir": ("#e1c300", "-", "kd_rgbnir (RGB, maestro RGB+NIR)"),
     "est_nir": ("#3d3c39", "-", "est_nir (NIR, referencia)"),
+    # CrossKD arms, outside the plan; dashed so they never pass for a planned arm.
+    "crosskd_rgb": ("#1baf7a", "--", "crosskd_rgb (RGB, maestro RGB)"),
+    "crosskd_rgbnir": ("#e1c300", "--", "crosskd_rgbnir (RGB, maestro RGB+NIR)"),
+    "crosskd_rgbnir_high": ("#8a3ffc", "--", "crosskd_rgbnir_high (celdas con alta dependencia de NIR)"),
+    "crosskd_rgbnir_low": ("#a56eff", ":", "crosskd_rgbnir_low (celdas con baja dependencia de NIR)"),
+    "crosskd_rgbnir_better": ("#d12771", "--", "crosskd_rgbnir_better (celdas donde el maestro supera al alumno)"),
 }
 RUN_DIR = re.compile(r"fold(\d+)_seed(\d+)")
 

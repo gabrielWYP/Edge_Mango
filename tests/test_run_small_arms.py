@@ -261,3 +261,56 @@ def test_the_two_modality_student_reads_rgb_and_nir_and_is_a_planned_arm(tmp_pat
     assert not any(x.startswith("letterbox_value=") for x in train)
     assert "est_rgbnir" in args.arms and "kd_rgbnir" in args.arms and "kd_nir" not in args.arms
     assert not any("student_in_channels" in str(x) for x in _train(args, "est_rgb"))
+
+
+CROSSKD_ARMS = {
+    "crosskd_rgb": ("est_rgb", "rgb", None),
+    "crosskd_rgbnir": ("est_rgbnir", "rgbnir", None),
+    "crosskd_rgbnir_high": ("est_rgbnir", "rgbnir", "nir_high"),
+    "crosskd_rgbnir_low": ("est_rgbnir", "rgbnir", "nir_low"),
+    "crosskd_rgbnir_better": ("est_rgbnir", "rgbnir", "teacher_better"),
+}
+
+
+@pytest.mark.parametrize("arm, spec", CROSSKD_ARMS.items())
+def test_a_crosskd_arm_trains_through_the_crosshead_from_its_teacher(tmp_path, arm, spec) -> None:
+    teacher, reads, gate = spec
+    command = _train(_args(tmp_path), arm)
+    assert "src.training.kd_train" in command and "kd_mode=crosshead" in command
+    assert "teacher_kind=student" in command and f"teacher_input={reads}" in command
+    assert any(x.startswith("teacher_checkpoint=") and f"{teacher}/fold0/seed42" in x for x in command)
+    gates = [x for x in command if x.startswith("kd_gate=")]
+    assert gates == ([f"kd_gate={gate}"] if gate else [])
+
+
+def test_crosskd_arms_are_outside_the_plan_and_selectable() -> None:
+    for arm in CROSSKD_ARMS:
+        assert arm in rs.ARMS and arm not in rs.PLANNED_ARMS
+    assert rs.parse_args(["--dataset", "d", "--arms", *CROSSKD_ARMS]).arms == list(CROSSKD_ARMS)
+
+
+def test_existing_arms_get_no_kd_overrides(tmp_path) -> None:
+    args = _args(tmp_path)
+    for arm in ("est_rgb", "est_nir", "est_rgbnir", "kd_nir", "kd_rgb", "kd_rgbnir"):
+        assert rs.ARMS[arm].kd_overrides == ()
+        assert not any(x.startswith(("kd_mode=", "kd_gate=")) for x in _train(args, arm))
+
+
+def test_crosskd_dry_run_prints_the_mode_and_the_gate(tmp_path, capsys) -> None:
+    _args(tmp_path)  # writes folds_meta.json
+    code = rs.main([
+        "--dataset", str(tmp_path), "--arms", "crosskd_rgbnir_high", "--folds", "0", "--seeds", "42",
+        "--val-only", "--dry-run", "--checkpoints-root", str(tmp_path / "ckpt"),
+        "--reports-root", str(tmp_path / "rep"),
+    ])
+    lines = capsys.readouterr().out.splitlines()
+    train = [line for line in lines if "crosskd_rgbnir_high/fold0/seed42/train" in line]
+    assert code == 0 and len(train) == 1
+    assert "kd_mode=crosshead" in train[0] and "kd_gate=nir_high" in train[0]
+
+
+def test_a_crosskd_task_waits_for_its_teacher_in_the_same_fold_and_seed() -> None:
+    tasks = [("crosskd_rgbnir", 0, 42), ("est_rgbnir", 0, 42)]
+    ran = []
+    code = rs.schedule(tasks, 2, lambda arm, fold, seed: ran.append(arm) or 0)
+    assert code == 0 and ran == ["est_rgbnir", "crosskd_rgbnir"]
