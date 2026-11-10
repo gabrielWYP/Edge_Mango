@@ -119,6 +119,8 @@ class StudentModel(nn.Module):
                 'distill_fpn':      [(N,128,80,80), (N,256,40,40), (N,256,20,20)]
                 'distill_head_cls': [(N,64,80,80), (N,128,40,40), (N,256,20,20)]
                 'distill_head_reg': [(N,64,80,80), (N,128,40,40), (N,256,20,20)]
+            plus 'distill_head_cls_mid' / 'distill_head_reg_mid', same shapes:
+            the output of the first stem conv (9 keys in total).
         """
         if self.in_channels == 4:
             if nir is None:
@@ -144,6 +146,9 @@ class StudentModel(nn.Module):
             "distill_fpn": [fpn["p3"], fpn["p4"], fpn["p5"]],
             "distill_head_cls": head_out["distill_head_cls"],
             "distill_head_reg": head_out["distill_head_reg"],
+            # First stem conv of each head branch, for cross-head KD.
+            "distill_head_cls_mid": head_out["distill_head_cls_mid"],
+            "distill_head_reg_mid": head_out["distill_head_reg_mid"],
         }
 
     def freeze_backbone(self, freeze_stages: int = 0) -> None:

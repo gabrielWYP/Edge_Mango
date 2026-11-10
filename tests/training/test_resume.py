@@ -329,3 +329,13 @@ def test_a_continued_run_trains_with_the_same_learning_rates(tmp_path) -> None:
     continued.fit()
 
     assert seen == pytest.approx(expected[1:])
+
+
+def test_a_state_saved_before_a_config_field_existed_resumes_with_its_default():
+    """A run interrupted under older code predates kd_mode and kd_gate: it was feature KD."""
+    saved = {"epochs": 80}
+    assert resume_config_mismatches(saved, {"epochs": 80, "kd_mode": "feature", "kd_gate": "none"}) == []
+
+
+def test_an_older_state_does_not_resume_into_a_new_kd_mode():
+    assert resume_config_mismatches({"epochs": 80}, {"epochs": 80, "kd_mode": "crosshead", "kd_gate": "none"}) == ["kd_mode"]

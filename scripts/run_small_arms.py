@@ -11,6 +11,14 @@ Outside the plan, only when `--arms` names it:
 
     kd_nir      RGB student distilled from est_nir of its fold and seed.
 
+    CrossKD (kd_mode=crosshead): the student's mid head features go through the frozen teacher head, no adapters.
+    crosskd_rgb            teacher est_rgb. Control of H2 under CrossKD.
+    crosskd_rgbnir         teacher est_rgbnir, whole map. H2 under CrossKD: against crosskd_rgb.
+    crosskd_rgbnir_high    as crosskd_rgbnir, on the fruit and damage cells where the teacher's damage score
+                           depends most on NIR (kd_gate=nir_high).
+    crosskd_rgbnir_low     the same on the cells where it depends least (kd_gate=nir_low).
+    crosskd_rgbnir_better  as crosskd_rgbnir, on the cells where the teacher beats the student (kd_gate=teacher_better).
+
 Every run is evaluated on val and test, with predictions and metrics_v4.json, under
 `<reports-root>/<arm>/fold<k>_seed<S>/<split>/`, the layout of `scripts/aggregate_kfold.py`.
 Re-run the same command to resume: finished steps are skipped, and an interrupted training continues from
@@ -55,6 +63,7 @@ class Arm:
     reads_nir: bool = False
     teacher: str | None = None
     in_channels: int = 3
+    kd_overrides: tuple[str, ...] = ()  # key=value appended to the KD training command
 
 
 ARMS = {
@@ -64,8 +73,15 @@ ARMS = {
     "kd_nir": Arm(teacher="est_nir"),
     "kd_rgb": Arm(teacher="est_rgb"),
     "kd_rgbnir": Arm(teacher="est_rgbnir"),
+    "crosskd_rgb": Arm(teacher="est_rgb", kd_overrides=("kd_mode=crosshead",)),
+    "crosskd_rgbnir": Arm(teacher="est_rgbnir", kd_overrides=("kd_mode=crosshead",)),
+    "crosskd_rgbnir_high": Arm(teacher="est_rgbnir", kd_overrides=("kd_mode=crosshead", "kd_gate=nir_high")),
+    "crosskd_rgbnir_low": Arm(teacher="est_rgbnir", kd_overrides=("kd_mode=crosshead", "kd_gate=nir_low")),
+    "crosskd_rgbnir_better": Arm(
+        teacher="est_rgbnir", kd_overrides=("kd_mode=crosshead", "kd_gate=teacher_better")
+    ),
 }
-# kd_nir is outside the plan: it runs only when `--arms` names it.
+# kd_nir and the crosskd arms are outside the plan: they run only when `--arms` names them.
 PLANNED_ARMS = ["est_rgb", "est_rgbnir", "est_nir", "kd_rgb", "kd_rgbnir"]
 
 
@@ -149,7 +165,7 @@ def plan_arm(args, arm_name: str, fold: int, seed: int) -> list[tuple[str, list[
             args.python, "-m", "src.training.kd_train", "--config", KD_CONFIG, "--override",
             *common, *weights, *rk.machine_overrides(args.machine), "batch_size=8",
             f"teacher_checkpoint={teacher}", "teacher_kind=student",
-            f"teacher_input={arm_input(arm.teacher)}",
+            f"teacher_input={arm_input(arm.teacher)}", *arm.kd_overrides,
         ]
     else:
         train = [
