@@ -9,6 +9,9 @@ See `src/data_pipeline/v4_dataset.py` for the layout and the inclusion rules. Tr
 plus the fold labels and manifest (`labels_dir`, `split_manifest`) built from `<out>/labels`.
 Use `nir_dir=<out>/nir_clahe` for the CLAHE NIR, with its own `nir_mean`/`nir_std`.
 
+With `--polygons <export.json>` the labels are YOLO-seg polygons instead of boxes (see
+`src/data_pipeline/v4_polygons.py`); train on them with `task=segment`. Without it nothing changes.
+
 By default each photo gets a translation on top of its homography, measured on the fruit, and
 `report.json` holds the residual per lot and moment; `--residual-shift none` leaves it out.
 
@@ -51,6 +54,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=Path,
         default=DEFAULT_LABELS,
         help="Label Studio JSON export with the damage boxes",
+    )
+    parser.add_argument(
+        "--polygons",
+        type=Path,
+        default=None,
+        help="Label Studio polygon export (both views in the RGB frame): write YOLO-seg labels, "
+        "damage from the export and the mango from the fruit-mask contour. Replaces --labels. "
+        "Default: box labels",
     )
     parser.add_argument(
         "--homographies",
@@ -101,6 +112,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             repo_root=PROJECT_ROOT,
             workers=args.workers,
             residual_shift=args.residual_shift,
+            polygons_path=args.polygons,
         )
     except (FileNotFoundError, FileExistsError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)

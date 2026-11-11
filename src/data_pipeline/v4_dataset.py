@@ -16,6 +16,12 @@ The photos come from ``v4_selection.select_photos``. The mango box (class 0) doe
 Label Studio: it is the bounding box of ``rgb_mango_mask`` on the 1/4-scale RGB; a photo where
 no plausible mango is found is excluded as ``mango_mask_failed``.
 
+With ``polygons_path`` (opt-in, ``--polygons``) the damage lines are YOLO-seg polygons from a
+Label Studio polygon export (``v4_polygons``; both views already in the RGB frame, so no
+homography and no residual shift on the labels) and the mango line is the largest external
+contour of the fruit mask (``mango_polygon``). The export then replaces the box export, and
+without it nothing below changes.
+
 NIR line artifacts (``nir_lines``) are detected on the full NIR frame. Those whose pixels,
 mapped into the RGB frame, overlap the mango box are interpolated before both NIR variants are
 made; the rest are left. Every line is listed in ``nir_lines.csv``.
@@ -40,7 +46,7 @@ import cv2
 import numpy as np
 import yaml
 
-from src.annotation.captura_v3_tasks import load_wb_timestamps
+from src.annotation.captura_v3_tasks import _parse_capture, load_wb_timestamps
 from src.annotation.mango_registration import rgb_mango_mask
 from src.annotation.nir_display import enhance_nir, method_params, nir_gray
 from src.data_pipeline.nir_lines import (
@@ -54,6 +60,7 @@ from src.data_pipeline.nir_lines import (
     interpolate_lines,
     line_corners,
 )
+from src.data_pipeline.v4_polygons import PolygonTaskLabel, parse_polygon_tasks
 from src.data_pipeline.v4_residual import (
     NO_SHIFT,
     FruitMatch,
@@ -77,11 +84,13 @@ from src.data_pipeline.v4_selection import (
     sin_bruise_faces,
 )
 from src.training.nir_registration import load_homography
+from src.training.seg_labels import format_polygon_line
 
 MANGO_CLASS = 0
 DAMAGE_CLASS = 1
 MASK_DOWNSCALE = 4
 MANGO_AREA_RANGE = (0.01, 0.5)  # plausible fraction of the frame covered by the mango box
+MANGO_POLYGON_EPSILON = 1.5  # approxPolyDP tolerance, in pixels of the 1/4-scale mask
 NIR_BORDER_VALUE = 0  # registered NIR pixels with no source
 PNG_COMPRESSION = 6
 RESIDUAL_MODES = ("fruit", "none")
@@ -152,6 +161,25 @@ def yolo_line(cls: int, box: np.ndarray) -> str:
         f"{cls} {(x0 + x1) / 2 / width:.6f} {(y0 + y1) / 2 / height:.6f} "
         f"{(x1 - x0) / width:.6f} {(y1 - y0) / height:.6f}\n"
     )
+
+
+def polygon_line(cls: int, polygon: np.ndarray) -> str:
+    """A YOLO-seg line (normalized to the RGB frame) from a polygon in RGB pixels."""
+    return format_polygon_line(cls, polygon / np.array(RGB_SIZE, dtype=np.float64)) + "\n"
+
+
+def mango_polygon(mask: np.ndarray) -> np.ndarray:
+    """Outline of the mango: the largest external contour of its 1/4-scale mask, in RGB pixels.
+
+    Simplified to `MANGO_POLYGON_EPSILON` mask pixels. Contour vertices sit on pixel centres,
+    so they are moved by half a pixel before the scale-up.
+    """
+    contours, _ = cv2.findContours(
+        np.ascontiguousarray(mask, dtype=np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
+    largest = max(contours, key=cv2.contourArea)
+    outline = cv2.approxPolyDP(largest, MANGO_POLYGON_EPSILON, True).reshape(-1, 2)
+    return (outline.astype(np.float64) + 0.5) * MASK_DOWNSCALE
 
 
 def fruit_mask(rgb_path: Path) -> np.ndarray | None:
@@ -243,7 +271,8 @@ def bake_photo(
 
     Returns the index row and one row per NIR line artifact, or None if no mango is found.
     """
-    photo, data_root, repo_root, out_dir, shift = job
+    photo, data_root, repo_root, out_dir, shift, *options = job
+    polygon_mode = bool(options and options[0])  # opt-in YOLO-seg labels
     c, label = photo.capture, photo.label
     stem = f"mango_rgb_{c.timestamp}"
     rgb_src = _rgb_source(photo, data_root)
@@ -252,6 +281,8 @@ def bake_photo(
     if mango is None:
         return None
     lines = [yolo_line(MANGO_CLASS, mango)]
+    if polygon_mode:
+        lines = [polygon_line(MANGO_CLASS, mango_polygon(fruit_mask(rgb_src)))]
     row = {
         "stem": stem,
         "timestamp": c.timestamp,
@@ -273,12 +304,20 @@ def bake_photo(
         "residual_source": shift.source,
     }
     if label is not None:
-        boxes = [box_in_rgb_frame(corners, label.view, H) for corners in label.corners]
-        if label.view == "nir":
-            boxes = [shifted_box(box, shift) for box in boxes]
-        if any(b[2] <= b[0] or b[3] <= b[1] for b in boxes):
-            raise ValueError(f"capture {c.timestamp}: a damage box falls outside the RGB frame")
-        lines += [yolo_line(DAMAGE_CLASS, b) for b in boxes]
+        if polygon_mode:
+            # Both views are drawn in the RGB frame: no homography, no residual shift.
+            polygons = [np.clip(p, 0, RGB_SIZE) for p in label.corners]
+            boxes = [np.array([*p.min(axis=0), *p.max(axis=0)]) for p in polygons]
+            if any(b[2] <= b[0] or b[3] <= b[1] for b in boxes):
+                raise ValueError(f"capture {c.timestamp}: a damage polygon has no area in the RGB frame")
+            lines += [polygon_line(DAMAGE_CLASS, p) for p in polygons]
+        else:
+            boxes = [box_in_rgb_frame(corners, label.view, H) for corners in label.corners]
+            if label.view == "nir":
+                boxes = [shifted_box(box, shift) for box in boxes]
+            if any(b[2] <= b[0] or b[3] <= b[1] for b in boxes):
+                raise ValueError(f"capture {c.timestamp}: a damage box falls outside the RGB frame")
+            lines += [yolo_line(DAMAGE_CLASS, b) for b in boxes]
         union = np.array([*np.min(boxes, axis=0)[:2], *np.max(boxes, axis=0)[2:]])
         inter = np.clip(
             np.minimum(union[2:], mango[2:]) - np.maximum(union[:2], mango[:2]), 0, None
@@ -375,8 +414,13 @@ def build_dataset(
     workers: int = 1,
     tolerance_path: Path | None = None,
     residual_shift: str = "fruit",
+    polygons_path: Path | None = None,
 ) -> dict:
-    """Build the dataset under ``out_dir`` (must be new or empty) and return the report."""
+    """Build the dataset under ``out_dir`` (must be new or empty) and return the report.
+
+    With ``polygons_path`` the damage annotation comes from that Label Studio polygon export
+    (``labels_path`` is not read) and the labels are YOLO-seg lines; see the module docstring.
+    """
     if residual_shift not in RESIDUAL_MODES:
         raise ValueError(f"residual_shift must be one of {RESIDUAL_MODES}, got {residual_shift!r}")
     data_root, out_dir = Path(data_root), Path(out_dir)
@@ -386,7 +430,15 @@ def build_dataset(
         json.loads(p.read_text(encoding="utf-8"))
         for p in sorted((data_root / "news" / "meta").glob("mango_meta_*.json"))
     ]
-    labels, conflicts = parse_tasks(json.loads(Path(labels_path).read_text(encoding="utf-8")))
+    if polygons_path is None:
+        annotation_path = labels_path
+        labels, conflicts = parse_tasks(json.loads(Path(labels_path).read_text(encoding="utf-8")))
+    else:
+        annotation_path = polygons_path
+        slots = {c.timestamp: c.slot for c in map(_parse_capture, metas)}
+        labels, conflicts = parse_polygon_tasks(
+            json.loads(Path(polygons_path).read_text(encoding="utf-8")), slots
+        )
     entries = yaml.safe_load(Path(identity_path).read_text(encoding="utf-8"))["exclusions"] or []
     identity = {int(e["timestamp"]): str(e["reason"]) for e in entries}
     rules = load_homography_rules(rules_path)
@@ -407,6 +459,7 @@ def build_dataset(
         shifts, residual = _residual_shifts(photos, data_root, Path(repo_root), workers)
     jobs = [
         (photo, data_root, Path(repo_root), out_dir, shift or NO_SHIFT)
+        + ((True,) if polygons_path is not None else ())
         for photo, shift in zip(photos, shifts)
     ]
     results = _map_jobs(bake_photo, jobs, workers)
@@ -436,7 +489,7 @@ def build_dataset(
     matrices = sorted({photo.homography for photo in photos})
     report = {
         "inputs": {
-            "labels": {"path": str(labels_path), "sha256": _sha256(labels_path)},
+            "labels": {"path": str(annotation_path), "sha256": _sha256(annotation_path)},
             "homography_rules": {
                 "path": str(rules_path),
                 "sha256": _sha256(rules_path),
@@ -488,5 +541,11 @@ def build_dataset(
             r["stem"] for r in rows if r["n_damage"] and r["damage_in_mango"] < 0.5
         ),
     }
+    if polygons_path is not None:
+        report["inputs"]["annotation"] = "polygons"
+        report["params"]["mango_polygon"] = (
+            f"largest external contour of rgb_mango_mask, approxPolyDP {MANGO_POLYGON_EPSILON} px "
+            f"of the 1/{MASK_DOWNSCALE} mask"
+        )
     (out_dir / "report.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     return report
