@@ -75,6 +75,9 @@ class TaskAlignedAssigner:
         self.level_ranges = level_ranges
         self.collect_stats = collect_stats
         self.last_stats: dict[tuple[int, int], int] = {}
+        # (B, num_anchors) index of the GT each anchor was assigned to in the last call, -1 for
+        # negatives. The mask loss reads it to pick every positive anchor's instance mask.
+        self.last_gt_idx: torch.Tensor | None = None
 
     def reset_stats(self) -> None:
         """Clear accumulated instrumentation counts (A4)."""
@@ -123,6 +126,8 @@ class TaskAlignedAssigner:
         target_bboxes = torch.zeros((B, num_anchors, 4), device=device)
         target_scores = torch.zeros((B, num_anchors), device=device)
         fg_mask = torch.zeros((B, num_anchors), dtype=torch.bool, device=device)
+        target_gt_idx = torch.full((B, num_anchors), -1, dtype=torch.long, device=device)
+        self.last_gt_idx = target_gt_idx
 
         if anchor_strides is None:
             anchor_strides = torch.full((num_anchors,), float(strides[0]), device=device)
@@ -204,6 +209,7 @@ class TaskAlignedAssigner:
                 target_classes[b, winners] = gt_cls[gt_i]
                 target_bboxes[b, winners] = gt_box[gt_i]
                 target_scores[b, winners] = pos_scores[wins]
+                target_gt_idx[b, winners] = gt_i
                 fg_mask[b, winners] = True
 
                 if self.collect_stats and level_ids is not None:
@@ -344,6 +350,9 @@ class YOLOv8Loss(nn.Module):
         assigner_level_ranges: Per-level GT-size admissibility bins (D8).
         assigner_collect_stats: Enable non-destructive per-class/per-level
             positive-anchor instrumentation (A4).
+        mask_weight: Gain of the YOLOv8-seg mask loss. Only used when `forward` receives
+            `mask_outputs`, so a detect run never sees it. 7.5 is the value ultralytics
+            multiplies its segmentation loss by (its box gain).
     """
 
     def __init__(
@@ -359,8 +368,10 @@ class YOLOv8Loss(nn.Module):
         assigner_level_ranges: list[float] | None = None,
         assigner_collect_stats: bool = False,
         ignore_classes: list[int] | None = None,
+        mask_weight: float = 7.5,
     ):
         super().__init__()
+        self.mask_weight = mask_weight
         self.ignore_classes = list(ignore_classes or [])
         self.num_classes = num_classes
         self.box_weight = box_weight
@@ -412,8 +423,9 @@ class YOLOv8Loss(nn.Module):
         self,
         predictions: list[torch.Tensor],
         targets: dict,
+        mask_outputs: dict | None = None,
     ) -> tuple[torch.Tensor, dict[str, float]]:
-        """Compute detection loss.
+        """Compute detection loss, plus the mask loss of a segmentation student.
 
         Args:
             predictions: List of (B, nc+4, H_i, W_i) per FPN level.
@@ -421,10 +433,18 @@ class YOLOv8Loss(nn.Module):
             targets: Dict with keys:
                 bboxes: List of (N_i, 4) GT bboxes per image (cxcywh, normalized 0-1).
                 labels: List of (N_i,) GT class labels per image.
+                masks: Optional list of (N_i, h, w) instance masks per image, aligned with
+                    `bboxes`. Used only together with `mask_outputs`.
+                has_mask: Optional list of (N_i,) bool; instances without a polygon are False
+                    and take no part in the mask loss. All True when absent.
+            mask_outputs: Optional `{"mask_coefs": [(B, nm, H_i, W_i), ...], "protos":
+                (B, nm, h, w)}` from a segment student. None (default) is the plain detection
+                loss; so is a batch that carries no `masks`.
 
         Returns:
             total_loss: Scalar loss for backward().
-            loss_dict: {"box_loss": float, "cls_loss": float}.
+            loss_dict: {"box_loss": float, "cls_loss": float}, plus "mask_loss" when the
+                mask term ran.
         """
         predictions = [pred.float() for pred in predictions]
         device = predictions[0].device
@@ -551,16 +571,94 @@ class YOLOv8Loss(nn.Module):
             "cls_loss": cls_loss.item(),
         }
 
+        # --- Mask loss (YOLOv8-seg), on the anchors the TAL assignment made positive ---
+        if mask_outputs is not None and "masks" in targets:
+            mask_loss = self._mask_loss(
+                mask_outputs, targets, fg_mask, self.assigner.last_gt_idx, img_h, img_w
+            )
+            total_loss = total_loss + self.mask_weight * mask_loss
+            loss_dict["mask_loss"] = mask_loss.item()
+
         return total_loss, loss_dict
+
+    @staticmethod
+    def _mask_loss(
+        mask_outputs: dict,
+        targets: dict,
+        fg_mask: torch.Tensor,
+        gt_idx: torch.Tensor,
+        img_h: float,
+        img_w: float,
+    ) -> torch.Tensor:
+        """Mean, over positive anchors with a GT mask, of the BCE inside the GT box.
+
+        Per positive anchor the predicted mask is `sigmoid(coef . protos)`; it is compared
+        with its GT instance mask at prototype resolution, only inside the GT box, and the
+        BCE is divided by the box area in prototype pixels (the YOLOv8-seg normalisation).
+        """
+        protos = mask_outputs["protos"].float()  # (B, nm, h, w)
+        coefs = torch.cat(
+            [c.float().flatten(2).permute(0, 2, 1) for c in mask_outputs["mask_coefs"]], dim=1
+        )  # (B, A, nm)
+        B, nm, h, w = protos.shape
+        has_mask_all = targets.get("has_mask")
+        total = protos.new_zeros(())
+        count = 0
+        for b in range(B):
+            if len(targets["bboxes"][b]) == 0:
+                continue
+            idx = gt_idx[b][fg_mask[b]]  # (K,) GT index of each positive anchor
+            if idx.numel() == 0:
+                continue
+            masks_b = targets["masks"][b]
+            has = (
+                has_mask_all[b].to(idx.device)[idx]
+                if has_mask_all is not None
+                else torch.ones_like(idx, dtype=torch.bool)
+            )
+            if not has.any():
+                continue
+            idx = idx[has]
+            coef = coefs[b][fg_mask[b]][has]  # (K, nm)
+            logits = (coef @ protos[b].flatten(1)).view(-1, h, w)
+
+            gt = masks_b[idx].to(logits.device).float()
+            if gt.shape[-2:] != (h, w):
+                gt = (F.interpolate(gt[:, None], size=(h, w), mode="area")[:, 0] > 0.5).float()
+
+            box = targets["bboxes"][b][idx]  # (K, 4) normalized cxcywh
+            x1 = (box[:, 0] - box[:, 2] / 2) * w
+            x2 = (box[:, 0] + box[:, 2] / 2) * w
+            y1 = (box[:, 1] - box[:, 3] / 2) * h
+            y2 = (box[:, 1] + box[:, 3] / 2) * h
+            cols = torch.arange(w, device=logits.device, dtype=logits.dtype).view(1, 1, w)
+            rows = torch.arange(h, device=logits.device, dtype=logits.dtype).view(1, h, 1)
+            crop = (
+                (cols >= x1.view(-1, 1, 1)) & (cols < x2.view(-1, 1, 1))
+                & (rows >= y1.view(-1, 1, 1)) & (rows < y2.view(-1, 1, 1))
+            ).to(logits.dtype)
+
+            bce = F.binary_cross_entropy_with_logits(logits, gt, reduction="none")
+            per_anchor = (bce * crop).sum(dim=(1, 2)) / crop.sum(dim=(1, 2)).clamp(min=1.0)
+            total = total + per_anchor.sum()
+            count += per_anchor.numel()
+        if count == 0:
+            return protos.sum() * 0.0  # keeps the graph, adds nothing
+        return total / count
 
     def _without_ignored_classes(self, targets: dict, device: torch.device) -> dict:
         ignored = torch.tensor(self.ignore_classes, device=device)
         keep = [~torch.isin(labels, ignored) for labels in targets["labels"]]
-        return {
+        filtered = {
             **targets,
             "bboxes": [boxes[mask] for boxes, mask in zip(targets["bboxes"], keep)],
             "labels": [labels[mask] for labels, mask in zip(targets["labels"], keep)],
         }
+        # Instance masks travel with their boxes.
+        for key in ("masks", "has_mask"):
+            if key in targets:
+                filtered[key] = [values[mask] for values, mask in zip(targets[key], keep)]
+        return filtered
 
     @staticmethod
     def _decode_bboxes(
