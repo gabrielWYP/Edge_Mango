@@ -2,7 +2,8 @@
 
 Two levels of agreement are checked per image:
 - raw outputs: max / mean absolute difference of `boxes_raw` and
-  `cls_logits` (before any exp, sigmoid or NMS);
+  `cls_logits` (before any exp, sigmoid or NMS), and for a segment export
+  of `mask_coefs` and `protos` too;
 - detections: both raw outputs are decoded with the same reference decode
   (`src/export/reference.py`) and matched greedily by class and IoU.
 """
@@ -18,7 +19,7 @@ import numpy as np
 import torch
 from torchvision.ops import box_iou
 
-from src.export.layout import BOXES_OUTPUT_NAME, CLASS_OUTPUT_NAME
+from src.export.layout import BOXES_OUTPUT_NAME, CLASS_OUTPUT_NAME, DETECT_OUTPUT_NAMES
 from src.export.reference import cxcywh_to_xyxy, decode_exported_outputs, preprocess_bgr
 
 # Pass thresholds for an FP32 export. Raw outputs are logits / pixel
@@ -199,6 +200,7 @@ def compare_on_images(
         candidate_fn: NHWC float32 array -> (boxes_raw, cls_logits) numpy.
         metadata: the export sidecar (image size, strides, decode settings).
     """
+    output_names = [output["logical_name"] for output in metadata["outputs"]]
     image_size = metadata["input"]["shape"][1]
     pad_value = metadata["preprocessing"]["letterbox"]["pad_value"]
     strides = [level["stride"] for level in metadata["anchors"]["levels"]]
@@ -218,10 +220,10 @@ def compare_on_images(
         nchw, _ = preprocess_bgr(image, image_size, pad_value)
         nhwc = np.ascontiguousarray(nchw.permute(0, 2, 3, 1).numpy())
 
-        ref_boxes_raw, ref_cls = reference_fn(nchw)
-        cand_boxes_raw, cand_cls = candidate_fn(nhwc)
-        report.add_raw(BOXES_OUTPUT_NAME, ref_boxes_raw, cand_boxes_raw)
-        report.add_raw(CLASS_OUTPUT_NAME, ref_cls, cand_cls)
+        ref_outputs, cand_outputs = reference_fn(nchw), candidate_fn(nhwc)
+        (ref_boxes_raw, ref_cls), (cand_boxes_raw, cand_cls) = ref_outputs[:2], cand_outputs[:2]
+        for name, reference, candidate in zip(output_names, ref_outputs, cand_outputs):
+            report.add_raw(name, reference, candidate)
 
         ref_boxes, _, ref_labels = decode_exported_outputs(ref_boxes_raw, ref_cls, **decode_kwargs)
         cand_boxes, _, cand_labels = decode_exported_outputs(cand_boxes_raw, cand_cls, **decode_kwargs)
@@ -264,7 +266,7 @@ def run_parity(
     report = ParityReport(max_abs_diff_threshold=max_abs_diff, min_match_rate=min_match_rate)
     return compare_on_images(
         make_torch_runner(wrapper),
-        make_tflite_runner(model_path, io_names),
+        make_tflite_runner(model_path, io_names, [output["logical_name"] for output in metadata["outputs"]]),
         image_paths,
         metadata,
         report,

@@ -73,7 +73,8 @@ def _load_wrapper(metadata: dict, checkpoint_override: str | None) -> StudentExp
         if seed is None:
             raise ValueError("Metadata records neither a checkpoint nor a random-init seed.")
         torch.manual_seed(seed)
-        return StudentExportWrapper(StudentModel().eval())
+        student = StudentModel(variant=source.get("variant", "wide"), task=source.get("task", "detect"))
+        return StudentExportWrapper(student.eval())
 
     path = checkpoint_override or source["path"]
     loaded = load_student_checkpoint(path)

@@ -29,6 +29,16 @@ BOXES_OUTPUT_NAME = "boxes_raw"
 CLASS_OUTPUT_NAME = "cls_logits"
 BOX_CHANNELS: tuple[str, ...] = ("dx", "dy", "log_w", "log_h")
 
+# A segment student (YOLOv8-seg) adds two outputs, in this order after the two above:
+#   mask_coefs: (1, N, nm)             mask coefficients per anchor, same anchor order as the boxes
+#   protos:     (1, nm, H/4, W/4)      prototype masks of the image (NCHW, as the model produces them)
+# A mask is `sigmoid(coefs[anchor] . protos)` cropped to its box; see `reference.decode_exported_segmentation`.
+MASK_COEFS_OUTPUT_NAME = "mask_coefs"
+PROTOS_OUTPUT_NAME = "protos"
+DETECT_OUTPUT_NAMES: tuple[str, ...] = (BOXES_OUTPUT_NAME, CLASS_OUTPUT_NAME)
+SEGMENT_OUTPUT_NAMES: tuple[str, ...] = (*DETECT_OUTPUT_NAMES, MASK_COEFS_OUTPUT_NAME, PROTOS_OUTPUT_NAME)
+PROTO_STRIDE = 4  # the prototypes are at 1/4 of the input resolution
+
 
 @dataclass(frozen=True)
 class LevelLayout:
