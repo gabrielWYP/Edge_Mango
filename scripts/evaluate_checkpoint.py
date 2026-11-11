@@ -301,6 +301,8 @@ def _build_eval_dataset(config: TrainingConfig, split: str) -> YOLODataset:
         roi_crop_margin=config.roi_crop_margin,
         roi_crop_jitter=0.0,
         modality_ablation=config.modality_ablation,
+        load_masks=config.task == "segment",
+        mask_ratio=config.mask_ratio,
     )
 
 
@@ -466,6 +468,7 @@ def _load_model(model_type: str, checkpoint_path: str, config: TrainingConfig, d
             num_classes=config.num_classes,
             variant=config.student_variant,
             in_channels=config.student_in_channels,
+            task=config.task,
         )
         # Pre-fix KD checkpoints stored the training-only adapters inside
         # `model_state_dict`; they are not part of the student.
