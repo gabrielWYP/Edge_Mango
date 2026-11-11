@@ -161,6 +161,7 @@ def apply_transforms_with_bbox_tracking(
     class_labels: list[int],
     *,
     nir=None,
+    masks=None,
     log_level: int = logging.INFO,
 ) -> dict:
     """Apply an Albumentations transform and log per-class bbox drop rates.
@@ -177,11 +178,14 @@ def apply_transforms_with_bbox_tracking(
         bboxes: YOLO-format bounding boxes ``[[x, y, w, h], ...]``.
         class_labels: Integer class labels aligned with *bboxes*.
         nir: Optional NIR image for multimodal transforms.
+        masks: Optional list of (H, W) instance masks, transformed with the same sampled
+            geometry (nearest interpolation). They are not filtered here, and the drop
+            counts below only concern `bboxes`.
         log_level: Logging level for the drop summary. Defaults to INFO.
 
     Returns:
         The dict returned by ``transform(...)`` (keys: ``image``, ``bboxes``,
-        ``class_labels``, and optionally ``nir``).
+        ``class_labels``, and optionally ``nir`` and ``masks``).
     """
     # Count bboxes per class BEFORE transform
     before_counts: Counter[int] = Counter(class_labels)
@@ -194,6 +198,8 @@ def apply_transforms_with_bbox_tracking(
     }
     if nir is not None:
         kwargs["nir"] = nir
+    if masks is not None:
+        kwargs["masks"] = masks
 
     result = transform(**kwargs)
 

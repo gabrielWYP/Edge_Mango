@@ -5,7 +5,9 @@ Loads paired RGB and NIR images with YOLO-format bounding box labels.
 Implements custom letterbox resizing and bbox-aware augmentation via albumentations.
 
 Image pair matching: RGB filename `mango_rgb_XXXXX.jpg` → NIR `mango_nir_XXXXX.jpg`
-Label format: `class_id cx cy w h` (normalized 0-1, YOLO convention)
+Label format: `class_id cx cy w h` (normalized 0-1, YOLO convention), or a YOLO-seg polygon
+`class_id x1 y1 ... xn yn`. A polygon's box is its tight bounding box; with `load_masks=True` it
+also yields an instance mask (see `src/training/seg_labels.py`).
 """
 
 from __future__ import annotations
@@ -35,6 +37,17 @@ from .fusion_modes import (
 )
 from .nir_registration import load_homography, register_nir_to_rgb
 from .roi_crop import MANGO_CLASS_ID, crop_to_roi, validate_roi_crop
+from .seg_labels import (
+    downsample_masks,
+    mask_bbox_cxcywh,
+    parse_label_line,
+    rasterize_polygons,
+    transform_polygons_letterbox,
+)
+
+# Share of an instance's mask that must survive augmentation for it to be kept (train only);
+# the counterpart of the `min_visibility` the box transforms use.
+MASK_MIN_VISIBILITY = 0.15
 
 # ImageNet RGB normalization stats
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
@@ -208,6 +221,14 @@ class YOLODataset(Dataset):
             constant after normalization) or "rgb_const" (RGB tensor replaced
             by 0). Applied last, so augmentation, labels and the other modality
             are exactly those of "none".
+        load_masks: Also return instance masks, for a segment student. Each item then has
+            `masks` (N, image_size // mask_ratio, image_size // mask_ratio) uint8 and
+            `has_mask` (N,) bool, aligned with `bboxes`. Polygon instances come first, then
+            the box-only ones (`has_mask` False, all-zero mask: no mask loss). Polygons follow
+            the ROI crop, the letterbox and the spatial augmentation like the pixels do, and
+            their boxes are re-derived from the transformed masks. Off by default: the item
+            is then exactly what it was, and polygon files give boxes only.
+        mask_ratio: Input size over mask size; 4 matches the YOLOv8-seg prototypes.
     """
 
     def __init__(
@@ -229,8 +250,14 @@ class YOLODataset(Dataset):
         roi_crop_jitter: float = 0.0,
         pixel_cache_dir: str | Path | None = None,
         modality_ablation: str = DEFAULT_MODALITY_ABLATION,
+        load_masks: bool = False,
+        mask_ratio: int = 4,
     ):
         validate_roi_crop(roi_crop_margin, roi_crop_jitter)
+        if mask_ratio < 1 or image_size % mask_ratio:
+            raise ValueError(f"mask_ratio must divide image_size, got {mask_ratio} for {image_size}.")
+        self.load_masks = load_masks
+        self.mask_ratio = mask_ratio
         # Here as well as in TrainingConfig: `--override` assigns with setattr,
         # which never re-runs TrainingConfig.__post_init__.
         validate_modality_ablation(modality_ablation)
@@ -377,7 +404,8 @@ class YOLODataset(Dataset):
     def _load_labels(self, path: Path) -> tuple[np.ndarray, np.ndarray]:
         """Parse YOLO-format label file.
 
-        Format: class_id cx cy w h (normalized 0-1, one per line).
+        Format: `class_id cx cy w h`, or a polygon `class_id x1 y1 ... xn yn`, whose box is its
+        tight bounding box (normalized 0-1, one per line).
 
         Args:
             path: Path to .txt label file.
@@ -386,27 +414,31 @@ class YOLODataset(Dataset):
             bboxes: (N, 4) array of [cx, cy, w, h] normalized.
             labels: (N,) array of class IDs.
         """
-        if not path.exists():
-            return np.zeros((0, 4), dtype=np.float32), np.zeros((0,), dtype=np.int64)
+        bboxes, labels, _ = self._load_instances(path)
+        return bboxes, labels
 
-        bboxes, labels = [], []
+    def _load_instances(
+        self, path: Path
+    ) -> tuple[np.ndarray, np.ndarray, list[np.ndarray | None]]:
+        """`_load_labels` plus each instance's normalized (n, 2) polygon, None for a box line."""
+        if not path.exists():
+            return np.zeros((0, 4), dtype=np.float32), np.zeros((0,), dtype=np.int64), []
+
+        bboxes, labels, polygons = [], [], []
         with open(path, "r") as f:
             for line in f:
-                parts = line.strip().split()
-                if len(parts) < 5:
+                parsed = parse_label_line(line.strip().split())
+                if parsed is None:
                     continue
-                cls_id = int(parts[0])
-                cx, cy, w, h = float(parts[1]), float(parts[2]), float(parts[3]), float(parts[4])
-                # Skip degenerate boxes
-                if w <= 0 or h <= 0:
-                    continue
-                bboxes.append([cx, cy, w, h])
+                cls_id, box, polygon = parsed
+                bboxes.append(box)
                 labels.append(cls_id)
+                polygons.append(polygon)
 
         if not bboxes:
-            return np.zeros((0, 4), dtype=np.float32), np.zeros((0,), dtype=np.int64)
+            return np.zeros((0, 4), dtype=np.float32), np.zeros((0,), dtype=np.int64), []
 
-        return np.array(bboxes, dtype=np.float32), np.array(labels, dtype=np.int64)
+        return np.array(bboxes, dtype=np.float32), np.array(labels, dtype=np.int64), polygons
 
     def __len__(self) -> int:
         return len(self.pairs)
@@ -457,13 +489,15 @@ class YOLODataset(Dataset):
 
     def _finish_item(self, pair, rgb_img, nir_img, frame_size, origin) -> dict:
         """Crop, letterbox, augment and normalize one registered pair."""
-        bboxes, labels = self._load_labels(pair["label_path"])
+        bboxes, labels, polygons = self._load_instances(pair["label_path"])
+        if not self.load_masks:
+            polygons = None
 
         # Crop to the GT mango box (+ margin) so letterbox does not throw away
         # most of the resolution on background. After registration, so one
         # RGB-frame window is valid for both modalities.
         if self.roi_crop:
-            rgb_img, nir_img, bboxes, labels = crop_to_roi(
+            cropped = crop_to_roi(
                 rgb_img,
                 nir_img,
                 bboxes,
@@ -474,7 +508,11 @@ class YOLODataset(Dataset):
                 rng=self._roi_crop_rng(),
                 frame_size=frame_size,
                 origin=origin,
+                polygons=polygons,
             )
+            rgb_img, nir_img, bboxes, labels = cropped[:4]
+            if polygons is not None:
+                polygons = cropped[4]
 
         # Letterbox both images (RGB uses gray=114, NIR uses its own mean ~14)
         rgb_lb, scale, pad_x, pad_y = letterbox(rgb_img, self.image_size, self.letterbox_value)
@@ -485,7 +523,15 @@ class YOLODataset(Dataset):
             orig_h, orig_w = rgb_img.shape[:2]
             bboxes = self._rescale_bboxes(bboxes, orig_w, orig_h, scale, pad_x, pad_y)
 
-        if self._uses_default_multimodal_transforms:
+        masks_small = has_mask = None
+        if self.load_masks:
+            orig_h, orig_w = rgb_img.shape[:2]
+            rgb_aug, nir_aug, bboxes_aug, labels_aug, masks_small, has_mask = (
+                self._augment_with_masks(
+                    rgb_lb, nir_lb, bboxes, labels, polygons, (orig_w, orig_h), scale, pad_x, pad_y
+                )
+            )
+        elif self._uses_default_multimodal_transforms:
             rgb_aug, nir_aug, bboxes_aug, labels_aug = self._apply_default_transforms(
                 rgb_lb=rgb_lb,
                 nir_lb=nir_lb,
@@ -543,13 +589,106 @@ class YOLODataset(Dataset):
         bboxes_tensor = torch.from_numpy(bboxes_aug).float()
         labels_tensor = torch.from_numpy(labels_aug).long()
 
-        return {
+        item = {
             "rgb": rgb_tensor,
             "nir": nir_tensor,
             "bboxes": bboxes_tensor,
             "labels": labels_tensor,
             "image_id": pair["image_id"],
         }
+        if self.load_masks:
+            item["masks"] = torch.from_numpy(masks_small)
+            item["has_mask"] = torch.from_numpy(has_mask)
+        return item
+
+    def _augment_with_masks(
+        self,
+        rgb_lb: np.ndarray,
+        nir_lb: np.ndarray,
+        bboxes: np.ndarray,
+        labels: np.ndarray,
+        polygons: list[np.ndarray | None],
+        orig_wh: tuple[int, int],
+        scale: float,
+        pad_x: int,
+        pad_y: int,
+    ) -> tuple:
+        """Augment one letterboxed pair whose labels may carry polygons.
+
+        Polygon instances become masks at `image_size`, go through the same transform as the
+        pixels (together with the box-only instances' boxes), and get their boxes back as the
+        tight box of what is left of the mask. An instance whose mask shrinks below
+        `MASK_MIN_VISIBILITY` of its original area (train) or vanishes is dropped.
+
+        Returns:
+            rgb, nir, bboxes (N, 4), labels (N,), masks (N, S/r, S/r) uint8, has_mask (N,) bool.
+            Polygon instances first, then the box-only ones.
+        """
+        size = self.image_size
+        seg_idx = [i for i, p in enumerate(polygons) if p is not None]
+        box_idx = [i for i, p in enumerate(polygons) if p is None]
+        orig_w, orig_h = orig_wh
+
+        masks_lb = rasterize_polygons(
+            [
+                p
+                for p in transform_polygons_letterbox(
+                    [polygons[i] for i in seg_idx], orig_w, orig_h, scale, pad_x, pad_y, size
+                )
+            ],
+            (size, size),
+        )
+        before = masks_lb.sum(axis=(1, 2))
+        box_bboxes = bboxes[box_idx] if box_idx else np.zeros((0, 4), dtype=np.float32)
+        box_labels = labels[box_idx] if box_idx else np.zeros((0,), dtype=np.int64)
+        mask_list = list(masks_lb) if len(seg_idx) else None
+
+        if self._uses_default_multimodal_transforms:
+            transformed = self._apply_default_transforms(
+                rgb_lb=rgb_lb, nir_lb=nir_lb, bboxes=box_bboxes, labels=box_labels, masks=mask_list
+            )
+            rgb_aug, nir_aug, boxes_aug, box_labels_aug = transformed[:4]
+            masks_aug = transformed[4] if mask_list is not None else []
+            min_visibility = MASK_MIN_VISIBILITY if self.split == "train" else 0.0
+        else:
+            augmented = apply_transforms_with_bbox_tracking(
+                transform=self.transform,
+                image=rgb_lb,
+                bboxes=box_bboxes.tolist(),
+                class_labels=box_labels.tolist(),
+                masks=mask_list,
+            )
+            rgb_aug, nir_aug = augmented["image"], nir_lb
+            boxes_aug = np.array(augmented["bboxes"], dtype=np.float32).reshape(-1, 4)
+            box_labels_aug = np.array(augmented["class_labels"], dtype=np.int64)
+            masks_aug = list(augmented["masks"]) if mask_list is not None else []
+            min_visibility = 0.0
+
+        kept_masks, kept_boxes, kept_labels = [], [], []
+        for mask, area_before, i in zip(masks_aug, before, seg_idx):
+            area = int(mask.sum())
+            if area < 1 or area < min_visibility * area_before:
+                continue
+            kept_masks.append(mask)
+            kept_boxes.append(mask_bbox_cxcywh(mask))
+            kept_labels.append(labels[i])
+
+        n_seg, n_box = len(kept_masks), len(boxes_aug)
+        out_size = size // self.mask_ratio
+        masks_small = np.zeros((n_seg + n_box, out_size, out_size), dtype=np.uint8)
+        if n_seg:
+            masks_small[:n_seg] = downsample_masks(np.stack(kept_masks), self.mask_ratio)
+        has_mask = np.zeros((n_seg + n_box,), dtype=bool)
+        has_mask[:n_seg] = True
+        bboxes_out = (
+            np.concatenate([np.array(kept_boxes, dtype=np.float32).reshape(-1, 4), boxes_aug])
+            if n_seg + n_box
+            else np.zeros((0, 4), dtype=np.float32)
+        )
+        labels_out = np.concatenate(
+            [np.array(kept_labels, dtype=np.int64), np.asarray(box_labels_aug, dtype=np.int64)]
+        )
+        return rgb_aug, nir_aug, bboxes_out, labels_out, masks_small, has_mask
 
     def _roi_crop_jitter_range(self) -> float:
         """Margin jitter in effect: train augmentation only, deterministic otherwise."""
@@ -620,12 +759,16 @@ class YOLODataset(Dataset):
         nir_lb: np.ndarray,
         bboxes: np.ndarray,
         labels: np.ndarray,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        masks: list[np.ndarray] | None = None,
+    ) -> tuple:
         """Apply default transforms while preserving RGB/NIR alignment.
 
         Training uses one sampled spatial transform for RGB, NIR, and bounding
         boxes. RGB-only photometric transforms are applied afterwards because
         they do not change geometry. Validation uses the no-op transform.
+
+        With `masks` (a list of (H, W) arrays) they are transformed with the same geometry
+        and returned as a fifth item, unfiltered.
         """
         bboxes_list = bboxes.tolist() if len(bboxes) > 0 else []
         labels_list = labels.tolist() if len(labels) > 0 else []
@@ -637,6 +780,7 @@ class YOLODataset(Dataset):
                 bboxes=bboxes_list,
                 class_labels=labels_list,
                 nir=nir_lb,
+                masks=masks,
             )
             rgb_aug = augmented["image"]
             nir_aug = augmented["nir"]
@@ -646,6 +790,7 @@ class YOLODataset(Dataset):
                 image=rgb_lb,
                 bboxes=bboxes_list,
                 class_labels=labels_list,
+                masks=masks,
             )
             rgb_aug = augmented["image"]
             nir_aug = nir_lb
@@ -664,6 +809,8 @@ class YOLODataset(Dataset):
         if self.split == "train" and self.rgb_photometric_transform is not None:
             rgb_aug = self.rgb_photometric_transform(image=rgb_aug)["image"]
 
+        if masks is not None:
+            return rgb_aug, nir_aug, bboxes_aug, labels_aug, list(augmented["masks"])
         return rgb_aug, nir_aug, bboxes_aug, labels_aug
 
     def _normalize_rgb(self, image: np.ndarray) -> torch.Tensor:
@@ -707,7 +854,8 @@ class YOLODataset(Dataset):
 def collate_fn(batch: list[dict]) -> dict:
     """Custom collate function for variable-length bbox lists.
 
-    Stacks RGB and NIR tensors; keeps bboxes and labels as lists.
+    Stacks RGB and NIR tensors; keeps bboxes and labels as lists, and so the instance
+    `masks` / `has_mask` of a `load_masks` dataset.
 
     Args:
         batch: List of dataset items.
@@ -721,13 +869,17 @@ def collate_fn(batch: list[dict]) -> dict:
     labels = [item["labels"] for item in batch]
     image_ids = [item["image_id"] for item in batch]
 
-    return {
+    out = {
         "rgb": rgb,
         "nir": nir,
         "bboxes": bboxes,
         "labels": labels,
         "image_ids": image_ids,
     }
+    if "masks" in batch[0]:
+        out["masks"] = [item["masks"] for item in batch]
+        out["has_mask"] = [item["has_mask"] for item in batch]
+    return out
 
 
 def build_weighted_sampler(dataset: YOLODataset) -> WeightedRandomSampler:

@@ -61,7 +61,8 @@ def crop_to_roi(
     min_visible: float = 0.5,
     frame_size: tuple[int, int] | None = None,
     origin: tuple[int, int] = (0, 0),
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    polygons: list[np.ndarray | None] | None = None,
+) -> tuple:
     """Crop both modalities to the largest `roi_class` box plus a margin.
 
     Each of the four sides gets a margin of `margin * (box width or height)`.
@@ -87,9 +88,14 @@ def crop_to_roi(
         frame_size: `(height, width)` of the full frame when `rgb` and `nir` hold only part
             of it, as in the pixel cache. `bboxes` stay normalized to the full frame.
         origin: `(x, y)` of `rgb[0, 0]` in the full frame.
+        polygons: Optional per-instance polygons, aligned with `bboxes`: `(n, 2)` arrays
+            normalized to the full frame, or None for a box-only instance. They are moved
+            into the crop window like the boxes, and dropped with their box.
 
     Returns:
-        (rgb_c, nir_c, bboxes_c, labels_c). Boxes are float32 `(N, 4)` YOLO
+        (rgb_c, nir_c, bboxes_c, labels_c), plus `polygons_c` as a fifth item when `polygons`
+        was given: the kept polygons, normalized to the CROPPED image and not clipped to it
+        (the rasterizer clips), in the input order. Boxes are float32 `(N, 4)` YOLO
         coordinates normalized to the CROPPED image, labels int64 `(N,)`, in
         the input order. When there is no `roi_class` box (or the window would
         be empty) the inputs come back unchanged, i.e. the full frame.
@@ -111,9 +117,14 @@ def crop_to_roi(
     bboxes = np.asarray(bboxes, dtype=np.float32).reshape(-1, 4)
     labels = np.asarray(labels, dtype=np.int64).reshape(-1)
 
+    def result(rgb_r, nir_r, boxes_r, labels_r, polygons_r):
+        if polygons is None:
+            return rgb_r, nir_r, boxes_r, labels_r
+        return rgb_r, nir_r, boxes_r, labels_r, polygons_r
+
     roi_candidates = np.flatnonzero(labels == roi_class)
     if roi_candidates.size == 0:
-        return rgb, nir, bboxes, labels
+        return result(rgb, nir, bboxes, labels, polygons)
 
     height, width = frame_size if frame_size is not None else rgb.shape[:2]
     boxes = bboxes.astype(np.float64)
@@ -141,7 +152,7 @@ def crop_to_roi(
     y_max = min(max(math.ceil(bottom - _PIXEL_EPS), 0), height)
     if x_max <= x_min or y_max <= y_min:
         # ROI entirely outside the image: nothing sensible to crop to.
-        return rgb, nir, bboxes, labels
+        return result(rgb, nir, bboxes, labels, polygons)
 
     crop_w, crop_h = x_max - x_min, y_max - y_min
 
@@ -177,4 +188,13 @@ def crop_to_roi(
         )
     rgb_c = np.ascontiguousarray(rgb[y_min - y0:y_max - y0, x_min - x0:x_max - x0])
     nir_c = np.ascontiguousarray(nir[y_min - y0:y_max - y0, x_min - x0:x_max - x0])
-    return rgb_c, nir_c, cropped[keep].astype(np.float32), labels[keep]
+    polygons_c = None
+    if polygons is not None:
+        window = np.array([x_min, y_min], dtype=np.float64)
+        extent = np.array([crop_w, crop_h], dtype=np.float64)
+        full = np.array([width, height], dtype=np.float64)
+        polygons_c = [
+            None if polygons[i] is None else (polygons[i] * full - window) / extent
+            for i in np.flatnonzero(keep)
+        ]
+    return result(rgb_c, nir_c, cropped[keep].astype(np.float32), labels[keep], polygons_c)
