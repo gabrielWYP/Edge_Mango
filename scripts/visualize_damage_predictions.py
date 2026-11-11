@@ -13,6 +13,12 @@ Class colors:
 This script helps verify whether damage annotations (class 1) are correctly
 aligned with the images, or if the model is simply failing to learn them.
 
+For a segment student (`task=segment` in the checkpoint) it also draws the masks as filled,
+semi-transparent contours with an outline: the ground-truth polygons of YOLO-seg label files on
+the left, the predicted masks (`sigmoid(coefs . protos)` cropped to each box, as in
+`src.training.decode.process_masks`) on the right. Boxes are drawn as always, and a detect
+checkpoint gets boxes only.
+
 Example usage:
     # MasterModel (RGB+NIR)
     python scripts/visualize_damage_predictions.py \\
@@ -61,10 +67,11 @@ from src.models.master.master_model import MasterModel
 from src.models.student.student_model import StudentModel, strip_legacy_kd_adapter_keys
 from src.training.config import TrainingConfig
 from src.training.dataset import letterbox
-from src.training.decode import decode_detections
+from src.training.decode import decode_detections, decode_detections_with_coefs, process_masks
 from src.training.fusion_modes import check_fusion_ablation_compatible
 from src.training.neck_norm import check_norm_compatible
 from src.training.nir_registration import load_homography, register_nir_to_rgb
+from src.training.seg_labels import mask_to_polygon, parse_label_line, transform_polygons_letterbox
 from src.training.strides import STUDENT_STRIDES
 
 # ---------------------------------------------------------------------------
@@ -194,6 +201,10 @@ def load_model(
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     is_checkpoint_dict = isinstance(checkpoint, dict) and "model_state_dict" in checkpoint
 
+    # A student's task and variant are the checkpoint's own (the config's variant for a checkpoint without them).
+    checkpoint_config = (checkpoint.get("config") or {}) if is_checkpoint_dict else {}
+    if not isinstance(checkpoint_config, dict):
+        checkpoint_config = dict(vars(checkpoint_config))
     head_strides = None
     fusion_pos_encoding = config.fusion_pos_encoding
     neck_norm, neck_gn_groups = config.neck_norm, config.neck_gn_groups
@@ -241,7 +252,11 @@ def load_model(
         check_norm_compatible(model, state_dict, source=f"Checkpoint at {checkpoint_path}")
         strides = list(model.head_strides)
     else:
-        model = StudentModel(num_classes=config.num_classes)
+        model = StudentModel(
+            num_classes=config.num_classes,
+            variant=checkpoint_config.get("student_variant", config.student_variant),
+            task=checkpoint_config.get("task", "detect"),
+        )
         strides = list(STUDENT_STRIDES)
         # Pre-fix KD checkpoints stored the training-only adapters inside
         # `model_state_dict`; they are not part of the student.
@@ -419,6 +434,59 @@ def decode_predictions(
     return boxes.cpu().numpy(), scores.cpu().numpy(), labels.cpu().numpy()
 
 
+def decode_segmentation_predictions(
+    output: dict,
+    num_classes: int,
+    image_size: int,
+    conf_threshold: float,
+    strides: tuple[int, ...] = tuple(STUDENT_STRIDES),
+    nms_iou_threshold: float = 0.5,
+    nms_enabled: bool = True,
+    per_class_candidates: bool = True,
+    max_detections: int = 300,
+    mask_threshold: float = 0.5,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, torch.Tensor]:
+    """`decode_predictions` plus the (P, h, w) bool masks of the detections, at prototype resolution.
+
+    The boxes, scores and labels are those of `decode_predictions` (same decode, same NMS); the masks
+    come from `process_masks` with the boxes normalized to the model input, so each mask is cropped to
+    its box. Use `mask_polygons_px` to bring them to letterbox pixels.
+    """
+    boxes, scores, labels, coefs = decode_detections_with_coefs(
+        output["preds"],
+        output["cls_preds"],
+        output["mask_coefs"],
+        batch_idx=0,
+        num_classes=num_classes,
+        image_size=image_size,
+        strides=tuple(strides),
+        conf_threshold=conf_threshold,
+        nms_iou_threshold=nms_iou_threshold,
+        nms_enabled=nms_enabled,
+        per_class_candidates=per_class_candidates,
+        max_detections=max_detections,
+        normalize=False,
+    )
+    masks = process_masks(
+        output["protos"][0].float(), coefs.to(output["protos"].device),
+        (boxes / image_size).to(output["protos"].device), threshold=mask_threshold,
+    ).cpu()
+    return boxes.cpu().numpy(), scores.cpu().numpy(), labels.cpu().numpy(), masks
+
+
+def mask_polygons_px(masks: torch.Tensor, image_size: int) -> list[np.ndarray | None]:
+    """Largest-contour polygons of (P, h, w) masks, in pixels of the `image_size` letterboxed input.
+
+    None for an empty mask. The prototype grid covers the whole letterboxed input, so a polygon
+    normalized to it only needs scaling by `image_size`.
+    """
+    polygons = []
+    for mask in masks.numpy().astype(np.uint8):
+        polygon = mask_to_polygon(mask)
+        polygons.append(None if polygon is None else polygon * image_size)
+    return polygons
+
+
 # ---------------------------------------------------------------------------
 # Ground truth loading
 # ---------------------------------------------------------------------------
@@ -433,26 +501,36 @@ def load_yolo_labels(label_path: Path) -> tuple[np.ndarray, np.ndarray]:
         bboxes: (N, 4) [cx, cy, w, h] normalized to original image.
         labels: (N,) integer class IDs.
     """
-    if not label_path.exists():
-        return np.zeros((0, 4), dtype=np.float32), np.zeros((0,), dtype=np.int64)
+    bboxes, labels, _ = load_yolo_labels_with_polygons(label_path)
+    return bboxes, labels
 
-    bboxes, labels = [], []
-    with open(label_path, "r") as f:
-        for line in f:
-            parts = line.strip().split()
-            if len(parts) < 5:
-                continue
-            cls_id = int(parts[0])
-            cx, cy, w, h = float(parts[1]), float(parts[2]), float(parts[3]), float(parts[4])
-            if w <= 0 or h <= 0:
-                continue
-            bboxes.append([cx, cy, w, h])
-            labels.append(cls_id)
+
+def load_yolo_labels_with_polygons(label_path: Path) -> tuple[np.ndarray, np.ndarray, list[np.ndarray | None]]:
+    """Parse a YOLO label file whose lines are boxes (`cls cx cy w h`) or polygons (`cls x1 y1 ... xn yn`).
+
+    A polygon line gives its tight bounding box as its box, as in training.
+
+    Returns:
+        bboxes: (N, 4) [cx, cy, w, h] normalized to original image.
+        labels: (N,) integer class IDs.
+        polygons: N items, the (n, 2) normalized polygon of a polygon line and None for a box line.
+    """
+    bboxes, labels, polygons = [], [], []
+    if label_path.exists():
+        with open(label_path, "r") as f:
+            for line in f:
+                parsed = parse_label_line(line.split())
+                if parsed is None:
+                    continue
+                cls_id, box, polygon = parsed
+                labels.append(cls_id)
+                bboxes.append(box)
+                polygons.append(polygon)
 
     if not bboxes:
-        return np.zeros((0, 4), dtype=np.float32), np.zeros((0,), dtype=np.int64)
+        return np.zeros((0, 4), dtype=np.float32), np.zeros((0,), dtype=np.int64), []
 
-    return np.array(bboxes, dtype=np.float32), np.array(labels, dtype=np.int64)
+    return np.array(bboxes, dtype=np.float32), np.array(labels, dtype=np.int64), polygons
 
 
 def gt_to_letterbox_pixels(
@@ -562,6 +640,39 @@ def draw_boxes(
     return image
 
 
+def draw_masks(
+    image: np.ndarray,
+    polygons_px: list[np.ndarray | None],
+    labels: np.ndarray,
+    alpha: float = 0.4,
+) -> np.ndarray:
+    """Draw polygons as filled contours: a class-coloured translucent fill and a 1 px outline.
+
+    Args:
+        image: (H, W, 3) BGR uint8 image to draw on (modified in place).
+        polygons_px: one (n, 2) pixel polygon per instance, None to skip (a box-only label or an empty mask).
+        labels: (N,) class IDs aligned with `polygons_px`.
+        alpha: opacity of the fill.
+
+    Returns:
+        The annotated image.
+    """
+    overlay = image.copy()
+    drawn = []
+    for polygon, cls_id in zip(polygons_px, labels):
+        if polygon is None or len(polygon) < 3:
+            continue
+        points = np.round(polygon).astype(np.int32).reshape(-1, 1, 2)
+        color = CLASS_COLORS.get(int(cls_id), (255, 255, 255))
+        cv2.fillPoly(overlay, [points], color)
+        drawn.append((points, color))
+    if drawn:
+        image[:] = cv2.addWeighted(overlay, alpha, image, 1 - alpha, 0)
+        for points, color in drawn:
+            cv2.polylines(image, [points], True, color, 1, cv2.LINE_AA)
+    return image
+
+
 def create_side_by_side(
     rgb_lb: np.ndarray,
     gt_boxes: np.ndarray,
@@ -569,6 +680,10 @@ def create_side_by_side(
     pred_boxes: np.ndarray,
     pred_labels: np.ndarray,
     pred_scores: np.ndarray,
+    gt_polygons: list[np.ndarray | None] | None = None,
+    pred_polygons: list[np.ndarray | None] | None = None,
+    gt_mask_labels: np.ndarray | None = None,
+    pred_mask_labels: np.ndarray | None = None,
 ) -> np.ndarray:
     """Create a side-by-side comparison image: GT (left) vs Predictions (right).
 
@@ -579,12 +694,21 @@ def create_side_by_side(
         pred_boxes: (P, 4) predicted cxcywh in letterbox pixel coords.
         pred_labels: (P,) predicted class IDs.
         pred_scores: (P,) predicted confidence scores.
+        gt_polygons: optional GT polygons in letterbox pixels, aligned with `gt_labels` (None for a box-only
+            label), drawn as filled contours under the boxes.
+        pred_polygons: optional predicted-mask polygons in letterbox pixels, aligned with `pred_labels`.
+        gt_mask_labels, pred_mask_labels: class IDs of the polygons when they are not those of the boxes.
 
     Returns:
         (H, 2*W, 3) BGR side-by-side image.
     """
     left = rgb_lb.copy()
     right = rgb_lb.copy()
+
+    if gt_polygons is not None:
+        draw_masks(left, gt_polygons, gt_labels if gt_mask_labels is None else gt_mask_labels)
+    if pred_polygons is not None:
+        draw_masks(right, pred_polygons, pred_labels if pred_mask_labels is None else pred_mask_labels)
 
     draw_boxes(left, gt_boxes, gt_labels, scores=None, title="Ground Truth")
     draw_boxes(right, pred_boxes, pred_labels, scores=pred_scores, title="Predictions")
@@ -642,6 +766,9 @@ def main() -> int:
     # Load model. `strides` is resolved from the checkpoint for MasterModel
     # (fusion-redesign D-D) — see `load_model`'s docstring.
     model, strides = load_model(args.model_type, args.checkpoint, config, device)
+    segment = getattr(model, "task", "detect") == "segment"
+    if segment:
+        logger.info("Segment checkpoint: masks are drawn as filled contours.")
 
     # Discover images
     rgb_dir = Path(args.rgb_dir)
@@ -718,19 +845,31 @@ def main() -> int:
                     output = model(rgb_tensor)
 
             # Decode predictions (in letterbox pixel coordinates)
-            pred_boxes, pred_scores, pred_labels = decode_predictions(
-                output,
-                config.num_classes,
-                config.image_size,
-                args.conf_threshold,
+            decode_kwargs = dict(
                 strides=tuple(strides),
                 nms_iou_threshold=args.nms_iou_threshold,
                 nms_enabled=args.nms_enabled,
                 per_class_candidates=args.decode_per_class,
             )
+            pred_polygons = None
+            if segment:
+                pred_boxes, pred_scores, pred_labels, pred_masks = decode_segmentation_predictions(
+                    output, config.num_classes, config.image_size, args.conf_threshold, **decode_kwargs
+                )
+                pred_polygons = mask_polygons_px(pred_masks, config.image_size)
+            else:
+                pred_boxes, pred_scores, pred_labels = decode_predictions(
+                    output, config.num_classes, config.image_size, args.conf_threshold, **decode_kwargs
+                )
 
             # Load ground truth
-            gt_bboxes, gt_labels_arr = load_yolo_labels(pair["label_path"])
+            gt_bboxes, gt_labels_arr, gt_polygons_norm = load_yolo_labels_with_polygons(pair["label_path"])
+            gt_polygons = (
+                transform_polygons_letterbox(
+                    gt_polygons_norm, orig_w, orig_h, scale, pad_x, pad_y, config.image_size
+                )
+                if segment else None
+            )
 
             # Convert GT to letterbox pixel coordinates
             gt_boxes_lb = gt_to_letterbox_pixels(gt_bboxes, orig_w, orig_h, scale, pad_x, pad_y)
@@ -746,6 +885,8 @@ def main() -> int:
                 pred_boxes,
                 pred_labels,
                 pred_scores,
+                gt_polygons=gt_polygons,
+                pred_polygons=pred_polygons,
             )
 
             # Save
