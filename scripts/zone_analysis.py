@@ -44,6 +44,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from scripts.lot_descriptors import REDUCE, box_mask, damage_contrast, fruit_mask  # noqa: E402
 from src.data_pipeline.v4_selection import LATENT_HOURS  # noqa: E402
+from src.evaluation.arms import with_segment_twins  # noqa: E402
 from src.evaluation.v4_metrics import (  # noqa: E402
     AP50_IOU,
     damage_ap,
@@ -54,7 +55,8 @@ from src.evaluation.v4_metrics import (  # noqa: E402
 )
 
 ZONES = ("centro", "izquierda", "derecha", "superior", "inferior")
-ARMS = ("est_rgb", "est_rgbnir", "kd_rgb", "kd_rgbnir", "est_nir")
+# The box AP per zone of a segment twin is as valid as its detect arm's; absent twins add no rows.
+ARMS = tuple(with_segment_twins(("est_rgb", "est_rgbnir", "kd_rgb", "kd_rgbnir", "est_nir")))
 RUN_DIR = re.compile(r"fold(\d+)_seed(\d+)")
 
 

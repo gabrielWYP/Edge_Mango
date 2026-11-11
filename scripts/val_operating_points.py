@@ -41,6 +41,7 @@ import torch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.data_pipeline.v4_selection import LATENT_HOURS  # noqa: E402
+from src.evaluation.arms import segment_twin_names  # noqa: E402
 from src.evaluation.v4_metrics import (  # noqa: E402
     AP50_IOU,
     EvaluatedPhoto,
@@ -63,6 +64,13 @@ ARMS = {  # arm: (colour, line style, label). One solid colour per arm, as in pl
     "crosskd_rgbnir_low": ("#a56eff", ":", "crosskd_rgbnir_low (celdas con baja dependencia de NIR)"),
     "crosskd_rgbnir_better": ("#d12771", "--", "crosskd_rgbnir_better (celdas donde el maestro supera al alumno)"),
 }
+# Segment twins (box and per-photo operating points are as valid as for the detect arm): the colour of the base arm,
+# a line style of their own: `_seg` dash-dot, `_segdt` dotted.
+_TWIN_STYLES = {"_seg": "-.", "_segdt": ":"}
+for _base, (_color, _style, _label) in list(ARMS.items()):
+    for _twin in segment_twin_names(_base):
+        _suffix = _twin.removeprefix(_base)
+        ARMS[_twin] = (_color, _TWIN_STYLES[_suffix], _twin + _label.removeprefix(_base))
 RUN_DIR = re.compile(r"fold(\d+)_seed(\d+)")
 
 

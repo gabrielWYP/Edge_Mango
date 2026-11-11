@@ -51,7 +51,7 @@ DIFFERENCES = {
 }
 # Segment twins of every arm (scripts/run_small_arms.py): `_seg` with a segment teacher, `_segdt` with a detect one.
 SEGMENT_SUFFIXES = ("_seg", "_segdt")
-EXPORT_ARMS = [*ARMS, *(f"{arm}{suffix}" for suffix in SEGMENT_SUFFIXES for arm in ARMS)]
+EXPORT_ARMS = list(ARMS)  # val_operating_points.ARMS already holds the twins, detect arms first
 # The plan's four comparisons between segment twins (`H1_seg`, `H2_segdt`, ...). They are computed on the box metrics
 # and, because segment runs also carry them, on the mask ones (`latent_mask_ap50`, `latent_mask_ap30`).
 for _suffix in SEGMENT_SUFFIXES:
