@@ -15,6 +15,20 @@ label files of the evaluated split and the `index.csv` of the v4 dataset, and co
     sano_fp_per_image   descriptive: damage boxes per `sano` photo at the `conf_threshold` operating
                         point (at the evaluation threshold nearly every box would count).
 
+Mask twins (segment checkpoints only; `predictions.jsonl` then carries a `mask` polygon per damage
+detection and the label files hold polygon lines). Same photo sets and ranking as the box metrics,
+IoU between masks instead of boxes, rasterized on a `MASK_CANVAS` square of the normalized frame
+(IoU is invariant to the axis scaling). Box metrics are never touched by them:
+
+    latent_mask_ap50    the primary's set, mask IoU 0.50.
+    latent_mask_ap30    the secondary's, mask IoU 0.30.
+    mask_ap50_by_hour   mask AP50 per post-impact hour of the index.
+    developed_mask_ap50 mask AP50 on the hours outside `LATENT_HOURS`.
+    mask_gt_box_only    damage ground-truth lines without a polygon; they leave the mask ground
+                        truth (as in training), so a prediction on one is a false positive.
+
+Face AUROC and the false positives per `sano` photo depend on scores alone and stay as they are.
+
 A `sano` photo has no hour, zone or provenance, so it enters none of the descriptive AP strata:
 only the two latent metrics, by the plan's definition, charge its false positives.
 
@@ -43,18 +57,20 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
 import torch
 
 from src.data_pipeline.v4_selection import LATENT_HOURS, hour_label
 from src.evaluation.detectability import auroc
 from src.training.config import DAMAGE_CLASS_ID, TrainingConfig
-from src.training.metrics import _compute_ap_at_iou, _cxcywh_to_xyxy
-from src.training.seg_labels import read_label_boxes
+from src.training.metrics import _ap_from_ranked, _compute_ap_at_iou, _cxcywh_to_xyxy, _mask_iou, _rank_class
+from src.training.seg_labels import parse_label_line, rasterize_polygons, read_label_boxes
 
 AP50_IOU = 0.50
 AP30_IOU = 0.30
 DEFAULT_CONF_THRESHOLD = TrainingConfig.conf_threshold
 SANO = hour_label(None)
+MASK_CANVAS = 512  # side, in pixels, of the square the masks of a photo are rasterized on
 REQUIRED_COLUMNS = ("stem", "lot", "mango_id", "cara", "ronda_h", "zona", "provenance")
 
 
@@ -70,6 +86,11 @@ class EvaluatedPhoto:
     gt_boxes: torch.Tensor
     pred_boxes: torch.Tensor
     pred_scores: torch.Tensor
+    # Segment only: normalized (n, 2) polygons of the source frame, aligned with `pred_boxes` /
+    # `gt_polygons`. `pred_polygons` is None for a detect evaluation.
+    pred_polygons: tuple[np.ndarray, ...] | None = None
+    gt_polygons: tuple[np.ndarray, ...] = ()
+    n_gt_box_only: int = 0
 
     @property
     def face_score(self) -> float:
@@ -122,6 +143,42 @@ def read_predictions(path: str | Path) -> dict[str, tuple[torch.Tensor, torch.Te
     return predictions
 
 
+def read_prediction_masks(path: str | Path) -> dict[str, list[np.ndarray]] | None:
+    """`{stem: damage masks}` of a segment predictions.jsonl, None for a detect one.
+
+    A mask is the `mask` field of a damage box, a flat normalized `[x1, y1, x2, y2, ...]` polygon of
+    the source frame (empty when the mask was); the list is aligned with `read_predictions`'s damage
+    boxes. A file is a segment one when any box has a `mask`; then every damage box must have it.
+    Raises ValueError, naming the file and the line, otherwise.
+    """
+    path = Path(path)
+    try:
+        lines = path.read_text().splitlines()
+    except OSError as error:
+        raise ValueError(f"Cannot read the predictions {path}: {error}") from None
+    records = []
+    for number, line in enumerate(lines, start=1):
+        if line.strip():
+            try:
+                records.append((number, json.loads(line)))
+            except ValueError as error:
+                raise ValueError(f"{path}:{number}: malformed prediction line ({error}).") from None
+    if not any("mask" in box for _, record in records for box in record.get("boxes", ())):
+        return None
+    masks: dict[str, list[np.ndarray]] = {}
+    for number, record in records:
+        polygons = []
+        for box in record["boxes"]:
+            if int(box["class"]) != DAMAGE_CLASS_ID:
+                continue
+            flat = box.get("mask")
+            if flat is None or len(flat) % 2:
+                raise ValueError(f"{path}:{number}: a damage box has no valid mask (flat x, y pairs).")
+            polygons.append(np.asarray(flat, dtype=np.float64).reshape(-1, 2))
+        masks[record["stem"]] = polygons
+    return masks
+
+
 def read_index(path: str | Path) -> dict[str, dict[str, str]]:
     """The rows of a v4 `index.csv` by stem; raises ValueError for a missing column or a repeated stem."""
     path = Path(path)
@@ -154,6 +211,23 @@ def read_damage_labels(labels_dir: str | Path) -> dict[str, torch.Tensor]:
     return labels
 
 
+def read_damage_polygons(labels_dir: str | Path) -> dict[str, tuple[list[np.ndarray], int]]:
+    """`{stem: (damage polygons, number of damage lines without one)}` of a YOLO-seg label directory."""
+    polygons: dict[str, tuple[list[np.ndarray], int]] = {}
+    for path in sorted(Path(labels_dir).glob("*.txt")):
+        found, box_only = [], 0
+        for line in path.read_text().splitlines():
+            parsed = parse_label_line(line.split())
+            if parsed is None or parsed[0] != DAMAGE_CLASS_ID:
+                continue
+            if parsed[2] is None:
+                box_only += 1
+            else:
+                found.append(parsed[2])
+        polygons[path.stem] = (found, box_only)
+    return polygons
+
+
 def _hour(row: Mapping[str, str]) -> int | None:
     """The `ronda_h` of an index row: None for `sano`, else the post-impact hour."""
     value = row["ronda_h"]
@@ -169,8 +243,13 @@ def join_photos(
     predictions: Mapping[str, tuple[torch.Tensor, torch.Tensor]],
     index: Mapping[str, Mapping[str, str]],
     labels: Mapping[str, torch.Tensor],
+    pred_masks: Mapping[str, Sequence[np.ndarray]] | None = None,
+    gt_polygons: Mapping[str, tuple[Sequence[np.ndarray], int]] | None = None,
 ) -> list[EvaluatedPhoto]:
     """The evaluated photos, in prediction order.
+
+    `pred_masks` and `gt_polygons` (segment evaluations) fill the photos' mask fields; a photo
+    without an entry has none.
 
     The predictions and the label files must hold the same stems: a photo silently missing from
     one side would change the metric. Index rows outside them are the other lots of the dataset.
@@ -198,6 +277,9 @@ def join_photos(
                 gt_boxes=labels[stem],
                 pred_boxes=boxes,
                 pred_scores=scores,
+                pred_polygons=None if pred_masks is None else tuple(pred_masks.get(stem, ())),
+                gt_polygons=tuple((gt_polygons or {}).get(stem, ((), 0))[0]),
+                n_gt_box_only=(gt_polygons or {}).get(stem, ((), 0))[1],
             )
         )
     return photos
@@ -223,6 +305,55 @@ def damage_ap(photos: Sequence[EvaluatedPhoto], iou_threshold: float) -> dict:
             DAMAGE_CLASS_ID + 1,
         )
         ap = per_class[DAMAGE_CLASS_ID]
+    return {"ap": ap, "n_gt": n_gt, "n_images": len(photos)}
+
+
+class _MaskOverlap:
+    """Mask IoU of the photos, rasterized once and shared by every stratum and threshold.
+
+    `_rank_class` hands its IoU function the per-image "boxes" it was given, so each mask is
+    represented by a `[photo, instance]` row and the IoU matrix of a photo is computed on first use.
+    """
+
+    def __init__(self, photos: Sequence[EvaluatedPhoto]):
+        self._position = {photo.stem: position for position, photo in enumerate(photos)}
+        self._photos = list(photos)
+        self._cache: dict[int, torch.Tensor] = {}
+
+    def handles(self, stem: str, count: int) -> torch.Tensor:
+        position = self._position[stem]
+        return torch.stack([torch.full((count,), position), torch.arange(count)], dim=1).double()
+
+    def iou(self, preds: torch.Tensor, gts: torch.Tensor) -> torch.Tensor:
+        position = int(preds[0, 0])
+        if position not in self._cache:
+            photo = self._photos[position]
+            self._cache[position] = _mask_iou(_rasterize(photo.pred_polygons), _rasterize(photo.gt_polygons))
+        return self._cache[position][preds[:, 1].long()][:, gts[:, 1].long()]
+
+
+def _rasterize(polygons: Sequence[np.ndarray]) -> torch.Tensor:
+    """(n, MASK_CANVAS ** 2) flat binary masks of normalized polygons."""
+    pixels = [polygon * MASK_CANVAS - 0.5 for polygon in polygons]
+    return torch.from_numpy(rasterize_polygons(pixels, (MASK_CANVAS, MASK_CANVAS))).reshape(len(pixels), -1)
+
+
+def damage_mask_ap(photos: Sequence[EvaluatedPhoto], iou_threshold: float, overlap: _MaskOverlap) -> dict:
+    """`damage_ap` with mask IoU over the polygon ground truth; `n_gt` counts polygons only."""
+    n_gt = sum(len(photo.gt_polygons) for photo in photos)
+    ap = None
+    if n_gt:
+        damage = torch.tensor(DAMAGE_CLASS_ID)
+        ranked = {DAMAGE_CLASS_ID: _rank_class(
+            [overlap.handles(p.stem, len(p.pred_polygons)) for p in photos],
+            [p.pred_scores for p in photos],
+            [damage.repeat(len(p.pred_scores)) for p in photos],
+            [overlap.handles(p.stem, len(p.gt_polygons)) for p in photos],
+            [damage.repeat(len(p.gt_polygons)) for p in photos],
+            DAMAGE_CLASS_ID,
+            overlap.iou,
+        )}
+        ap = _ap_from_ranked(ranked, iou_threshold)[1][DAMAGE_CLASS_ID]
     return {"ap": ap, "n_gt": n_gt, "n_images": len(photos)}
 
 
@@ -264,7 +395,20 @@ def compute_metrics(
     zones = sorted({row["zona"] for row in rows if row["zona"]})
     provenances = sorted({row["provenance"] for row in rows if row["provenance"]})
     latent_set = [photo for photo in photos if photo.hour is None or photo.hour in LATENT_HOURS]
+    mask_metrics = {}
+    if photos and all(photo.pred_polygons is not None for photo in photos):
+        overlap = _MaskOverlap(photos)
+        mask_metrics = {
+            "developed_mask_ap50": damage_mask_ap([p for p in photos if p.hour in developed], AP50_IOU, overlap),
+            "latent_mask_ap30": damage_mask_ap(latent_set, AP30_IOU, overlap),
+            "latent_mask_ap50": damage_mask_ap(latent_set, AP50_IOU, overlap),
+            "mask_ap50_by_hour": {
+                str(hour): damage_mask_ap([p for p in photos if p.hour == hour], AP50_IOU, overlap) for hour in hours
+            },
+            "mask_gt_box_only": sum(photo.n_gt_box_only for photo in photos),
+        }
     return {
+        **mask_metrics,
         "ap50_by_hour": {
             str(hour): damage_ap([p for p in photos if p.hour == hour], AP50_IOU) for hour in hours
         },

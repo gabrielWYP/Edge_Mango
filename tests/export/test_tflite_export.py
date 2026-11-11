@@ -103,6 +103,28 @@ def test_raw_outputs_match_pytorch_on_random_input(exported) -> None:
         assert np.abs(r - g).max() < 1e-3
 
 
+def test_a_segment_student_exports_four_outputs_that_match_pytorch(tmp_path) -> None:
+    """UNVERIFIED in the training venv (no litert-torch there): runs in the export venv."""
+    rc = export_student.main(["--random-init", "--seed", str(SEED), "--task", "segment", "--variant", "nano",
+                              "--image-size", "64", "--out-dir", str(tmp_path)])
+    assert rc == 0
+    metadata = json.loads((tmp_path / "student_fp32.json").read_text())
+    names = [o["logical_name"] for o in metadata["outputs"]]
+    assert names == ["boxes_raw", "cls_logits", "mask_coefs", "protos"]
+    torch.manual_seed(SEED)
+    wrapper = StudentExportWrapper(StudentModel(variant="nano", task="segment").eval())
+    nchw = torch.randn(1, 3, 64, 64)
+    io_names = {
+        "signature_key": metadata["signature_key"],
+        "input": metadata["input"],
+        "outputs": {o["logical_name"]: o for o in metadata["outputs"]},
+    }
+    got = make_tflite_runner(tmp_path / "student_fp32.tflite", io_names, names)(
+        np.ascontiguousarray(nchw.permute(0, 2, 3, 1).numpy()))
+    for ref, out in zip(make_torch_runner(wrapper)(nchw), got):
+        assert ref.shape == out.shape and np.abs(ref - out).max() < 1e-3
+
+
 def test_parity_cli_passes_on_matching_weights(exported, data_root, tmp_path) -> None:
     model_path, _ = exported
     report_path = tmp_path / "report.json"

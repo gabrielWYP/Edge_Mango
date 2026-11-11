@@ -101,12 +101,14 @@ def test_detect_arms_never_mention_the_task(tmp_path) -> None:
 
 
 def test_the_seg_names_are_an_opt_in_that_the_default_run_does_not_list(tmp_path) -> None:
-    assert not any(a.endswith("_seg") or a.endswith("_segdt") for a in rs.PLANNED_ARMS)
-    assert {"est_rgb_seg", "est_rgbnir_seg", "kd_rgb_seg", "kd_rgbnir_seg", "crosskd_rgb_seg"} <= set(rs.ARMS)
+    assert not any(a.endswith("_seg") for a in rs.PLANNED_ARMS)
+    assert {"master_rgb_seg", "master_rgbnir_seg", "master_nir_seg", "kd_rgb_seg", "kd_rgbnir_seg",
+            "crosskd_rgb_seg", "crosskd_rgbnir_seg"} <= set(rs.ARMS)
+    assert not any(a.endswith("_segdt") or a in ("est_rgb_seg", "est_rgbnir_seg", "est_nir_seg") for a in rs.ARMS)
     assert rs.parse_args(["--dataset", str(tmp_path)]).arms == rs.PLANNED_ARMS
 
 
-@pytest.mark.parametrize("arm", ["est_rgb_seg", "est_rgbnir_seg", "est_nir_seg", "kd_rgb_seg", "crosskd_rgbnir_seg"])
+@pytest.mark.parametrize("arm", ["master_rgb_seg", "master_rgbnir_seg", "master_nir_seg", "kd_rgb_seg", "crosskd_rgbnir_seg"])
 def test_a_seg_arm_trains_and_evaluates_as_segment(tmp_path, arm) -> None:
     args = _args(tmp_path, "--mask-weight", "5", "--mask-ratio", "4")
     steps = rs.plan_arm(args, arm, 0, 42)
@@ -120,38 +122,86 @@ def test_a_seg_arm_trains_and_evaluates_as_segment(tmp_path, arm) -> None:
 
 def test_a_seg_arm_keeps_the_modality_of_its_detect_twin(tmp_path) -> None:
     args = _args(tmp_path)
-    assert f"rgb_dir={tmp_path / 'links'}" in _train(args, "est_nir_seg")
-    assert "student_in_channels=4" in _train(args, "est_rgbnir_seg")
-    assert "student_in_channels=4" not in _train(args, "est_rgb_seg")
+    assert f"rgb_dir={tmp_path / 'links'}" in _train(args, "master_nir_seg")
+    assert "student_in_channels=4" in _train(args, "master_rgbnir_seg")
+    assert "student_in_channels=4" not in _train(args, "master_rgb_seg")
 
 
-def test_kd_seg_arms_use_a_segment_teacher_and_segdt_arms_a_detect_one(tmp_path) -> None:
+@pytest.mark.parametrize("arm, master", [
+    ("kd_rgb_seg", "master_rgb_seg"), ("kd_rgbnir_seg", "master_rgbnir_seg"),
+    ("crosskd_rgb_seg", "master_rgb_seg"), ("crosskd_rgbnir_seg", "master_rgbnir_seg"),
+    ("crosskd_rgbnir_high_seg", "master_rgbnir_seg"), ("crosskd_rgbnir_low_seg", "master_rgbnir_seg"),
+    ("crosskd_rgbnir_better_seg", "master_rgbnir_seg"),
+])
+def test_kd_seg_arms_distill_from_the_master_of_their_fold_and_seed(tmp_path, arm, master) -> None:
     args = _args(tmp_path)
-    seg = _train(args, "kd_rgbnir_seg")
-    assert "src.training.kd_train" in seg and "teacher_input=rgbnir" in seg
-    assert any(x.startswith("teacher_checkpoint=") and "est_rgbnir_seg/fold0/seed42" in x for x in seg)
-    dt = _train(args, "kd_rgbnir_segdt")
-    assert "task=segment" in dt and "teacher_input=rgbnir" in dt
-    assert any(x.startswith("teacher_checkpoint=") and "est_rgbnir/fold0/seed42" in x
-               and "est_rgbnir_seg" not in x for x in dt)
-    cross = _train(args, "crosskd_rgbnir_high_segdt")
-    assert "kd_mode=crosshead" in cross and "kd_gate=nir_high" in cross and "task=segment" in cross
+    command = _train(args, arm)
+    assert "src.training.kd_train" in command and "task=segment" in command
+    assert rs.ARMS[arm].teacher == master
+    assert f"teacher_checkpoint={args.checkpoints_root / master / 'fold0' / 'seed42' / 'best_model.pt'}" in command
+
+
+def test_the_crosskd_seg_arms_keep_the_overrides_of_their_detect_counterparts(tmp_path) -> None:
+    args = _args(tmp_path)
+    for detect in ("crosskd_rgb", "crosskd_rgbnir", "crosskd_rgbnir_high", "crosskd_rgbnir_low", "crosskd_rgbnir_better"):
+        assert rs.ARMS[f"{detect}_seg"].kd_overrides == rs.ARMS[detect].kd_overrides
+        assert "task=segment" not in _train(args, detect)
+    assert "kd_gate=nir_high" in _train(args, "crosskd_rgbnir_high_seg")
 
 
 def test_seg_arms_schedule_their_teacher_first(tmp_path) -> None:
-    args = _args(tmp_path, "--arms", "kd_rgb_seg", "est_rgb_seg", "--folds", "0", "--dry-run")
+    args = _args(tmp_path, "--arms", "crosskd_rgb_seg", "master_rgb_seg", "--folds", "0", "--dry-run")
     order = sorted(args.arms, key=lambda name: rs.ARMS[name].teacher is not None)
-    assert order == ["est_rgb_seg", "kd_rgb_seg"]
+    assert order == ["master_rgb_seg", "crosskd_rgb_seg"]
+
+
+def test_the_presets_expand_in_dependency_order(tmp_path) -> None:
+    core = rs.parse_args(["--dataset", str(tmp_path), "--arms-preset", "seg"]).arms
+    assert core == ["master_rgb_seg", "master_rgbnir_seg", "master_nir_seg", "crosskd_rgb_seg", "crosskd_rgbnir_seg"]
+    full = rs.parse_args(["--dataset", str(tmp_path), "--arms-preset", "seg-full"]).arms
+    assert full == core + ["crosskd_rgbnir_high_seg", "crosskd_rgbnir_low_seg", "crosskd_rgbnir_better_seg"]
+    for preset in (core, full):
+        seen = set()
+        for arm in preset:
+            teacher = rs.ARMS[arm].teacher
+            assert teacher is None or teacher in seen, arm
+            seen.add(arm)
+
+
+def test_a_preset_and_explicit_arms_are_alternatives(tmp_path) -> None:
+    with pytest.raises(SystemExit):
+        rs.parse_args(["--dataset", str(tmp_path), "--arms-preset", "seg", "--arms", "est_rgb"])
+
+
+def test_the_preset_dry_run_trains_every_line_as_segment_with_crosskd_teachers_from_the_masters(tmp_path, capsys) -> None:
+    _args(tmp_path)  # writes the folds meta
+    code = rs.main([
+        "--dataset", str(tmp_path), "--weights", "w.pt", "--arms-preset", "seg-full", "--folds", "1", "--seeds", "7",
+        "--dry-run", "--nir-as-rgb-dir", str(tmp_path / "links"),
+    ])
+    assert code == 0
+    lines = [line for line in capsys.readouterr().out.splitlines() if line.startswith("[")]
+    trains = [line for line in lines if "/train: " in line]
+    assert len(trains) == 8
+    for line in trains:
+        assert "task=segment" in line
+    for line in (x for x in trains if "] crosskd" in x):
+        arm = line.split("] ")[1].split("/")[0]
+        master = "master_rgb_seg" if arm == "crosskd_rgb_seg" else "master_rgbnir_seg"
+        assert "kd_mode=crosshead" in line
+        assert f"teacher_checkpoint={tmp_path.parent}" not in line  # roots are the defaults, relative
+        assert f"/{master}/fold1/seed7/best_model.pt" in line, line
+    assert all("_seg/" in line for line in lines)  # every step of the plan is a segment arm
 
 
 def test_dry_run_prints_the_segment_command_without_running(tmp_path, capsys) -> None:
     _args(tmp_path)  # writes the folds meta
     code = rs.main([
-        "--dataset", str(tmp_path), "--weights", "w.pt", "--arms", "est_rgb_seg",
+        "--dataset", str(tmp_path), "--weights", "w.pt", "--arms", "master_rgb_seg",
         "--folds", "0", "--val-only", "--dry-run", "--nir-as-rgb-dir", str(tmp_path / "links"),
     ])
     out = capsys.readouterr().out
-    assert code == 0 and "[run] est_rgb_seg/fold0/seed42/train" in out and "task=segment" in out
+    assert code == 0 and "[run] master_rgb_seg/fold0/seed42/train" in out and "task=segment" in out
     assert "src.training.train" in out
 
 
@@ -254,7 +304,7 @@ def test_aggregate_adds_a_mask_block_for_segment_runs_and_not_for_detect(tmp_pat
 
 
 def test_export_flattens_mask_scalars_and_lists_the_seg_arms() -> None:
-    assert {"est_rgb_seg", "kd_rgbnir_seg", "crosskd_rgbnir_segdt"} <= set(ex.EXPORT_ARMS)
+    assert {"master_rgb_seg", "kd_rgbnir_seg", "crosskd_rgbnir_seg"} <= set(ex.EXPORT_ARMS)
     assert set(ex.ARMS) <= set(ex.EXPORT_ARMS)
     row: dict = {}
     ex.flatten("", {k: v for k, v in _metrics(0.3, mask=0.4).items() if k.startswith(ex.METRIC_PREFIXES)}, row)

@@ -766,3 +766,48 @@ def test_load_fold_spec_rejects_a_keyed_folds_block_it_cannot_read(tmp_path: Pat
 def test_load_fold_spec_returns_a_list_spec_as_written(tmp_path: Path) -> None:
     path = _write_spec(tmp_path)
     assert agg.load_fold_spec(path) == _spec_rows()
+
+
+# --------------------------------------------------------------------------
+# Mask twins of the latent metrics (segment runs)
+# --------------------------------------------------------------------------
+
+
+def _v4_with_masks(base: dict, mask_ap50: float | None, mask_ap30: float | None) -> dict:
+    return {**base, "latent_mask_ap50": {"ap": mask_ap50, "n_gt": 9, "n_images": 30},
+            "latent_mask_ap30": {"ap": mask_ap30, "n_gt": 9, "n_images": 30}}
+
+
+def _v4_mask_tree(root: Path) -> None:
+    _synthetic_tree(root)
+    for fold in FIVE:
+        for seed in SEEDS:
+            noisy = DELTAS[fold] + SEED_NOISE[seed]
+            _write_v4(root, BASE, fold, seed, "test", _v4_with_masks(_v4(0.3, 0.4, 0.6), 0.1, 0.2))
+            _write_v4(root, TREAT, fold, seed, "test", _v4_with_masks(_v4(0.3, 0.4, 0.6), 0.1 + noisy, 0.2 + 3 * noisy))
+
+
+def test_mask_latent_metrics_follow_the_box_ones_through_pairs_and_inference(tmp_path: Path) -> None:
+    _v4_mask_tree(tmp_path)
+    results = _inferred(tmp_path, rope=0.02)
+    deltas = [DELTAS[f] for f in FIVE]
+
+    assert results["v4"]["metrics"] == [*agg.V4_METRICS, *agg.V4_MASK_METRICS]
+    assert results["per_fold"][BASE]["test"]["2"]["latent_mask_ap50"] == pytest.approx(0.1)
+    paired = results["paired"]
+    assert [paired["per_fold"]["test"][str(f)]["latent_mask_ap50"] for f in FIVE] == pytest.approx(deltas)
+    assert [paired["per_fold"]["test"][str(f)]["latent_mask_ap30"] for f in FIVE] == pytest.approx([3 * d for d in deltas])
+    expected = agg.paired_inference(deltas, _spec_rows(), 0.02, 0.95)
+    got = paired["inference"]["test"]["latent_mask_ap50"]["corrected_t"]
+    assert got["p_two_sided"] == pytest.approx(expected["corrected_t"]["p_two_sided"])
+    # The box metrics beside them are the ones they always were.
+    assert [paired["per_fold"]["test"][str(f)]["latent_ap50"] for f in FIVE] == pytest.approx([0.0] * 5)
+    assert "Latent mask AP50" in agg.render_markdown(results)
+
+
+def test_without_mask_keys_the_v4_block_is_what_it_was(tmp_path: Path) -> None:
+    _v4_tree(tmp_path)
+    results = _inferred(tmp_path)
+    assert results["v4"]["metrics"] == list(agg.V4_METRICS)
+    assert "latent_mask_ap50" not in results["paired"]["per_fold"]["test"]["0"]
+    assert "mask AP50" not in agg.render_markdown(results).replace("Mask AP50", "")

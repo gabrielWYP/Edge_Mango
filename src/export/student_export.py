@@ -39,6 +39,11 @@ from src.export.layout import (
     BOX_CHANNELS,
     BOXES_OUTPUT_NAME,
     CLASS_OUTPUT_NAME,
+    DETECT_OUTPUT_NAMES,
+    MASK_COEFS_OUTPUT_NAME,
+    PROTO_STRIDE,
+    PROTOS_OUTPUT_NAME,
+    SEGMENT_OUTPUT_NAMES,
     anchor_layout,
     flatten_levels,
     num_anchors,
@@ -62,17 +67,27 @@ class StudentExportWrapper(nn.Module):
     No dict, no distillation features, no decode, no exp, no NMS. The
     distillation tensors the student also returns are dead code in the
     exported graph and are pruned by `torch.export`.
+
+    A segment student (`task="segment"`) returns two more tensors,
+    `(boxes_raw, cls_logits, mask_coefs, protos)`: YOLOv8-seg style, the
+    mask assembly stays outside the graph like the box decode.
     """
 
     def __init__(self, student: StudentModel) -> None:
         super().__init__()
         self.student = student
 
-    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, ...]:
         out = self.student(x)
         boxes_raw = flatten_levels(out["reg_preds"])
         cls_logits = flatten_levels(out["cls_preds"])
+        if self.student.task == "segment":
+            return boxes_raw, cls_logits, flatten_levels(out["mask_coefs"]), out["protos"]
         return boxes_raw, cls_logits
+
+    @property
+    def output_names(self) -> tuple[str, ...]:
+        return SEGMENT_OUTPUT_NAMES if self.student.task == "segment" else DETECT_OUTPUT_NAMES
 
 
 @dataclass(frozen=True)
@@ -132,8 +147,19 @@ def load_student_checkpoint(path: str | Path) -> LoadedStudent:
     if model_type not in (None, "student"):
         raise ValueError(f"{path} was trained with model_type={model_type!r}; only student checkpoints export.")
 
+    in_channels = int(config.get("student_in_channels", 3))
+    if in_channels != 3:
+        raise ValueError(
+            f"{path} has student_in_channels={in_channels}: the export graph takes one RGB input, "
+            "so an RGB+NIR student (est_rgbnir) cannot be exported."
+        )
+
     stripped = strip_legacy_kd_adapter_keys(state_dict)
-    model = StudentModel(num_classes=int(config.get("num_classes", len(CLASS_NAMES))))
+    model = StudentModel(
+        num_classes=int(config.get("num_classes", len(CLASS_NAMES))),
+        variant=config.get("student_variant", "wide"),
+        task=config.get("task", "detect"),
+    )
     model.load_state_dict(stripped, strict=True)
     model.eval()
     return LoadedStudent(
@@ -191,6 +217,8 @@ def build_metadata(
     strides: Sequence[int] = STUDENT_STRIDES,
     class_names: Sequence[str] = CLASS_NAMES,
     tools: dict[str, str | None] | None = None,
+    task: str = "detect",
+    num_prototypes: int = 32,
 ) -> dict[str, Any]:
     """Build the metadata sidecar describing the exported model's contract.
 
@@ -200,7 +228,9 @@ def build_metadata(
     """
     model_file = Path(model_file)
     n = num_anchors(image_size, strides)
-    return {
+    nchw = model_file.suffix == ".onnx"  # ONNX keeps PyTorch's layout; only the .tflite input is channel-last
+    proto_side = image_size // PROTO_STRIDE
+    metadata = {
         "schema_version": METADATA_SCHEMA_VERSION,
         "model": {
             "name": "student",
@@ -216,8 +246,8 @@ def build_metadata(
         "signature_key": io_names["signature_key"],
         "input": {
             **io_names["input"],
-            "shape": [1, image_size, image_size, 3],
-            "layout": "NHWC",
+            "shape": [1, 3, image_size, image_size] if nchw else [1, image_size, image_size, 3],
+            "layout": "NCHW" if nchw else "NHWC",
             "dtype": "float32",
             "color_order": "RGB",
         },
@@ -230,7 +260,9 @@ def build_metadata(
                 "Paste centered on an image_size x image_size canvas filled with pad_value on every channel: "
                 "pad_x = (image_size - new_w) // 2, pad_y = (image_size - new_h) // 2.",
                 "Per channel: value = (pixel / 255 - mean[c]) / std[c], float32.",
-                "Write as NHWC (row-major, RGB interleaved).",
+                "Write as NCHW (planar: all R, then all G, then all B)."
+                if nchw
+                else "Write as NHWC (row-major, RGB interleaved).",
             ],
             "letterbox": {
                 "target_size": image_size,
@@ -303,6 +335,40 @@ def build_metadata(
         "tools": tools if tools is not None else tool_versions(),
         "exported_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
+    if task == "segment":
+        metadata["task"] = "segment"
+        metadata["outputs"] += [
+            {
+                "logical_name": MASK_COEFS_OUTPUT_NAME,
+                **io_names["outputs"][MASK_COEFS_OUTPUT_NAME],
+                "shape": [1, n, num_prototypes],
+                "dtype": "float32",
+                "channels": "mask coefficients of each anchor, same anchor order as boxes_raw",
+            },
+            {
+                "logical_name": PROTOS_OUTPUT_NAME,
+                **io_names["outputs"][PROTOS_OUTPUT_NAME],
+                "shape": [1, num_prototypes, proto_side, proto_side],
+                "dtype": "float32",
+                "channels": "prototype masks, NCHW, at 1/4 of the input resolution",
+            },
+        ]
+        metadata["segmentation"] = {
+            "reference": "src/export/reference.py::decode_exported_segmentation (delegates to src/training/decode.py)",
+            "num_prototypes": num_prototypes,
+            "mask_ratio": PROTO_STRIDE,
+            "prototype_size": [proto_side, proto_side],
+            "threshold": 0.5,
+            "assembly": (
+                "For each detection kept by the box decode, take the coefficient vector of the anchor it came "
+                "from (row i of mask_coefs, the same i as in boxes_raw). mask = sigmoid(coefs . protos), with "
+                "protos flattened to (nm, h*w) and the result reshaped to (h, w). Crop it to the detection box in "
+                "prototype coordinates (box in letterboxed pixels / mask_ratio): pixels outside the box are zeroed. "
+                "Optionally upsample bilinearly to the input size. Threshold at `threshold`. Letterbox padding "
+                "and the ROI crop are undone on the mask exactly as on the box."
+            ),
+        }
+    return metadata
 
 
 def write_metadata(metadata: dict[str, Any], path: str | Path) -> Path:
@@ -340,12 +406,15 @@ def convert_to_tflite(
     return out_path
 
 
-def tflite_io_names(model_path: str | Path) -> dict[str, Any]:
+def tflite_io_names(
+    model_path: str | Path, output_names: Sequence[str] = DETECT_OUTPUT_NAMES
+) -> dict[str, Any]:
     """Read the input/output names of a converted model's single signature.
 
     litert-torch names signature outputs `output_<i>` in the wrapper's
     return order, so `output_0` is `boxes_raw` and `output_1` is
-    `cls_logits`. Returns the signature key and, for the input and each
+    `cls_logits` (a segment model, `output_names=SEGMENT_OUTPUT_NAMES`,
+    continues with `mask_coefs` and `protos`). Returns the signature key and, for the input and each
     logical output, both the signature name (for `get_signature_runner`)
     and the underlying tensor name (for index-based interpreter APIs).
     """
@@ -359,9 +428,9 @@ def tflite_io_names(model_path: str | Path) -> dict[str, Any]:
     runner = interpreter.get_signature_runner(signature_key)
     input_details = runner.get_input_details()
     output_details = runner.get_output_details()
-    if len(input_details) != 1 or len(output_details) != 2:
+    if len(input_details) != 1 or len(output_details) != len(output_names):
         raise ValueError(
-            f"Expected 1 input and 2 outputs, got {list(input_details)} / {list(output_details)}."
+            f"Expected 1 input and {len(output_names)} outputs, got {list(input_details)} / {list(output_details)}."
         )
     input_name = next(iter(input_details))
     ordered_outputs = sorted(output_details, key=lambda name: int(name.rsplit("_", 1)[-1]))
@@ -376,13 +445,17 @@ def tflite_io_names(model_path: str | Path) -> dict[str, Any]:
                 "signature_name": name,
                 "tensor_name": output_details[name]["name"],
             }
-            for logical, name in zip((BOXES_OUTPUT_NAME, CLASS_OUTPUT_NAME), ordered_outputs)
+            for logical, name in zip(output_names, ordered_outputs)
         },
     }
 
 
-def make_tflite_runner(model_path: str | Path, io_names: dict[str, Any] | None = None):
-    """Return `fn(nhwc_float32) -> (boxes_raw, cls_logits)` backed by one
+def make_tflite_runner(
+    model_path: str | Path,
+    io_names: dict[str, Any] | None = None,
+    output_names: Sequence[str] = DETECT_OUTPUT_NAMES,
+):
+    """Return `fn(nhwc_float32) -> (boxes_raw, cls_logits[, mask_coefs, protos])` backed by one
     LiteRT interpreter (created once, reused across calls)."""
     from ai_edge_litert.interpreter import Interpreter  # lazy
 
@@ -390,25 +463,21 @@ def make_tflite_runner(model_path: str | Path, io_names: dict[str, Any] | None =
     interpreter = Interpreter(model_path=str(model_path))
     runner = interpreter.get_signature_runner(io_names["signature_key"])
     input_name = io_names["input"]["signature_name"]
-    output_names = [
-        io_names["outputs"][logical]["signature_name"]
-        for logical in (BOXES_OUTPUT_NAME, CLASS_OUTPUT_NAME)
-    ]
+    signature_outputs = [io_names["outputs"][logical]["signature_name"] for logical in output_names]
 
     def run(nhwc_input):
         result = runner(**{input_name: nhwc_input})
-        return tuple(result[name] for name in output_names)
+        return tuple(result[name] for name in signature_outputs)
 
     return run
 
 
 def make_torch_runner(wrapper: StudentExportWrapper):
-    """Return `fn(nchw_tensor) -> (boxes_raw, cls_logits)` as numpy arrays."""
+    """Return `fn(nchw_tensor) -> (boxes_raw, cls_logits[, mask_coefs, protos])` as numpy arrays."""
     wrapper = wrapper.eval()
 
     def run(nchw_input: torch.Tensor):
         with torch.no_grad():
-            boxes_raw, cls_logits = wrapper(nchw_input)
-        return boxes_raw.numpy(), cls_logits.numpy()
+            return tuple(t.numpy() for t in wrapper(nchw_input))
 
     return run

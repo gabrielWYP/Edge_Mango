@@ -21,6 +21,16 @@ the `conf_threshold` operating point), one JSON per image:
      "boxes": [{"class": 1, "confidence": 0.87, "xyxy": [x1, y1, x2, y2]}, ...]}
 
 `stem` is the RGB image stem and `boxes` is empty when nothing was decoded.
+
+For a segment checkpoint each damage box (class 1) also has a `"mask"`: the polygon of its mask as a flat
+`[x1, y1, x2, y2, ...]`, normalized to the source RGB image like `xyxy`. It is the largest outer
+contour of the thresholded mask at prototype resolution, traced along pixel edges and simplified
+(`seg_labels.mask_to_polygon`), then mapped through the same letterbox and ROI-crop inversion as the
+box. `[]` means an empty mask. A polygon (about 10-40 points) is used instead of COCO RLE because it
+is resolution-free (the prototype grid is the letterboxed, possibly ROI-cropped input, not the
+source frame), directly comparable with the polygon label files, and small: a few hundred bytes a
+detection against an RLE of a 3264 x 2448 frame. Holes and secondary blobs are dropped. Mango
+detections and detect checkpoints carry no `mask`, and their lines are unchanged.
 `xyxy` is normalized to the SOURCE RGB image, the frame of the YOLO label files
 (`labels/<split>/<stem>.txt` after converting cxcywh to xyxy): the letterbox and
 the ROI crop of the model input are undone. A box reaching the letterbox padding
@@ -62,7 +72,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.models.master.master_model import MasterModel
 from src.models.student.student_model import StudentModel, strip_legacy_kd_adapter_keys
-from src.training.config import TrainingConfig
+from src.training.config import DAMAGE_CLASS_ID, TrainingConfig
 from src.training.dataset import YOLODataset, build_dataloader, collate_fn, letterbox
 from src.training.fusion_modes import (
     FUSION_MODE_CROSS_ATTENTION,
@@ -76,6 +86,7 @@ from src.training.fusion_modes import (
 from src.training.loop import Trainer
 from src.training.neck_norm import check_norm_compatible, neck_norm_from_checkpoint
 from src.training.roi_crop import MANGO_CLASS_ID, crop_to_roi
+from src.training.seg_labels import mask_to_polygon
 from src.training.strides import (
     CROSS_ATTENTION_HEAD_STRIDES,
     resolve_active_strides,
@@ -588,15 +599,59 @@ def _to_source_frame(boxes: torch.Tensor, dataset: YOLODataset, pair: dict) -> t
     return torch.stack([x1 / width, y1 / height, x2 / width, y2 / height], dim=-1)
 
 
-def _prediction_line(stem: str, boxes_xyxy: torch.Tensor, scores: torch.Tensor, labels: torch.Tensor) -> str:
-    """One line of predictions.jsonl (format in the module docstring)."""
-    return json.dumps({
-        "stem": stem,
-        "boxes": [
-            {"class": label, "confidence": score, "xyxy": [round(value, 6) for value in box]}
-            for box, score, label in zip(boxes_xyxy.tolist(), scores.tolist(), labels.tolist())
-        ],
-    })
+def _damage_mask_polygons(masks: torch.Tensor, labels: torch.Tensor) -> dict[int, np.ndarray | None]:
+    """`{detection index: polygon normalized to the model input}` of the damage detections' masks.
+
+    The polygon is the largest contour of the mask (`mask_to_polygon`), None for an empty mask.
+    """
+    return {
+        index: mask_to_polygon(masks[index].numpy().astype(np.uint8))
+        for index, label in enumerate(labels.tolist())
+        if label == DAMAGE_CLASS_ID
+    }
+
+
+def _to_source_frame_with_polygons(
+    boxes: torch.Tensor, polygons: dict[int, np.ndarray | None], dataset: YOLODataset, pair: dict
+) -> tuple[torch.Tensor, dict[int, list[float]]]:
+    """`_to_source_frame` of the boxes and, in the same call, of the polygons' points.
+
+    A point (u, v) goes through the box map as the degenerate box (u, v, 0, 0): the map is affine per
+    axis, so it gives the point's source-frame position. One call, so the image is read once. An empty
+    mask comes back as `[]`; a polygon as flat `[x1, y1, x2, y2, ...]`.
+    """
+    present = {index: polygon for index, polygon in polygons.items() if polygon is not None}
+    points = [torch.from_numpy(polygon) for polygon in present.values()]
+    stacked = torch.cat([boxes.double(), *[torch.cat([p, torch.zeros_like(p)], dim=1) for p in points]])
+    source = _to_source_frame(stacked, dataset, pair)
+    source_points = source[len(boxes):, :2]
+    flat: dict[int, list[float]] = {index: [] for index in polygons}
+    offset = 0
+    for index, polygon in present.items():
+        flat[index] = [round(v, 6) for v in source_points[offset: offset + len(polygon)].reshape(-1).tolist()]
+        offset += len(polygon)
+    return source[: len(boxes)], flat
+
+
+def _prediction_line(
+    stem: str,
+    boxes_xyxy: torch.Tensor,
+    scores: torch.Tensor,
+    labels: torch.Tensor,
+    mask_polygons: dict[int, list[float]] | None = None,
+) -> str:
+    """One line of predictions.jsonl (format in the module docstring).
+
+    `mask_polygons` (segment models) maps a detection index to the flat polygon of its mask; the
+    detections it names get a `mask` field, the others none.
+    """
+    boxes = [
+        {"class": label, "confidence": score, "xyxy": [round(value, 6) for value in box]}
+        for box, score, label in zip(boxes_xyxy.tolist(), scores.tolist(), labels.tolist())
+    ]
+    for index, flat in (mask_polygons or {}).items():
+        boxes[index]["mask"] = flat
+    return json.dumps({"stem": stem, "boxes": boxes})
 
 
 def _evaluate_saving_predictions(trainer: Trainer, dataset: YOLODataset, path: Path) -> dict:
@@ -604,10 +659,19 @@ def _evaluate_saving_predictions(trainer: Trainer, dataset: YOLODataset, path: P
     pairs = {pair["image_id"]: pair for pair in dataset.pairs}
     partial = path.with_name(path.name + ".partial")
     with partial.open("w") as handle:
-        def write_line(image_id: int, boxes: torch.Tensor, scores: torch.Tensor, labels: torch.Tensor) -> None:
+        def write_line(
+            image_id: int, boxes: torch.Tensor, scores: torch.Tensor, labels: torch.Tensor,
+            masks: torch.Tensor | None = None,
+        ) -> None:
             pair = pairs[image_id]
-            source_boxes = _to_source_frame(boxes, dataset, pair)
-            handle.write(_prediction_line(pair["rgb_path"].stem, source_boxes, scores, labels) + "\n")
+            if masks is None:  # detect: the line is exactly what it always was
+                source_boxes = _to_source_frame(boxes, dataset, pair)
+                handle.write(_prediction_line(pair["rgb_path"].stem, source_boxes, scores, labels) + "\n")
+                return
+            source_boxes, polygons = _to_source_frame_with_polygons(
+                boxes, _damage_mask_polygons(masks, labels), dataset, pair
+            )
+            handle.write(_prediction_line(pair["rgb_path"].stem, source_boxes, scores, labels, polygons) + "\n")
 
         metrics = trainer.evaluate(prediction_sink=write_line)
     partial.replace(path)

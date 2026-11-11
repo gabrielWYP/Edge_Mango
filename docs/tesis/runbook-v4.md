@@ -154,31 +154,80 @@ python scripts/build_v4_dataset.py --polygons data/labels/<export>.json \
 python scripts/make_v4_folds.py --dataset data/cache/v4_captura_v3_poly --fold-spec configs/folds/v4_lot_5fold_poly.json
 ```
 
-**Arms.** Every arm of `run_small_arms.py` has a `_seg` twin, chosen by name in `--arms` (no default list holds them,
-and a name keeps each arm in its own checkpoint and report folder, which a global flag would not):
+**Arms.** Every arm of `run_small_arms.py` has a segment twin, trained from scratch on polygon labels, teachers included.
+Undistilled arms are "masters" and distilled ones keep their name. The twins are chosen by name or by preset (no default
+list holds them, and a name keeps each arm in its own checkpoint and report folder, which a global flag would not). The
+detect arms (`est_*`, `kd_*`, `crosskd_*`) keep their names and results:
 
-| arm | student | teacher |
+| detect arm | segment twin | teacher |
 |---|---|---|
-| `est_rgb_seg`, `est_rgbnir_seg`, `est_nir_seg` | segment | none |
-| `kd_rgb_seg`, `kd_rgbnir_seg`, `crosskd_*_seg` | segment | segment teacher `est_*_seg` of its fold and seed |
-| `kd_rgb_segdt`, `kd_rgbnir_segdt`, `crosskd_*_segdt` | segment | detect teacher `est_*` (train it first, on its own labels) |
+| `est_rgb`, `est_rgbnir`, `est_nir` | `master_rgb_seg`, `master_rgbnir_seg`, `master_nir_seg` | none |
+| `crosskd_rgb`, `crosskd_rgbnir` | `crosskd_rgb_seg`, `crosskd_rgbnir_seg` | `master_rgb_seg`, `master_rgbnir_seg` of its fold and seed |
+| `crosskd_rgbnir_high`, `_low`, `_better` | `crosskd_rgbnir_high_seg`, `_low_seg`, `_better_seg` | `master_rgbnir_seg` |
+| `kd_rgb`, `kd_rgbnir` (MSE feature KD) | `kd_rgb_seg`, `kd_rgbnir_seg` | `master_rgb_seg`, `master_rgbnir_seg` (in no preset) |
+
+`--arms-preset seg` runs master_rgb_seg, master_rgbnir_seg, master_nir_seg, crosskd_rgb_seg and crosskd_rgbnir_seg;
+`seg-full` adds the three gated CrossKD arms. Masters come first in both. A segment student can still load a detect
+teacher (the loader reads `task` from the checkpoint), but no arm name does it.
 
 ```bash
 python scripts/run_small_arms.py --dataset data/cache/v4_captura_v3_poly --make-nir-as-rgb \
     --weights data/weights/yolov8n_state.pt --variant nano --epochs 80 --seeds 42 \
-    --arms est_rgb_seg est_rgbnir_seg kd_rgbnir_seg --checkpoints-root checkpoints/v4_seg \
+    --arms-preset seg --checkpoints-root checkpoints/v4_seg \
     --reports-root reports/v4_seg --val-only --dry-run      # drop --dry-run to launch
 ```
 
 `--dry-run` prints every command. A segment arm adds `task=segment mask_ratio=4 mask_weight=7.5` (the `--mask-ratio` and
-`--mask-weight` flags) to its training and evaluation overrides; `task=segment` is what makes the dataset load masks. For
-`run_kfold.py` arms use `--extra-override task=segment`. The KD teacher loader reads `task` from the teacher
-checkpoint, so a detect or a segment teacher both work, and KD acts on cls and box only. `--weights` with
-a yolov8n-seg state dict also initialises the Proto and mask layers of the `nano` variant.
+`--mask-weight` flags) to its training and evaluation overrides; `task=segment` is what makes the dataset load masks. KD
+acts on cls and box only. `--weights` with a yolov8n-seg state dict also initialises the Proto and mask layers of the
+`nano` variant. `scripts/kd_nir_probe.py --segment` probes the segment masters (`master_rgbnir_seg` against
+`master_rgb_seg`).
+
+**`run_kfold.py` arms.** The plan's student arms have segment twins in `V4_ARMS`, so `--extra-override task=segment` is not
+needed: `master_etiquetas_seg`, the undistilled student. The KD students distill from a MasterModel, which cannot
+segment, and the plan's masters are MasterModels, so they have no twin; the segment plan with CrossKD is the preset
+above. A twin has no config file of its own: `--arms configs/experiment/v4_master_etiquetas_seg.yaml` reads
+`v4_est_etiquetas.yaml`. `--mask-weight` and `--mask-ratio`
+(7.5 and 4) apply. Detect arms never get `task` or `mask_*`.
+
+```bash
+python scripts/run_kfold.py --folds-dir data/cache/v4_captura_v3_poly/folds_lot --machine configs/machines/rtx3080.yaml \
+    --arms configs/experiment/v4_master_etiquetas_seg.yaml --checkpoints-root checkpoints/v4_seg \
+    --reports-root reports/v4_seg --dry-run      # drop --dry-run to launch
+```
 
 **Results.** `evaluate_checkpoint.py` takes `task` from the checkpoint (`--override task=...` still wins), and
 `metrics.json` gets `mask_map50`, `mask_map_50_95`, `mask_per_class_ap_50` and `mask_per_class_ap_50_95` next to the box
-metrics, measured at prototype resolution (160x160 on a 640 input). `aggregate_kfold.py` adds a `mask` block and a
-"Mask AP" section when a run has them, and `export_run_results.py` carries the `mask_*` columns and reads the `_seg` and
-`_segdt` folders. Box metrics, the latent AP and every detect result keep their format. Not covered: ONNX/TFLite export and
-`visualize_damage_predictions.py` are box-only.
+metrics, measured at prototype resolution (160x160 on a 640 input). With `--save-predictions` each damage detection of a
+segment model also carries a `mask` in `predictions.jsonl`: the polygon of its largest mask contour, normalized to the
+source RGB frame like `xyxy`. `scripts/v4_metrics.py` then adds mask-IoU twins of the latent metrics to
+`metrics_v4.json`, with the ground-truth polygons read from the label files (box-only lines leave the mask ground truth;
+`mask_gt_box_only` counts them): `latent_mask_ap50` (primary set, IoU 0.50), `latent_mask_ap30`, `mask_ap50_by_hour` and
+`developed_mask_ap50`. Face AUROC and the false positives per `sano` photo are score-based and stay as they are.
+`aggregate_kfold.py` adds the two latent mask metrics to the Latent-window tables and their paired inference, plus a
+"Mask AP" section from `metrics.json`. `export_run_results.py` carries the `mask_*` columns and reads the segment arm
+folders; `differences.csv` has the segment comparisons H1_seg (master_rgbnir_seg - master_rgb_seg), H2_seg
+(crosskd_rgbnir_seg - crosskd_rgb_seg), secondary_seg (crosskd_rgbnir_seg - master_rgb_seg), exploratory_seg
+(crosskd_rgb_seg - master_rgb_seg) and the gate_high_vs_low_seg and gate_better_vs_none_seg ones, each for
+`latent_ap50`, `latent_ap30`, `latent_mask_ap50` and `latent_mask_ap30` when both arms of a pair were exported.
+`val_operating_points.py`, `plot_run_curves.py` and `zone_analysis.py` read the twins too (box AP, per-photo
+classification); the mask metrics are in `metrics_v4.json` only. Box metrics, the latent AP and every detect result keep
+their format.
+
+**Export.** `scripts/export_student.py` reads `task` and `student_variant` from the checkpoint; an RGB+NIR student cannot
+be exported. A segment student exports four outputs, `boxes_raw`, `cls_logits`, `mask_coefs` and `protos`, with the
+assembly left outside the graph (see `docs/deployment/mobile-export.md`, section 7):
+
+```bash
+python scripts/export_student.py --format onnx --checkpoint checkpoints/v4_seg/master_rgb_seg/fold0/seed42/best_model.pt \
+    --out-dir exports --name master_rgb_seg --verify   # needs onnx and onnxruntime; --verify runs on random inputs
+```
+
+**Visualization.** For a segment checkpoint `visualize_damage_predictions.py` draws the ground-truth polygons (left) and the
+predicted masks (right) as filled contours, with the boxes as before; a detect checkpoint gets boxes only:
+
+```bash
+python scripts/visualize_damage_predictions.py --checkpoint checkpoints/v4_seg/master_rgb_seg/fold0/seed42/best_model.pt \
+    --config configs/experiment/v4_est_etiquetas.yaml --rgb-dir data/cache/v4_captura_v3_poly/rgb \
+    --labels-dir data/cache/v4_captura_v3_poly/folds_lot/fold_0/labels --model-type student --split test --num-samples 20
+```

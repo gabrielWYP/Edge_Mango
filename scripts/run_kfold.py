@@ -61,6 +61,12 @@ exact commands in `docs/tesis/runbook-v4.md`). A v4 arm differs from the above i
     `--arms` train first whatever the order given. Any other teacher must already be
     complete, under the same settings, or the runner stops before anything runs;
     there is no fallback;
+  * a segment twin (`master_etiquetas_seg`, the undistilled student) trains and is evaluated as a YOLOv8-seg student: `task=segment`, `mask_ratio` and `mask_weight`
+    (`--mask-ratio`, `--mask-weight`) go on its commands, and its evaluation also writes the mask of each damage
+    detection to `predictions.jsonl`, so `metrics_v4.json` gets the mask metrics. A twin has no config file of
+    its own: `--arms configs/experiment/v4_master_etiquetas_seg.yaml` reads `v4_est_etiquetas.yaml`. The KD
+    students and the masters of the plan have no twin here (a MasterModel cannot segment): the segment plan with
+    CrossKD is `scripts/run_small_arms.py --arms-preset seg`;
   * each evaluation also writes `predictions.jsonl`, followed by a step that runs
     `scripts/v4_metrics.py` into `metrics_v4.json`, with its own
     `metrics_v4_complete.json` identity marker;
@@ -88,7 +94,7 @@ import signal
 import subprocess
 import sys
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Sequence
@@ -130,6 +136,9 @@ V4_STUDENT_EVAL_CONFIG = "v4_est_etiquetas.yaml"
 # In the identity of a KD run on a dry run whose plan trains the teacher first.
 TEACHER_PENDING = "pending"
 
+DEFAULT_MASK_WEIGHT = 7.5
+DEFAULT_MASK_RATIO = 4
+
 _FOLD_DIR_RE = re.compile(r"fold_(\d+)")
 
 
@@ -153,6 +162,8 @@ class RunnerOptions:
     dataset: Path | None = None
     nir_variant: str = DEFAULT_NIR_VARIANT
     resume: bool = True
+    mask_weight: float = DEFAULT_MASK_WEIGHT  # segment twins only
+    mask_ratio: int = DEFAULT_MASK_RATIO
 
 
 @dataclass(frozen=True)
@@ -166,6 +177,7 @@ class V4Arm:
     trainer: str  # "master", "student" or "kd"
     modality_ablation: str | None = None
     teacher: str | None = None  # the arm this one distills from
+    task: str = "detect"  # "segment": trains and is evaluated as a YOLOv8-seg student
 
 
 V4_ARMS = {
@@ -177,6 +189,21 @@ V4_ARMS = {
     "est_kd_rgb": V4Arm("kd", modality_ablation="nir_const", teacher="maestro_rgb"),
     "est_kd_rgbnir": V4Arm("kd", teacher="maestro_rgbnir"),
 }
+
+
+def _segment_twins(arms: dict[str, V4Arm]) -> dict[str, V4Arm]:
+    """`master_<x>_seg` of the undistilled student `est_<x>`; none for a master or a KD student (see the docstring)."""
+    return {
+        f"master_{name.removeprefix('est_')}_seg": replace(arm, task="segment")
+        for name, arm in arms.items()
+        if arm.trainer == "student"
+    }
+
+
+V4_SEGMENT_TWINS = _segment_twins(V4_ARMS)
+V4_ARMS |= V4_SEGMENT_TWINS
+# twin -> the arm whose config file it reads
+SEGMENT_BASE = {twin: f"est_{twin.removeprefix('master_').removesuffix('_seg')}" for twin in V4_SEGMENT_TWINS}
 
 
 @dataclass(frozen=True)
@@ -202,6 +229,27 @@ def arm_name(config: str | Path) -> str:
     stem = Path(config).stem
     name = stem.removeprefix(V4_CONFIG_PREFIX)
     return name if name in V4_ARMS else stem
+
+
+def config_file(config: str | Path) -> Path:
+    """The file an arm's config is read from: a segment twin has none of its own and reads its base arm's."""
+    path = Path(config)
+    stem = path.stem
+    base = SEGMENT_BASE.get(stem.removeprefix(V4_CONFIG_PREFIX)) if stem.startswith(V4_CONFIG_PREFIX) else None
+    if base is None or path.is_file():
+        return path
+    return path.with_name(f"{V4_CONFIG_PREFIX}{base}{path.suffix}")
+
+
+def segment_overrides(spec: V4Arm, options: "RunnerOptions", train: bool) -> list[str]:
+    """What makes a segment twin a segment arm: the task and the mask options, nothing for a detect arm.
+
+    An evaluation takes the task from the checkpoint, so it gets only what its dataset needs.
+    """
+    if spec.task != "segment":
+        return []
+    mask = [f"mask_ratio={options.mask_ratio}"]
+    return ["task=segment", *mask, f"mask_weight={options.mask_weight}"] if train else mask
 
 
 def v4_arm(config: str | Path) -> V4Arm | None:
@@ -291,7 +339,7 @@ def data_overrides(fold_path: Path) -> list[str]:
 
 def crop_view(config: Path, extra_overrides: Sequence[str]) -> str:
     """The `folds_meta.json` view of an arm: `roi` with its `roi_crop` on, else `frame`."""
-    roi_crop = (yaml.safe_load(Path(config).read_text()) or {}).get("roi_crop", False)
+    roi_crop = (yaml.safe_load(config_file(config).read_text()) or {}).get("roi_crop", False)
     for token in extra_overrides:
         if token.startswith("roi_crop="):
             roi_crop = token.split("=", 1)[1].lower() in ("true", "1", "yes")
@@ -640,6 +688,7 @@ def plan_train(
     fold_path = Path(options.folds_dir) / f"fold_{fold}"
     run = run_path(options.checkpoints_root, arm_name(config), fold, seed)
     spec = v4_arm(config)
+    file = config_file(config)
     if spec is None:
         cmd = build_train_command(
             options.python, config, options.machine, fold_path, run, seed,
@@ -647,23 +696,25 @@ def plan_train(
         )
         return cmd, run_identity(cmd, config, options.machine, fold_path)
 
-    arm_overrides = v4_overrides(spec, config, fold, v4, options.extra_overrides)
+    arm_overrides = [
+        *v4_overrides(spec, config, fold, v4, options.extra_overrides), *segment_overrides(spec, options, train=True),
+    ]
     extra = {"folds_meta": v4.meta_sha256}
     if spec.teacher is None:
         cmd = build_train_command(
-            options.python, config, options.machine, fold_path, run, seed,
+            options.python, file, options.machine, fold_path, run, seed,
             options.epochs, options.extra_overrides, model=spec.trainer, arm_overrides=arm_overrides,
         )
     else:
         teacher_run = run_path(options.checkpoints_root, spec.teacher, fold, seed)
         cmd = build_kd_command(
-            options.python, config, options.machine, fold_path, run, teacher_run / CHECKPOINT, seed,
+            options.python, file, options.machine, fold_path, run, teacher_run / CHECKPOINT, seed,
             options.epochs, options.extra_overrides, arm_overrides,
         )
         extra["teacher"] = (
             _file_sha256(teacher_run / CHECKPOINT) if is_train_complete(teacher_run) else TEACHER_PENDING
         )
-    return cmd, run_identity(cmd, config, options.machine, fold_path, extra)
+    return cmd, run_identity(cmd, file, options.machine, fold_path, extra)
 
 
 def plan_eval(
@@ -683,10 +734,14 @@ def plan_eval(
         )
         return cmd, eval_identity(run_sha256, split, cmd)
 
-    eval_config = Path(config).with_name(V4_STUDENT_EVAL_CONFIG) if spec.teacher else config
+    eval_config = Path(config).with_name(V4_STUDENT_EVAL_CONFIG) if spec.teacher else config_file(config)
     cmd = build_eval_command(
         options.python, eval_config, run / CHECKPOINT, split, fold_path, run / f"eval_{split}", out, profile,
-        [*v4_overrides(spec, config, fold, v4, options.extra_overrides), *options.extra_overrides],
+        [
+            *v4_overrides(spec, config, fold, v4, options.extra_overrides),
+            *segment_overrides(spec, options, train=False),
+            *options.extra_overrides,
+        ],
         model="master" if spec.trainer == "master" else "student", save_predictions=True,
     )
     extra = {"eval_config": _file_sha256(eval_config)} if spec.teacher else None
@@ -846,6 +901,19 @@ def _find_file(value: str, what: str) -> Path:
     raise RunnerError(f"{what} not found: {value}")
 
 
+def _find_arm_config(value: str) -> Path:
+    """`_find_file`, except that a segment twin (`v4_master_etiquetas_seg.yaml`) is its base arm's file under its own name."""
+    try:
+        return _find_file(value, "Experiment config")
+    except RunnerError:
+        path = Path(value)
+        base = SEGMENT_BASE.get(path.stem.removeprefix(V4_CONFIG_PREFIX)) if path.stem.startswith(V4_CONFIG_PREFIX) else None
+        if base is None:
+            raise
+        real = _find_file(str(path.with_name(f"{V4_CONFIG_PREFIX}{base}{path.suffix}")), "Experiment config")
+        return real.with_name(path.name)
+
+
 def _dir(value: str | None, default: str) -> Path:
     """Explicit dirs are cwd-relative; defaults are anchored at the repo root."""
     return (Path(value) if value is not None else PROJECT_ROOT / default).resolve()
@@ -885,6 +953,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         help="Extra overrides appended to every train AND eval command (e.g. rgb_dir=... "
                              "nir_dir=...). Passed verbatim; commands run with the repo root as cwd, so "
                              "use absolute paths.")
+    parser.add_argument("--mask-weight", type=float, default=DEFAULT_MASK_WEIGHT,
+                        help="mask loss gain of the segment twins (default: %(default)s).")
+    parser.add_argument("--mask-ratio", type=int, default=DEFAULT_MASK_RATIO,
+                        help="input size over mask size of the segment twins (default: %(default)s).")
     parser.add_argument("--no-resume", action="store_true",
                         help="Train interrupted runs from scratch instead of continuing them.")
     parser.add_argument("--dry-run", action="store_true", help="Print the commands without running them.")
@@ -896,7 +968,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
         arms = (
-            [_find_file(a, "Experiment config") for a in args.arms]
+            [_find_arm_config(a) for a in args.arms]
             if args.arms is not None else [PROJECT_ROOT / a for a in DEFAULT_ARMS]
         )
         options = RunnerOptions(
@@ -914,6 +986,8 @@ def main(argv: list[str] | None = None) -> int:
             dataset=Path(args.dataset).resolve() if args.dataset is not None else None,
             nir_variant=args.nir_variant,
             resume=not args.no_resume,
+            mask_weight=args.mask_weight,
+            mask_ratio=args.mask_ratio,
         )
         with _interrupt_on_termination():
             summary = run_kfold(options)

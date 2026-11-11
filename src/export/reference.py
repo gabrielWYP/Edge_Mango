@@ -14,6 +14,10 @@ This is the executable spec the mobile app mirrors:
    per-class NMS, max-detections cap) exists in exactly one place.
 3. `unletterbox_boxes` — maps detections from the 640x640 letterboxed frame
    back to original image pixels.
+4. `decode_exported_segmentation` — the same decode for a segment export
+   (`mask_coefs`, `protos` besides the two raw tensors): the boxes are those of
+   (2), and each detection's mask is `sigmoid(coefs . protos)` cropped to its
+   box and thresholded, by `src.training.decode.process_masks`.
 """
 
 from __future__ import annotations
@@ -27,7 +31,7 @@ import torch
 
 from src.export.layout import unflatten_levels
 from src.training.dataset import letterbox, normalize_rgb
-from src.training.decode import decode_detections
+from src.training.decode import decode_detections, decode_detections_with_coefs, process_masks
 
 
 @dataclass(frozen=True)
@@ -111,6 +115,62 @@ def decode_exported_outputs(
         max_detections=max_detections,
         normalize=False,
     )
+
+
+def decode_exported_segmentation(
+    boxes_raw: torch.Tensor | np.ndarray,
+    cls_logits: torch.Tensor | np.ndarray,
+    mask_coefs: torch.Tensor | np.ndarray,
+    protos: torch.Tensor | np.ndarray,
+    *,
+    image_size: int,
+    strides: Sequence[int],
+    conf_threshold: float,
+    nms_iou_threshold: float,
+    max_detections: int,
+    per_class_candidates: bool = True,
+    mask_threshold: float = 0.5,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Decode one image's RAW segment outputs into detections and their masks.
+
+    Args:
+        boxes_raw, cls_logits: as in `decode_exported_outputs`.
+        mask_coefs: (1, N, nm) mask coefficients per anchor, the anchor order of the boxes.
+        protos: (1, nm, h, w) prototype masks, h = w = image_size / 4.
+        mask_threshold: probability above which a prototype pixel belongs to the mask.
+
+    Returns:
+        boxes (P, 4) cxcywh in letterboxed-input pixels, scores (P,), labels (P,) and
+        masks (P, h, w) bool at prototype resolution, cropped to their boxes. Upsample
+        the masks (bilinear on the probabilities) to the input size only if a consumer needs it.
+    """
+    mask_coefs = torch.as_tensor(np.asarray(mask_coefs), dtype=torch.float32)
+    protos = torch.as_tensor(np.asarray(protos), dtype=torch.float32)
+    if mask_coefs.shape[0] != 1 or protos.shape[0] != 1:
+        raise ValueError("decode_exported_segmentation decodes a single image (batch size 1).")
+    boxes_raw = torch.as_tensor(np.asarray(boxes_raw), dtype=torch.float32)
+    cls_logits = torch.as_tensor(np.asarray(cls_logits), dtype=torch.float32)
+
+    num_classes = cls_logits.shape[-1]
+    cls_levels = unflatten_levels(cls_logits, image_size, strides)
+    preds = [torch.cat([c, r], dim=1) for c, r in zip(cls_levels, unflatten_levels(boxes_raw, image_size, strides))]
+    boxes, scores, labels, coefs = decode_detections_with_coefs(
+        preds,
+        cls_levels,
+        unflatten_levels(mask_coefs, image_size, strides),
+        batch_idx=0,
+        num_classes=num_classes,
+        image_size=image_size,
+        strides=tuple(strides),
+        conf_threshold=conf_threshold,
+        nms_iou_threshold=nms_iou_threshold,
+        nms_enabled=True,
+        per_class_candidates=per_class_candidates,
+        max_detections=max_detections,
+        normalize=False,
+    )
+    masks = process_masks(protos[0], coefs, boxes / image_size, threshold=mask_threshold)
+    return boxes, scores, labels, masks
 
 
 def cxcywh_to_xyxy(boxes: torch.Tensor) -> torch.Tensor:

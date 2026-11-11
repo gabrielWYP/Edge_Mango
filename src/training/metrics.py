@@ -435,8 +435,8 @@ def compute_mask_map(
     if gt_has_mask is not None:
         gt_labels = [labels[keep] for labels, keep in zip(gt_labels, gt_has_mask)]
         gt_masks = [masks[keep] for masks, keep in zip(gt_masks, gt_has_mask)]
-    flat_pred = [m.reshape(len(m), -1) for m in pred_masks]
-    flat_gt = [m.reshape(len(m), -1) for m in gt_masks]
+    flat_pred = [m.flatten(1) for m in pred_masks]  # flatten, not reshape(n, -1): n can be 0
+    flat_gt = [m.flatten(1) for m in gt_masks]
 
     ranked = {
         cls_id: _rank_class(flat_pred, pred_scores, pred_labels, flat_gt, gt_labels, cls_id, _mask_iou)

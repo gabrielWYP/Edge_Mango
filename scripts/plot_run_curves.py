@@ -17,7 +17,11 @@ selected, so it sits above the smoothed line.
 import csv, glob, os, sys, datetime
 import matplotlib; matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from pathlib import Path
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from src.evaluation.arms import segment_twin_names  # noqa: E402
 
 ROOT, OUT = sys.argv[1], sys.argv[2]  # runs root with <arm>/fold<k>/seed42, output PNG
 SMOOTH = float(sys.argv[3]) if len(sys.argv) > 3 else 0.8
@@ -32,6 +36,13 @@ ARMS = [  # (arm, colour, label)
     ("kd_rgbnir", "#e1c300", "kd_rgbnir (RGB, maestro RGB+NIR)"),
     ("est_nir", "#3d3c39", "est_nir (NIR, referencia)"),
 ]
+# Segment twins (runs/master_<x>_seg, runs/<arm>_seg) draw with the hue of their base arm, dash-dot; their box AP and
+# box + class loss are the same tags as a detect run's. Absent twins draw nothing.
+LINESTYLE = {arm: "-" for arm, _, _ in ARMS}
+for _arm, _color, _label in list(ARMS):
+    for _twin in segment_twin_names(_arm):
+        ARMS.append((_twin, _color, _twin + _label.removeprefix(_arm)))
+        LINESTYLE[_twin] = "-."
 
 def read_curve(path):
     """{(arm, fold): {epoch: ap30}} from the CSV of eval_epoch_curve.py, seed 42."""
@@ -82,15 +93,15 @@ for col, fold in enumerate(folds):
         box, cls = s.get("Phase1/train/box_loss", {}), s.get("Phase1/train/cls_loss", {})
         if not ap: continue
         ep = sorted(ap)
-        ax_of["ap50"][col].plot(ep, smooth([ap[e] for e in ep], SMOOTH), color=color, lw=2, label=label)
+        ax_of["ap50"][col].plot(ep, smooth([ap[e] for e in ep], SMOOTH), color=color, ls=LINESTYLE[arm], lw=2, label=label)
         best = max(ep, key=ap.get)
         ax_of["ap50"][col].plot([best], [ap[best]], "o", ms=8, color=color, mec=SURFACE, mew=2)
         ap30 = curve.get((arm, fold), {})
         if "ap30" in ax_of and ap30:
             e30 = sorted(ap30)
-            ax_of["ap30"][col].plot(e30, smooth([ap30[e] for e in e30], SMOOTH ** 5), color=color, lw=2, label=label)
+            ax_of["ap30"][col].plot(e30, smooth([ap30[e] for e in e30], SMOOTH ** 5), color=color, ls=LINESTYLE[arm], lw=2, label=label)
         le = sorted(set(box) & set(cls))
-        ax_of["loss"][col].plot(le, [box[e] + cls[e] for e in le], color=color, lw=2, label=label)
+        ax_of["loss"][col].plot(le, [box[e] + cls[e] for e in le], color=color, ls=LINESTYLE[arm], lw=2, label=label)
         loss_top = max([loss_top] + [box[e] + cls[e] for e in le if e >= 3])
     if loss_top:  # the first two epochs (loss near 2.8) would flatten the rest; they run off the top
         ax_of["loss"][col].set_ylim(top=loss_top * 1.08)

@@ -78,7 +78,12 @@ METRIC_LABELS = {"ap50": "AP50", "ap50_95": "AP50-95", "precision": "Precision",
 V4_METRICS = ("latent_ap50", "latent_ap30", "face_auroc")
 MASK_METRICS = ("mask_ap50", "mask_ap50_95")  # segment runs only
 MASK_METRIC_LABELS = {"mask_ap50": "Mask AP50", "mask_ap50_95": "Mask AP50-95"}
-V4_METRIC_LABELS = {"latent_ap50": "Latent AP50", "latent_ap30": "Latent AP30", "face_auroc": "Face AUROC"}
+# Mask-IoU twins of the first two, in `metrics_v4.json` of segment runs only (src/evaluation/v4_metrics.py).
+V4_MASK_METRICS = ("latent_mask_ap50", "latent_mask_ap30")
+V4_METRIC_LABELS = {
+    "latent_ap50": "Latent AP50", "latent_ap30": "Latent AP30", "face_auroc": "Face AUROC",
+    "latent_mask_ap50": "Latent mask AP50", "latent_mask_ap30": "Latent mask AP30",
+}
 DEFAULT_FOLDS = "0,1,2,3,4"
 DEFAULT_FOLD_SPEC = "configs/folds/lot_5fold.json"
 DEFAULT_CONFIDENCE = 0.95
@@ -142,6 +147,9 @@ def v4_summary(metrics: dict) -> dict:
         "latent_ap30": metrics["latent_ap30"]["ap"],
         "face_auroc": metrics["face_auroc"]["auroc"],
     }
+    for metric in V4_MASK_METRICS:  # a segment run: the mask-IoU twins; absent from detect runs
+        if metric in metrics:
+            values[metric] = metrics[metric]["ap"]
     return {metric: None if value is None else float(value) for metric, value in values.items()}
 
 
@@ -424,6 +432,9 @@ def _merge_v4_metrics(
     splits = [s for s in SPLITS if any(key[3] == s and run["status"] != "missing" for key, run in v4_runs.items())]
     if not splits:
         return
+    v4_metrics = list(V4_METRICS) + [
+        m for m in V4_MASK_METRICS if any(m in run for run in v4_runs.values() if run["status"] == "ok")
+    ]
 
     def value(arm: str, fold_key: str, seed: int, split: str, metric: str) -> float | None:
         """None for a run with no such value: no file, an unreadable one, or an empty stratum."""
@@ -436,21 +447,21 @@ def _merge_v4_metrics(
             rows = results["per_fold"][arm][split]
             for fold_key, row in rows.items():
                 row["v4_seeds"] = {}
-                for metric in V4_METRICS:
+                for metric in v4_metrics:
                     present = [s for s in row["seeds"] if value(arm, fold_key, s, split, metric) is not None]
                     if present:
                         row[metric] = statistics.fmean(value(arm, fold_key, s, split, metric) for s in present)
                         row["v4_seeds"][metric] = present
             results["summary"][arm][split].update(
-                {m: mean_std([row[m] for row in rows.values() if m in row]) for m in V4_METRICS}
+                {m: mean_std([row[m] for row in rows.values() if m in row]) for m in v4_metrics}
             )
 
         rows = paired["per_fold"][split]
-        for metric in V4_METRICS:
+        for metric in v4_metrics:
             paired["per_fold_seed"][split][metric] = {}
         for fold_key, row in rows.items():
             row["v4_seeds"] = {}
-            for metric in V4_METRICS:
+            for metric in v4_metrics:
                 deltas = {
                     s: value(treatment, fold_key, s, split, metric) - value(baseline, fold_key, s, split, metric)
                     for s in row["seeds"]
@@ -462,10 +473,10 @@ def _merge_v4_metrics(
                     row["v4_seeds"][metric] = list(deltas)
                     paired["per_fold_seed"][split][metric][fold_key] = {str(s): d for s, d in deltas.items()}
         paired["summary"][split].update(
-            {m: mean_std([row[m] for row in rows.values() if m in row]) for m in V4_METRICS}
+            {m: mean_std([row[m] for row in rows.values() if m in row]) for m in v4_metrics}
         )
         if spec_by_id is not None:
-            for metric in V4_METRICS:
+            for metric in v4_metrics:
                 present = [fold for fold in results["folds"] if metric in rows.get(str(fold), {})]
                 paired["inference"][split][metric] = paired_inference(
                     [rows[str(fold)][metric] for fold in present],
@@ -482,10 +493,10 @@ def _merge_v4_metrics(
             continue
         left_out += [
             {**record, "status": "null", "reason": f"{metric} is null: no ground truth or an empty group in its stratum"}
-            for metric in V4_METRICS if run[metric] is None
+            for metric in v4_metrics if metric in run and run[metric] is None
         ]
-    results["metrics"] += list(V4_METRICS)
-    results["v4"] = {"metrics": list(V4_METRICS), "missing": left_out, "splits": splits}
+    results["metrics"] += list(v4_metrics)
+    results["v4"] = {"metrics": list(v4_metrics), "missing": left_out, "splits": splits}
 
 
 # --------------------------------------------------------------------------
@@ -568,8 +579,9 @@ def _v4_seeds_cell(row: dict) -> str:
 def _render_v4(results: dict) -> list[str]:
     """The 'Latent-window metrics' section: per-arm tables, paired differences and their inference."""
     v4, paired, folds = results["v4"], results["paired"], results["folds"]
-    labels = [V4_METRIC_LABELS[m] for m in V4_METRICS]
-    table_head = ["| fold | seeds | " + " | ".join(labels) + " |", "|---|---|" + "---|" * len(V4_METRICS)]
+    v4_metrics = v4["metrics"]
+    labels = [V4_METRIC_LABELS[m] for m in v4_metrics]
+    table_head = ["| fold | seeds | " + " | ".join(labels) + " |", "|---|---|" + "---|" * len(v4_metrics)]
     lines = [
         "", "## Latent-window metrics", "",
         "From `metrics_v4.json` (`scripts/v4_metrics.py`, plan-experimental section 7). **Latent AP50**, the "
@@ -586,25 +598,25 @@ def _render_v4(results: dict) -> list[str]:
             for fold in folds:
                 row = rows.get(str(fold))
                 if row is None:
-                    lines.append(f"| {fold} | missing | " + " | ".join("—" for _ in V4_METRICS) + " |")
+                    lines.append(f"| {fold} | missing | " + " | ".join("—" for _ in v4_metrics) + " |")
                 else:
                     lines.append(f"| {fold} | {_v4_seeds_cell(row)} | "
-                                 + " | ".join(_fmt(row.get(m)) for m in V4_METRICS) + " |")
+                                 + " | ".join(_fmt(row.get(m)) for m in v4_metrics) + " |")
             stats = results["summary"][arm][split]
             lines.append("| **mean ± σ** | | "
-                         + " | ".join(f"{_fmt_stat(stats[m])} (n={stats[m]['n']})" for m in V4_METRICS) + " |")
+                         + " | ".join(f"{_fmt_stat(stats[m])} (n={stats[m]['n']})" for m in v4_metrics) + " |")
         lines += ["", f"#### Paired difference {paired['treatment']} − {paired['baseline']} ({split})", "", *table_head]
         rows = paired["per_fold"][split]
         for fold in folds:
             row = rows.get(str(fold))
             if row is None:
-                lines.append(f"| {fold} | missing | " + " | ".join("—" for _ in V4_METRICS) + " |")
+                lines.append(f"| {fold} | missing | " + " | ".join("—" for _ in v4_metrics) + " |")
             else:
                 lines.append(f"| {fold} | {_v4_seeds_cell(row)} | "
-                             + " | ".join(_fmt(row.get(m), signed=True) for m in V4_METRICS) + " |")
+                             + " | ".join(_fmt(row.get(m), signed=True) for m in v4_metrics) + " |")
         stats = paired["summary"][split]
         lines.append("| **mean ± σ** | | "
-                     + " | ".join(f"{_fmt_stat(stats[m], signed=True)} (n={stats[m]['n']})" for m in V4_METRICS) + " |")
+                     + " | ".join(f"{_fmt_stat(stats[m], signed=True)} (n={stats[m]['n']})" for m in v4_metrics) + " |")
 
     if "inference" in paired:
         header = ["split", "metric", *_inference_header(paired["inference_settings"]["confidence"])]
@@ -615,7 +627,7 @@ def _render_v4(results: dict) -> list[str]:
             "", "| " + " | ".join(header) + " |", "|" + "---|" * len(header),
         ]
         for split in v4["splits"]:
-            for metric in V4_METRICS:
+            for metric in v4_metrics:
                 cells = [split, V4_METRIC_LABELS[metric], *_inference_cells(paired["inference"][split][metric])]
                 lines.append("| " + " | ".join(cells) + " |")
 
