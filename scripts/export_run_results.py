@@ -49,6 +49,9 @@ DIFFERENCES = {
     "gate_high_vs_low": ("crosskd_rgbnir_high", "crosskd_rgbnir_low"),
     "gate_better_vs_none": ("crosskd_rgbnir_better", "crosskd_rgbnir"),
 }
+# Segment twins of every arm (scripts/run_small_arms.py): `_seg` with a segment teacher, `_segdt` with a detect one.
+EXPORT_ARMS = [*ARMS, *(f"{arm}{suffix}" for suffix in ("_seg", "_segdt") for arm in ARMS)]
+METRIC_PREFIXES = ("map", "per_class", "mask_")  # metrics.json scalars exported; mask_* only exist for segment runs
 CHECKPOINTS = {"best": "reports", "epoch80": "reports_epoch80"}  # checkpoint label: reports directory under runs root
 GRID = [0.001] + [round(0.01 * i, 2) for i in range(1, 100)]
 RUN_DIR = re.compile(r"fold(\d+)_seed(\d+)")
@@ -86,7 +89,7 @@ def write_csv(path: Path, rows: list[dict]) -> None:
 def evaluations(args, folds: dict):
     """(arm, fold, seed, split, checkpoint, directory) of every finished evaluation that may be read."""
     for checkpoint, reports in CHECKPOINTS.items():
-        for arm in ARMS:
+        for arm in EXPORT_ARMS:
             for run in sorted((args.runs_root / reports / arm).glob("fold*_seed*")):
                 match = RUN_DIR.fullmatch(run.name)
                 if not match:
@@ -171,7 +174,7 @@ def main(argv=None) -> int:
         full[f"{arm}/fold{fold}/seed{seed}/{split}/{checkpoint}"] = {"metrics": metrics, "metrics_v4": v4}
         row = dict(key)
         flatten("v4", v4, row)
-        flatten("", {k: v for k, v in metrics.items() if k.startswith(("map", "per_class"))}, row)
+        flatten("", {k: v for k, v in metrics.items() if k.startswith(METRIC_PREFIXES)}, row)
         runs.append(row)
         for metric in ("latent_ap50", "latent_ap30"):
             ap[(fold, seed, split, checkpoint, metric, arm)] = v4[metric]["ap"]
@@ -187,7 +190,7 @@ def main(argv=None) -> int:
         print(f"{arm} fold{fold} seed{seed} {split} {checkpoint}: {len(rows)} photos", flush=True)
     differences = compute_differences(ap)
     history = []
-    for arm in ARMS:
+    for arm in EXPORT_ARMS:
         for path in sorted(args.runs_root.glob(f"{arm}/fold*/seed*/metrics_history.csv")):
             run = path.parent
             if not (run / "run_complete.json").exists():

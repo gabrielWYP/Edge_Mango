@@ -76,6 +76,8 @@ SPLITS = ("val", "test")
 METRICS = ("ap50", "ap50_95", "precision", "recall")
 METRIC_LABELS = {"ap50": "AP50", "ap50_95": "AP50-95", "precision": "Precision", "recall": "Recall"}
 V4_METRICS = ("latent_ap50", "latent_ap30", "face_auroc")
+MASK_METRICS = ("mask_ap50", "mask_ap50_95")  # segment runs only
+MASK_METRIC_LABELS = {"mask_ap50": "Mask AP50", "mask_ap50_95": "Mask AP50-95"}
 V4_METRIC_LABELS = {"latent_ap50": "Latent AP50", "latent_ap30": "Latent AP30", "face_auroc": "Face AUROC"}
 DEFAULT_FOLDS = "0,1,2,3,4"
 DEFAULT_FOLD_SPEC = "configs/folds/lot_5fold.json"
@@ -97,13 +99,17 @@ def _class_value(per_class: dict, cls_id: int = DAMAGE_CLASS_ID):
 def damage_summary(metrics: dict) -> dict:
     """AP50, AP50-95, precision, recall and GT box count of the damage class."""
     counts = _class_value(metrics["per_class_counts"])
-    return {
+    summary = {
         "ap50": float(_class_value(metrics["per_class_ap_50"])),
         "ap50_95": float(_class_value(metrics["per_class_ap_50_95"])),
         "num_gt": int(counts["tp"]) + int(counts["fn"]),     # tp + fn == GT boxes
         "precision": float(_class_value(metrics["per_class_precision"])),
         "recall": float(_class_value(metrics["per_class_recall"])),
     }
+    if "mask_per_class_ap_50" in metrics:  # a segment run: the damage mask AP next to the box AP
+        summary["mask_ap50"] = float(_class_value(metrics["mask_per_class_ap_50"]))
+        summary["mask_ap50_95"] = float(_class_value(metrics["mask_per_class_ap_50_95"]))
+    return summary
 
 
 def mean_std(values: list[float]) -> dict:
@@ -359,7 +365,49 @@ def aggregate(
         "summary": summary,
     }
     _merge_v4_metrics(results, runs, spec_by_id, rope, confidence)
+    _merge_mask_metrics(results, runs)
     return results
+
+
+def _merge_mask_metrics(results: dict, runs: Mapping[tuple, Mapping]) -> None:
+    """Add `results["mask"]`, the damage mask AP of segment runs; nothing when no run has any."""
+    if not any(MASK_METRICS[0] in run for run in runs.values() if run["status"] == "ok"):
+        return
+    per_fold: dict = {}
+    summary: dict = {}
+    for arm in results["arms"]:
+        per_fold[arm], summary[arm] = {}, {}
+        for split in results["splits"]:
+            rows = {}
+            for fold in results["folds"]:
+                ok = [runs[(arm, fold, seed, split)] for seed in sorted(results["seeds"])
+                      if runs[(arm, fold, seed, split)]["status"] == "ok"
+                      and MASK_METRICS[0] in runs[(arm, fold, seed, split)]]
+                if ok:
+                    rows[str(fold)] = {
+                        **{m: statistics.fmean(r[m] for r in ok) for m in MASK_METRICS},
+                        "seeds": [r["seed"] for r in ok],
+                    }
+            per_fold[arm][split] = rows
+            summary[arm][split] = {m: mean_std([row[m] for row in rows.values()]) for m in MASK_METRICS}
+    results["mask"] = {"metrics": list(MASK_METRICS), "per_fold": per_fold, "summary": summary}
+
+
+def _render_mask(results: dict) -> list[str]:
+    block = results["mask"]
+    labels = [MASK_METRIC_LABELS[m] for m in MASK_METRICS]
+    lines = ["", "## Mask AP (segment runs)", "",
+             "Damage-class mask AP from `metrics.json`, measured at prototype resolution; mean ± σ is across folds."]
+    for split in results["splits"]:
+        lines += ["", f"### {split}", "", "| arm | folds | " + " | ".join(labels) + " |",
+                  "|---|---|" + "---|" * len(MASK_METRICS)]
+        for arm in results["arms"]:
+            stats = block["summary"][arm][split]
+            n = stats[MASK_METRICS[0]]["n"]
+            if n:
+                lines.append(f"| {arm} | {n} of {len(results['folds'])} | "
+                             + " | ".join(_fmt_stat(stats[m]) for m in MASK_METRICS) + " |")
+    return lines
 
 
 def _merge_v4_metrics(
@@ -640,6 +688,9 @@ def render_markdown(results: dict) -> str:
 
     if "v4" in results:
         lines += _render_v4(results)
+
+    if "mask" in results:
+        lines += _render_mask(results)
 
     lines += ["", "## Missing runs", ""]
     if not results["missing"]:

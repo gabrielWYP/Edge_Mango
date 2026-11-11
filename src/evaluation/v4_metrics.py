@@ -49,6 +49,7 @@ from src.data_pipeline.v4_selection import LATENT_HOURS, hour_label
 from src.evaluation.detectability import auroc
 from src.training.config import DAMAGE_CLASS_ID, TrainingConfig
 from src.training.metrics import _compute_ap_at_iou, _cxcywh_to_xyxy
+from src.training.seg_labels import read_label_boxes
 
 AP50_IOU = 0.50
 AP30_IOU = 0.30
@@ -147,11 +148,8 @@ def read_damage_labels(labels_dir: str | Path) -> dict[str, torch.Tensor]:
         raise ValueError(f"No label files in {labels_dir}.")
     labels = {}
     for path in files:
-        boxes = []
-        for line in path.read_text().splitlines():
-            parts = line.split()
-            if len(parts) >= 5 and int(parts[0]) == DAMAGE_CLASS_ID and float(parts[3]) > 0 and float(parts[4]) > 0:
-                boxes.append([float(v) for v in parts[1:5]])
+        all_boxes, classes = read_label_boxes(path)  # box and polygon lines alike
+        boxes = all_boxes[classes == DAMAGE_CLASS_ID].astype("float64").tolist()
         labels[path.stem] = _cxcywh_to_xyxy(_boxes_tensor(boxes))
     return labels
 

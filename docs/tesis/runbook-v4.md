@@ -138,3 +138,47 @@ Changing any of these changes the identity of the runs that used it.
 If a KD run does not fit in memory, lower the batch of every arm with the same `--extra-override` in E1 and E2
 (`batch_size=4`). The teacher identity includes that flag, so adding it only for the students stops the runner: a
 change at that point means training the teachers again.
+
+
+## Segment arms (opt-in)
+
+Instance-segmentation arms: the same students with a YOLOv8-seg head (`Proto` on P3 plus 32 mask coefficients per
+anchor), trained on polygon labels. Nothing above changes: the detect arms never mention the task.
+
+**Prerequisite.** Build the dataset from the polygon export (both views already in the RGB frame; the export replaces
+`--labels`; the mango polygon is the fruit-mask contour), then the folds. The fold label files keep the polygon lines.
+
+```bash
+python scripts/build_v4_dataset.py --polygons data/labels/<export>.json \
+    --output data/cache/v4_captura_v3_poly --workers 8
+python scripts/make_v4_folds.py --dataset data/cache/v4_captura_v3_poly --fold-spec configs/folds/v4_lot_5fold_poly.json
+```
+
+**Arms.** Every arm of `run_small_arms.py` has a `_seg` twin, chosen by name in `--arms` (no default list holds them,
+and a name keeps each arm in its own checkpoint and report folder, which a global flag would not):
+
+| arm | student | teacher |
+|---|---|---|
+| `est_rgb_seg`, `est_rgbnir_seg`, `est_nir_seg` | segment | none |
+| `kd_rgb_seg`, `kd_rgbnir_seg`, `crosskd_*_seg` | segment | segment teacher `est_*_seg` of its fold and seed |
+| `kd_rgb_segdt`, `kd_rgbnir_segdt`, `crosskd_*_segdt` | segment | detect teacher `est_*` (train it first, on its own labels) |
+
+```bash
+python scripts/run_small_arms.py --dataset data/cache/v4_captura_v3_poly --make-nir-as-rgb \
+    --weights data/weights/yolov8n_state.pt --variant nano --epochs 80 --seeds 42 \
+    --arms est_rgb_seg est_rgbnir_seg kd_rgbnir_seg --checkpoints-root checkpoints/v4_seg \
+    --reports-root reports/v4_seg --val-only --dry-run      # drop --dry-run to launch
+```
+
+`--dry-run` prints every command. A segment arm adds `task=segment mask_ratio=4 mask_weight=7.5` (the `--mask-ratio` and
+`--mask-weight` flags) to its training and evaluation overrides; `task=segment` is what makes the dataset load masks. For
+`run_kfold.py` arms use `--extra-override task=segment`. The KD teacher loader reads `task` from the teacher
+checkpoint, so a detect or a segment teacher both work, and KD acts on cls and box only. `--weights` with
+a yolov8n-seg state dict also initialises the Proto and mask layers of the `nano` variant.
+
+**Results.** `evaluate_checkpoint.py` takes `task` from the checkpoint (`--override task=...` still wins), and
+`metrics.json` gets `mask_map50`, `mask_map_50_95`, `mask_per_class_ap_50` and `mask_per_class_ap_50_95` next to the box
+metrics, measured at prototype resolution (160x160 on a 640 input). `aggregate_kfold.py` adds a `mask` block and a
+"Mask AP" section when a run has them, and `export_run_results.py` carries the `mask_*` columns and reads the `_seg` and
+`_segdt` folders. Box metrics, the latent AP and every detect result keep their format. Not covered: ONNX/TFLite export and
+`visualize_damage_predictions.py` are box-only.

@@ -45,6 +45,25 @@ def parse_label_line(parts: list[str]) -> tuple[int, np.ndarray, np.ndarray | No
     return cls_id, np.array([cx, cy, w, h], dtype=np.float32), None
 
 
+def read_label_boxes(path) -> tuple[np.ndarray, np.ndarray]:
+    """Boxes (N, 4 cxcywh, float32) and class ids (N,) of a label file, box or polygon lines.
+
+    The same parsing as `YOLODataset`: degenerate lines are skipped and a polygon gives its
+    tight box. Raises FileNotFoundError for a missing file.
+    """
+    boxes, classes = [], []
+    with open(path) as handle:
+        for line in handle:
+            parsed = parse_label_line(line.split())
+            if parsed is not None:
+                classes.append(parsed[0])
+                boxes.append(parsed[1])
+    return (
+        np.array(boxes, dtype=np.float32).reshape(-1, 4),
+        np.array(classes, dtype=np.int64),
+    )
+
+
 def format_polygon_line(cls_id: int, polygon: np.ndarray) -> str:
     """A YOLO-seg line from a (n, 2) normalized polygon."""
     coords = " ".join(f"{v:.6f}" for v in np.asarray(polygon, dtype=np.float64).reshape(-1))

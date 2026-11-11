@@ -58,6 +58,9 @@ from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.training.seg_labels import read_label_boxes  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -362,16 +365,8 @@ def resolve_label_sources(split_of: dict[str, str], labels_dir: Path) -> dict[st
 
 def count_damage_boxes(label_path: Path) -> int:
     """Number of class-1 boxes in a label file (same parsing as `YOLODataset`)."""
-    count = 0
-    for line in label_path.read_text().splitlines():
-        parts = line.split()
-        if len(parts) < 5:
-            continue
-        if float(parts[3]) <= 0 or float(parts[4]) <= 0:
-            continue
-        if int(parts[0]) == DAMAGE_CLASS_ID:
-            count += 1
-    return count
+    _, classes = read_label_boxes(label_path)  # box and polygon lines alike
+    return int((classes == DAMAGE_CLASS_ID).sum())
 
 
 def _sha256_file(path: Path) -> str:
