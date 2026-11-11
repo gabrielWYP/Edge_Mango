@@ -171,14 +171,53 @@ python scripts/run_small_arms.py --dataset data/cache/v4_captura_v3_poly --make-
 ```
 
 `--dry-run` prints every command. A segment arm adds `task=segment mask_ratio=4 mask_weight=7.5` (the `--mask-ratio` and
-`--mask-weight` flags) to its training and evaluation overrides; `task=segment` is what makes the dataset load masks. For
-`run_kfold.py` arms use `--extra-override task=segment`. The KD teacher loader reads `task` from the teacher
-checkpoint, so a detect or a segment teacher both work, and KD acts on cls and box only. `--weights` with
+`--mask-weight` flags) to its training and evaluation overrides; `task=segment` is what makes the dataset load masks. The
+KD teacher loader reads `task` from the teacher checkpoint, so a detect or a segment teacher both work, and KD acts on cls
+and box only. `--weights` with
 a yolov8n-seg state dict also initialises the Proto and mask layers of the `nano` variant.
+
+**`run_kfold.py` arms.** The plan's student arms have segment twins in `V4_ARMS`, so `--extra-override task=segment` is not
+needed: `est_etiquetas_seg`, and `est_kd_rgb_segdt` / `est_kd_rgbnir_segdt` (segment student, detect master teacher; a
+MasterModel cannot segment, so there is no `_seg` KD arm and no twin of a master). A twin has no config file of its own:
+`--arms configs/experiment/v4_est_etiquetas_seg.yaml` reads `v4_est_etiquetas.yaml`. `--mask-weight` and `--mask-ratio`
+(7.5 and 4) apply. Detect arms never get `task` or `mask_*`.
+
+```bash
+python scripts/run_kfold.py --folds-dir data/cache/v4_captura_v3_poly/folds_lot --machine configs/machines/rtx3080.yaml \
+    --arms configs/experiment/v4_est_etiquetas_seg.yaml --checkpoints-root checkpoints/v4_seg \
+    --reports-root reports/v4_seg --dry-run      # drop --dry-run to launch
+```
 
 **Results.** `evaluate_checkpoint.py` takes `task` from the checkpoint (`--override task=...` still wins), and
 `metrics.json` gets `mask_map50`, `mask_map_50_95`, `mask_per_class_ap_50` and `mask_per_class_ap_50_95` next to the box
-metrics, measured at prototype resolution (160x160 on a 640 input). `aggregate_kfold.py` adds a `mask` block and a
-"Mask AP" section when a run has them, and `export_run_results.py` carries the `mask_*` columns and reads the `_seg` and
-`_segdt` folders. Box metrics, the latent AP and every detect result keep their format. Not covered: ONNX/TFLite export and
-`visualize_damage_predictions.py` are box-only.
+metrics, measured at prototype resolution (160x160 on a 640 input). With `--save-predictions` each damage detection of a
+segment model also carries a `mask` in `predictions.jsonl`: the polygon of its largest mask contour, normalized to the
+source RGB frame like `xyxy`. `scripts/v4_metrics.py` then adds mask-IoU twins of the latent metrics to
+`metrics_v4.json`, with the ground-truth polygons read from the label files (box-only lines leave the mask ground truth;
+`mask_gt_box_only` counts them): `latent_mask_ap50` (primary set, IoU 0.50), `latent_mask_ap30`, `mask_ap50_by_hour` and
+`developed_mask_ap50`. Face AUROC and the false positives per `sano` photo are score-based and stay as they are.
+`aggregate_kfold.py` adds the two latent mask metrics to the Latent-window tables and their paired inference, plus a
+"Mask AP" section from `metrics.json`. `export_run_results.py` carries the `mask_*` columns and reads the `_seg` and
+`_segdt` folders; `differences.csv` has `H1_seg`, `H2_seg`, `secondary_seg`, `exploratory_seg` (and `_segdt`) rows for
+`latent_ap50`, `latent_ap30`, `latent_mask_ap50` and `latent_mask_ap30` when both arms of a pair were exported.
+`val_operating_points.py`, `plot_run_curves.py` and `zone_analysis.py` read the twins too (box AP, per-photo
+classification); the mask metrics are in `metrics_v4.json` only. Box metrics, the latent AP and every detect result keep
+their format.
+
+**Export.** `scripts/export_student.py` reads `task` and `student_variant` from the checkpoint; an RGB+NIR student cannot
+be exported. A segment student exports four outputs, `boxes_raw`, `cls_logits`, `mask_coefs` and `protos`, with the
+assembly left outside the graph (see `docs/deployment/mobile-export.md`, section 7):
+
+```bash
+python scripts/export_student.py --format onnx --checkpoint checkpoints/v4_seg/est_etiquetas_seg/fold0/seed42/best_model.pt \
+    --out-dir exports --name est_etiquetas_seg --verify   # needs onnx and onnxruntime; --verify runs on random inputs
+```
+
+**Visualization.** For a segment checkpoint `visualize_damage_predictions.py` draws the ground-truth polygons (left) and the
+predicted masks (right) as filled contours, with the boxes as before; a detect checkpoint gets boxes only:
+
+```bash
+python scripts/visualize_damage_predictions.py --checkpoint checkpoints/v4_seg/est_etiquetas_seg/fold0/seed42/best_model.pt \
+    --config configs/experiment/v4_est_etiquetas.yaml --rgb-dir data/cache/v4_captura_v3_poly/rgb \
+    --labels-dir data/cache/v4_captura_v3_poly/folds_lot/fold_0/labels --model-type student --split test --num-samples 20
+```
