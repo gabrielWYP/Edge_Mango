@@ -4,7 +4,9 @@
 Reads the `predictions.jsonl` of `scripts/evaluate_checkpoint.py --save-predictions`, the `index.csv`
 of the v4 dataset and the label files of the evaluated split, and writes `metrics_v4.json`: latent
 AP50 (primary), latent AP30, per-face AUROC, and AP50 per hour, on developed, per impact zone and per
-box provenance, plus false positives per `sano` image. The definitions are in
+box provenance, plus false positives per `sano` image. For a segment evaluation (predictions with a
+`mask` polygon) it adds the mask-IoU twins: latent_mask_ap50/ap30, mask_ap50_by_hour and
+developed_mask_ap50, with the ground-truth polygons read from the label files. The definitions are in
 `src/evaluation/v4_metrics.py`. `scripts/aggregate_kfold.py` reads the file next to `metrics.json`.
 
 A stratum with no ground truth is null, never 0. The predictions and the label files must hold the
@@ -52,8 +54,11 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     try:
         index = v4_metrics.read_index(args.index)
+        pred_masks = v4_metrics.read_prediction_masks(args.predictions)  # None for a detect evaluation
         photos = v4_metrics.join_photos(
-            v4_metrics.read_predictions(args.predictions), index, v4_metrics.read_damage_labels(args.labels_dir)
+            v4_metrics.read_predictions(args.predictions), index, v4_metrics.read_damage_labels(args.labels_dir),
+            pred_masks=pred_masks,
+            gt_polygons=None if pred_masks is None else v4_metrics.read_damage_polygons(args.labels_dir),
         )
         metrics = v4_metrics.compute_metrics(photos, index, args.conf_threshold)
     except ValueError as error:
@@ -67,6 +72,10 @@ def main(argv: list[str] | None = None) -> int:
     for label, key in (("latent AP50", "latent_ap50"), ("latent AP30", "latent_ap30")):
         block = metrics[key]
         print(f"{label}: {_fmt(block['ap'])} (n_gt={block['n_gt']}, n_images={block['n_images']})")
+    for label, key in (("latent mask AP50", "latent_mask_ap50"), ("latent mask AP30", "latent_mask_ap30")):
+        if key in metrics:
+            block = metrics[key]
+            print(f"{label}: {_fmt(block['ap'])} (n_gt={block['n_gt']}, n_images={block['n_images']})")
     auc = metrics["face_auroc"]
     print(f"face AUROC: {_fmt(auc['auroc'])} (n_positive={auc['n_positive']}, n_negative={auc['n_negative']})")
     fp = metrics["sano_fp_per_image"]
