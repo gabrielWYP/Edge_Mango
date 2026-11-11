@@ -2,7 +2,7 @@
 
 **Tesis de pregrado — Ingeniería de Sistemas**
 
-Pipeline end-to-end de detección de daño en mango usando imágenes RGB+NIR capturadas con una Raspberry Pi, un maestro multimodal de dos streams con backbone ConvNeXt-Tiny y atención cross-modal, y conocimiento destilado (KD) hacia un modelo estudiante YOLOv8-Nano para despliegue eficiente.
+Pipeline end-to-end de detección de daño latente en mango con imágenes RGB+NIR capturadas con una Raspberry Pi. Estudiantes YOLOv8-Nano propios (sin ultralytics) que leen RGB, NIR o RGB+NIR, y destilación de conocimiento (KD) hacia un estudiante que solo lee RGB, para el despliegue en el edge.
 
 ---
 
@@ -10,38 +10,45 @@ Pipeline end-to-end de detección de daño en mango usando imágenes RGB+NIR cap
 
 El proyecto construye un sistema de detección de daño en frutos de mango usando:
 
-- **Imágenes multiespectrales** (RGB + NIR) capturadas con una Raspberry Pi: RGB con una cámara USB Arducam IMX219 bajo luz blanca y NIR con una Pi Camera NoIR v2 (IMX219) bajo iluminación IR de 850 nm (`docs/findings/2026-10-18/capture/captura_dual.py:93`, `:170`, `:336`)
-- **Anotación automática** con Florence-2-large + refinamiento manual en Label Studio
-- **Modelo maestro (Teacher)** multimodal con dos arquitecturas seleccionables por `fusion_mode`. El maestro actual (`configs/experiment/twostream.yaml`) usa `cross_attention`: DualConvNeXtBackbone (ConvNeXt-Tiny) + CrossModalFusion + DualFPN + YOLODetectionHead (46.6M params). El modo `early` (EarlyFusionBackbone + SingleFPN, 35.3M params) sigue disponible. Detalle en la sección 2.1
-- **Modelo estudiante (Student)** YOLOv8-Nano from scratch (~6.9M params) para recibir conocimiento destilado en capas intermedias
-- **Training loop** YOLOv8 personalizado (TAL assigner, CIoU, Focal Loss) — sin dependencia de ultralytics
-- **Knowledge Distillation** a nivel de features (backbone, FPN, head stems), no solo logits finales
+- **Imágenes multiespectrales** (RGB + NIR) capturadas con una Raspberry Pi: RGB con una cámara USB Arducam IMX219 bajo luz blanca y NIR con una Pi Camera NoIR v2 (IMX219) bajo iluminación IR de 850 nm (`docs/findings/2026-10-18/capture/captura_dual.py:93`, `:170`, `:336`).
+- **Dataset v4** (`captura_v3`, lotes 1-5): 3966 fotos (500 caras sanas y 3466 con daño), con 7 capturas por cara entre 0 y 12 h después del impacto. El NIR se registra al plano RGB por lote, con una corrección por foto. Los folds dejan un lote fuera (leave-one-lot-out).
+- **Anotación manual en Label Studio:** una caja de daño por foto, más si la marca es visible en RGB y en NIR. Hay una reanotación con polígonos en curso (sección 2.3).
+- **Estudiantes YOLOv8-Nano** (`src/models/student/`) con entrada RGB, NIR o RGB+NIR, y un training loop YOLOv8 propio (asignador TAL, CIoU + DFL, BCE).
+- **Destilación** desde un estudiante RGB+NIR (`kd_rgbnir`) o RGB (`kd_rgb`) hacia un estudiante RGB, con MSE sobre features intermedias. CrossKD está implementado como experimento exploratorio ([`docs/tesis/experimentos-crosskd.md`](docs/tesis/experimentos-crosskd.md)).
+- **Maestro grande de dos streams** (ConvNeXt-Tiny con atención cross-modal, 46.6M parámetros; sección 2.1). Quedó como caso de estudio, fuera de las pruebas de hipótesis.
 
 > **Plan experimental de la tesis (dataset v4, desde 2026-10-25):** [`docs/tesis/plan-experimental.md`](docs/tesis/plan-experimental.md).
-> Los resultados de abajo son de v3 (286 pares) y quedan como desarrollo.
+> Todos los números y su lectura: [`docs/tesis/resultados-causas-y-soluciones.md`](docs/tesis/resultados-causas-y-soluciones.md).
 
-### Resultados actuales
+### Resultados actuales: YOLO frente a YOLO destilado (v4, test, semilla 42)
 
-Primera cadena completa (maestro → estudiante → destilado) con el NIR registrado al plano RGB (#24),
-seed 42, sin early stopping y con el checkpoint elegido por AP de daño. Procedimiento completo en
-[`reports/final-run-20261014/README.md`](reports/final-run-20261014/README.md).
+Resultado **preliminar**: una semilla, cinco folds, el lote de test fuera del entrenamiento y el checkpoint elegido por validación. Las semillas 1337 y 2024 siguen corriendo. Datos por fold y por foto en [`reports/final-runs-export/`](reports/final-runs-export/README.md).
 
-| Modelo | Val AP50 daño | **Test AP50 daño** | Test P / R | FP en test |
-|--------|---------------|--------------------|------------|------------|
-| Maestro two-stream (`configs/experiment/twostream.yaml`) | 0.737 | **0.398** | 0.165 / 0.595 | 111 |
-| Estudiante YOLOv8-nano | 0.106 | **0.111** | 0.020 / 0.622 | 1147 |
-| Estudiante destilado | 0.102 | **0.084** | 0.020 / 0.568 | 1030 |
+| Brazo | Entrada | Entrenamiento | AP50 latente | AP30 latente | AP50 desarrollado | AUROC por cara | FP por foto sana |
+| :-- | :-- | :-- | --: | --: | --: | --: | --: |
+| `est_rgb` | RGB | Solo etiquetas | 0.174 | 0.269 | 0.192 | 0.588 | 6.15 |
+| `est_rgbnir` | RGB+NIR | Solo etiquetas | **0.254** | **0.341** | **0.306** | **0.628** | 5.16 |
+| `kd_rgb` | RGB | Destilado de `est_rgb` | 0.190 | 0.288 | 0.208 | 0.594 | 5.26 |
+| `kd_rgbnir` | RGB | Destilado de `est_rgbnir` | 0.192 | 0.289 | 0.216 | 0.607 | 4.90 |
 
-- **El maestro duplica la referencia anterior:** 0.398 frente a 0.177 ± 0.102 de
-  [`reports/twostream-v3-3seeds/`](reports/twostream-v3-3seeds/README.md), que se entrenó con NIR sin registrar
-  (desplazado ~168 px respecto de las etiquetas). Es una sola semilla, así que falta confirmarlo con 3.
-- **La destilación todavía no mejora el daño:** destilado y estudiante solo quedan dentro del ruido de una semilla
-  (21 contra 23 detecciones correctas de 37). Sí mejora la calidad de las cajas de mango. La pérdida de KD arranca
-  ~240 veces por encima de la de clasificación, y el AP de daño se queda en 0 las primeras 10 épocas.
-- **Datos:** v3, 236 pares RGB+NIR, 188 train / 23 val / 25 test (43 y 37 cajas de daño en val y test).
-- **Fuga entre splits:** hay imágenes tomadas con segundos de diferencia en train y en val/test, así que los
-  valores absolutos probablemente están inflados. Las comparaciones entre modelos sobre el mismo split siguen
-  siendo válidas.
+"Latente" es la ventana de 0 a 6 h más las caras sanas, que es la métrica primaria. "Desarrollado" son las fotos de 8 a 12 h. Los FP por foto sana se cuentan con confianza ≥ 0.25.
+
+| Comparación | Δ medio | IC 95% corregido | P(right) | P(rope) | Folds a favor |
+| :-- | --: | :-- | --: | --: | --: |
+| H1: `est_rgbnir` − `est_rgb` | +0.080 | [−0.005, +0.165] | 0.939 | 0.046 | 5/5 |
+| H2: `kd_rgbnir` − `kd_rgb` | +0.002 | [−0.072, +0.077] | 0.273 | 0.500 | 3/5 |
+| `kd_rgbnir` − `est_rgb` | +0.018 | [−0.034, +0.070] | 0.462 | 0.482 | 4/5 |
+| `kd_rgb` − `est_rgb` | +0.016 | [−0.032, +0.063] | 0.409 | 0.538 | 4/5 |
+
+Inferencia a nivel de lote con t corregido y ROPE bayesiana de ±0.02, con umbral P ≥ 0.95 (`scripts/aggregate_kfold.py`).
+
+- **El NIR ayuda, pero sin llegar al umbral.** `est_rgbnir` supera a `est_rgb` en los 5 lotes y en todas las horas desde las 0 h. La diferencia media es cuatro veces la ROPE, pero P(right) = 0.939 queda justo debajo de 0.95.
+- **La destilación no transfiere el NIR.** `kd_rgbnir` y `kd_rgb` quedan iguales (0.192 y 0.190). Los dos destilados quedan cerca de +0.02 sobre `est_rgb`, sin concluir. Con estos datos, el YOLO destilado no supera con claridad al YOLO entrenado solo con etiquetas, y la mejora no depende de que el maestro lea NIR.
+- **Solo NIR, en validación:** `est_nir` (0.281 de AP50 latente) queda casi igual que `est_rgbnir` (0.289). Su test todavía no se lee.
+- **Distinguir una cara dañada de una sana sigue cerca del azar** (AUROC 0.59-0.63), y quedan 5 a 6 cajas falsas por foto sana con confianza 0.25.
+- **El daño cerca del borde de la fruta casi no se detecta.** Las zonas `superior` e `inferior` caen sobre los bordes de arriba y abajo de la imagen, donde la superficie queda más inclinada respecto de la cámara. La detección cae de 0.81 con la superficie de frente a 0.08 a más de 60° de inclinación. Esto motiva la reanotación con polígonos y la cabeza de segmentación (sección 2.3).
+
+> **Historial (v3, 236 pares, split aleatorio):** el maestro two-stream llegó a 0.398 de AP50 de daño en test, y el estudiante y el destilado quedaron en 0.111 y 0.084 ([`reports/final-run-20261014/`](reports/final-run-20261014/README.md)). Ese split tenía fuga entre fotos casi idénticas, así que se reemplazó por v4.
 
 > **El mAP agregado no mide lo que parece.** La clase mango satura cerca de 1.0, así que el mAP de dos clases
 > casi no refleja la clase daño. La métrica que importa en este proyecto es `ap50_class_1` (`damage_ap50`).
@@ -131,12 +138,35 @@ RGB ──→ CSPDarknetNano ──→ PANet ──→ YOLOStudentHead
 
 El estudiante expone un contrato de **7 claves de output** idéntico al del maestro, permitiendo KD a nivel de features intermedias: `distill_backbone`, `distill_fpn`, `distill_head_cls`, `distill_head_reg`.
 
-| Módulo | Params |
-|--------|--------|
-| CSPDarknetNano | 1.27M |
-| PANet Neck | 2.13M |
-| YOLOStudentHead | 3.47M |
-| **Total** | **6.87M** |
+| Variante (`student_variant`) | Params | Uso |
+|--------|--------|-----|
+| `nano` | 3.00M | Brazos de v4 (`est_*`, `kd_*`, `crosskd_*`) |
+| `wide` | 6.87M | Desarrollo en v3 |
+
+La entrada se elige con `student_in_channels`: 3 para RGB y 4 para RGB+NIR. `est_nir` lee el NIR CLAHE. En v4, el recorte al mango (`roi_crop`) se aplica en todos los brazos.
+
+### 2.3 Segmentación de instancias (`task: segment`) — en revisión, [PR #93](https://github.com/gabrielWYP/Edge_Mango/pull/93)
+
+Se agregó porque los asesores sospechan que las cajas de daño, sobre todo en `superior` e `inferior`, quedaron mal anotadas. El objetivo es probarlo en lugar de discutirlo. Las 3466 fotos con daño se reanotan con polígonos en Label Studio (`configs/label_studio/captura_v3_damage_poly.xml`) directamente sobre las imágenes v4. El NIR ya está registrado al RGB, así que el polígono cae en los píxeles de entrenamiento sin homografía.
+
+```
+RGB(+NIR) ──→ CSPDarknetNano ──→ PANet ──→ P3, P4, P5
+                                            │
+                    ┌───────────────────────┼─────────────────────────────┐
+                    │                       │                             │
+           Proto (sobre P3)       Head desacoplado por nivel     Coeficientes de máscara
+           32 prototipos a 1/4    cls + caja (DFL)               32 por ancla y nivel
+           de la entrada                    │                             │
+                    └──────── máscara = σ(coef · prototipos), recortada a la caja ────┘
+```
+
+- **Opt-in:** con `task: detect` (el default), el modelo, los checkpoints y los brazos actuales no cambian. Con `task: segment`, el estudiante `nano` pasa de 3.00M a 3.35M parámetros. Las capas nuevas se pueden inicializar con los pesos oficiales de `yolov8n-seg`.
+- **Pérdida:** a la de detección se suma una BCE de máscara por instancia sobre las anclas positivas del asignador TAL, recortada a la caja y normalizada por su área (`mask_weight: 7.5`, `mask_ratio: 4`).
+- **Datos:** las etiquetas pasan a YOLO-seg (`clase x1 y1 … xn yn`) y las líneas de caja siguen funcionando. Las máscaras atraviesan el recorte al mango, el letterbox y las aumentaciones, y la caja se recalcula desde la máscara aumentada. `build_v4_dataset.py --polygons <export>` escribe los polígonos de daño del export y el contorno del mango desde su máscara.
+- **Métricas:** mask AP50 y AP50-95 junto al AP de cajas, que no cambia.
+- **Destilación:** CrossKD y el KD de features funcionan con un estudiante de segmentación, con maestro de detección o de segmentación. La destilación sigue sobre clase y caja. Destilar máscaras exigiría comparar máscaras ensambladas, porque los prototipos de dos redes no son comparables, y por ahora no se recomienda.
+- **Experimento para los asesores:** primero se reentrena el detector actual, sin cambios, con las cajas ajustadas que salen de los polígonos. Si el AP de `superior` e `inferior` sube, el problema era la anotación. La cabeza de segmentación es un brazo adicional.
+- **Validado** con una exportación real de 102 tareas: los puntos coinciden con el export (error < 0.01 px) y el dataset y un paso de entrenamiento en CPU corren.
 
 ---
 
@@ -345,15 +375,12 @@ python -m pytest tests/ -v
 
 ## 8. Próximos Pasos
 
-1. **Balance de pérdidas en la destilación** — Normalizar la pérdida de features o rebalancear `kd_weight`, y
-   repetir el destilado contra el mismo maestro. Después, confirmar el maestro con 3 semillas sobre un split
-   agrupado por sesión
-2. **Knowledge Distillation training** — Entrenar al estudiante usando las proyecciones del maestro
-3. **Más datos** — 100-200+ pares RGB+NIR adicionales para mejorar AP de daño
-4. **Fase 2 de entrenamiento** — Descongelar backbone del maestro cuando haya ≥200 imágenes
-5. **Exportar modelos** — ONNX / TorchScript para inferencia en producción
-6. **Mergear feature-branch-chain** del estudiante a main
-7. **Redacción de tesis** — Documentar métricas, arquitectura y resultados
+1. **Terminar las semillas 1337 y 2024** de los cuatro brazos y leer el test confirmatorio (plan, sección 8.1).
+2. **Reanotar con polígonos** las 3466 fotos con daño (Label Studio, sección 2.3). Después, reentrenar el detector con las cajas que salen de los polígonos y comparar el AP por zona.
+3. **Brazos de segmentación** (`task: segment`, [PR #93](https://github.com/gabrielWYP/Edge_Mango/pull/93)): mask AP y AP de cajas frente a los brazos de detección.
+4. **CrossKD** (exploratorio): bloques A, B y C de [`docs/tesis/experimentos-crosskd.md`](docs/tesis/experimentos-crosskd.md).
+5. **Exportar el estudiante** a ONNX/TFLite para el despliegue. La exportación todavía no soporta la salida de máscaras.
+6. **Redacción de tesis:** entrega parcial el 2026-11-08 y final el 2026-11-28, con el despliegue.
 
 ---
 
