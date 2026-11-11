@@ -50,7 +50,15 @@ DIFFERENCES = {
     "gate_better_vs_none": ("crosskd_rgbnir_better", "crosskd_rgbnir"),
 }
 # Segment twins of every arm (scripts/run_small_arms.py): `_seg` with a segment teacher, `_segdt` with a detect one.
-EXPORT_ARMS = [*ARMS, *(f"{arm}{suffix}" for suffix in ("_seg", "_segdt") for arm in ARMS)]
+SEGMENT_SUFFIXES = ("_seg", "_segdt")
+EXPORT_ARMS = [*ARMS, *(f"{arm}{suffix}" for suffix in SEGMENT_SUFFIXES for arm in ARMS)]
+# The plan's four comparisons between segment twins (`H1_seg`, `H2_segdt`, ...). They are computed on the box metrics
+# and, because segment runs also carry them, on the mask ones (`latent_mask_ap50`, `latent_mask_ap30`).
+for _suffix in SEGMENT_SUFFIXES:
+    for _name in ("H1", "H2", "secondary", "exploratory"):
+        DIFFERENCES[f"{_name}{_suffix}"] = tuple(arm + _suffix for arm in DIFFERENCES[_name])
+AP_METRICS = ("latent_ap50", "latent_ap30")
+MASK_AP_METRICS = ("latent_mask_ap50", "latent_mask_ap30")  # only in the metrics_v4.json of segment runs
 METRIC_PREFIXES = ("map", "per_class", "mask_")  # metrics.json scalars exported; mask_* only exist for segment runs
 CHECKPOINTS = {"best": "reports", "epoch80": "reports_epoch80"}  # checkpoint label: reports directory under runs root
 GRID = [0.001] + [round(0.01 * i, 2) for i in range(1, 100)]
@@ -136,6 +144,11 @@ def photo_rows(directory: Path, labels_dir: Path, index: dict) -> tuple[list[dic
     return rows, ranked, n_gt
 
 
+def ap_entries(v4: dict) -> dict:
+    """`{metric: ap}` of the latent AP metrics a `metrics_v4.json` holds: box ones always, mask ones if segment."""
+    return {metric: v4[metric]["ap"] for metric in (*AP_METRICS, *MASK_AP_METRICS) if metric in v4}
+
+
 def compute_differences(ap: dict) -> list[dict]:
     """One row per run, split, checkpoint and metric for every `DIFFERENCES` pair whose two arms were exported.
 
@@ -176,8 +189,8 @@ def main(argv=None) -> int:
         flatten("v4", v4, row)
         flatten("", {k: v for k, v in metrics.items() if k.startswith(METRIC_PREFIXES)}, row)
         runs.append(row)
-        for metric in ("latent_ap50", "latent_ap30"):
-            ap[(fold, seed, split, checkpoint, metric, arm)] = v4[metric]["ap"]
+        for metric, value in ap_entries(v4).items():
+            ap[(fold, seed, split, checkpoint, metric, arm)] = value
         labels = args.dataset / "folds_lot" / f"fold_{fold}" / "labels" / split
         rows, ranked, n_gt = photo_rows(directory, labels, index)
         photos += [{**key, **r} for r in rows]

@@ -53,6 +53,35 @@ def test_crosskd_comparisons_appear_when_their_arms_exist() -> None:
     assert names["gate_better_vs_none"] == 0.4 - 0.3
 
 
+def test_segment_twins_get_the_four_plan_comparisons_for_box_and_mask_metrics() -> None:
+    ap = {}
+    for metric, values in (("latent_ap50", (0.10, 0.30)), ("latent_mask_ap50", (0.05, 0.20)),
+                           ("latent_mask_ap30", (0.15, 0.40))):
+        ap[(0, 42, "val", "best", metric, "est_rgb_seg")] = values[0]
+        ap[(0, 42, "val", "best", metric, "est_rgbnir_seg")] = values[1]
+    rows = ex.compute_differences(ap)
+    assert {(r["comparison"], r["metric"]) for r in rows} == {
+        ("H1_seg", "latent_ap50"), ("H1_seg", "latent_mask_ap50"), ("H1_seg", "latent_mask_ap30")}
+    mask = next(r for r in rows if r["metric"] == "latent_mask_ap50")
+    assert (mask["treatment"], mask["baseline"]) == ("est_rgbnir_seg", "est_rgb_seg")
+    assert mask["delta"] == 0.20 - 0.05
+
+
+def test_segdt_twins_have_their_own_comparisons_and_detect_arms_get_no_mask_rows() -> None:
+    ap = {(0, 42, "val", "best", "latent_mask_ap50", arm): v
+          for arm, v in {"kd_rgb_segdt": 0.1, "kd_rgbnir_segdt": 0.3}.items()}
+    assert [r["comparison"] for r in ex.compute_differences(ap)] == ["H2_segdt"]
+    assert {r["metric"] for r in ex.compute_differences(_ap({"est_rgb": 0.1, "est_rgbnir": 0.3}))} == {"latent_ap50"}
+
+
+def test_ap_entries_hold_the_mask_metrics_only_when_the_run_has_them() -> None:
+    box_only = {"latent_ap50": {"ap": 0.1}, "latent_ap30": {"ap": 0.2}}
+    assert ex.ap_entries(box_only) == {"latent_ap50": 0.1, "latent_ap30": 0.2}
+    segment = {**box_only, "latent_mask_ap50": {"ap": 0.3}, "latent_mask_ap30": {"ap": None}}
+    assert ex.ap_entries(segment) == {"latent_ap50": 0.1, "latent_ap30": 0.2,
+                                      "latent_mask_ap50": 0.3, "latent_mask_ap30": None}
+
+
 def test_the_crosskd_arms_can_be_exported(tmp_path) -> None:
     for arm in (*OLD_ARMS, *CROSSKD_ARMS):
         run = tmp_path / "reports" / arm / "fold0_seed42" / "val"
