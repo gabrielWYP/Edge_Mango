@@ -301,6 +301,8 @@ def _build_eval_dataset(config: TrainingConfig, split: str) -> YOLODataset:
         roi_crop_margin=config.roi_crop_margin,
         roi_crop_jitter=0.0,
         modality_ablation=config.modality_ablation,
+        load_masks=config.task == "segment",
+        mask_ratio=config.mask_ratio,
     )
 
 
@@ -399,7 +401,16 @@ def _resolve_fusion_ablation(checkpoint: dict | None, config: TrainingConfig) ->
     return resolved
 
 
-def _load_model(model_type: str, checkpoint_path: str, config: TrainingConfig, device: torch.device):
+def _load_model(
+    model_type: str, checkpoint_path: str, config: TrainingConfig, device: torch.device,
+    pin_task: bool = False,
+):
+    """Build the model of a checkpoint and load it.
+
+    A student's `task` (detect or segment) is the one the checkpoint recorded, and `config.task` is set
+    to it, so the dataset and the metrics follow. `pin_task` keeps the config's own value instead
+    (an explicit `--override task=...`).
+    """
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     is_checkpoint_dict = isinstance(checkpoint, dict) and "model_state_dict" in checkpoint
     # The checkpoint is already in hand: bind the eval crop to the trained one
@@ -434,6 +445,8 @@ def _load_model(model_type: str, checkpoint_path: str, config: TrainingConfig, d
         # `model_state_dict` is the weights validation ran on: the EMA weights
         # for an `ema` run (see `Trainer._save_checkpoint`).
         state_dict = checkpoint["model_state_dict"]
+        if model_type == "student" and not pin_task:
+            config.task = (checkpoint.get("config") or {}).get("task", "detect")
         logger.info(
             "Loaded checkpoint (epoch=%s, best_map50=%s, weights=%s)",
             checkpoint.get("epoch", "?"), checkpoint.get("best_map50", "?"),
@@ -466,6 +479,7 @@ def _load_model(model_type: str, checkpoint_path: str, config: TrainingConfig, d
             num_classes=config.num_classes,
             variant=config.student_variant,
             in_channels=config.student_in_channels,
+            task=config.task,
         )
         # Pre-fix KD checkpoints stored the training-only adapters inside
         # `model_state_dict`; they are not part of the student.
@@ -624,7 +638,10 @@ def main() -> int:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    model = _load_model(model_type, args.checkpoint, config, device)
+    model = _load_model(
+        model_type, args.checkpoint, config, device,
+        pin_task=any(o.split("=", 1)[0] == "task" for o in args.override),
+    )
     if model_type == "master":
         # Keep config.head_strides consistent with whatever the checkpoint
         # actually used (fusion-redesign D-C/D-D) — the Trainer's criterion

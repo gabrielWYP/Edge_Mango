@@ -180,16 +180,21 @@ class KDTrainer(Trainer):
         checkpoint = torch.load(str(ckpt_path), map_location="cpu", weights_only=False)
         variant = (checkpoint.get("config") or {}).get("student_variant", "wide")
         in_channels = (checkpoint.get("config") or {}).get("student_in_channels", 3)
+        # A segment teacher carries extra mask layers: build it as it was trained. Only its
+        # cls/reg heads and features are distilled (see `_crosshead_kd`), never its masks.
+        task = (checkpoint.get("config") or {}).get("task", "detect")
         if (in_channels == 4) != (config.teacher_input == "rgbnir"):
             raise ValueError(
                 f"teacher_input={config.teacher_input!r} does not fit a teacher with {in_channels} input channels."
             )
-        teacher = StudentModel(num_classes=config.num_classes, variant=variant, in_channels=in_channels)
+        teacher = StudentModel(
+            num_classes=config.num_classes, variant=variant, in_channels=in_channels, task=task
+        )
         teacher.load_state_dict(strip_legacy_kd_adapter_keys(checkpoint["model_state_dict"]))
         teacher.eval()
         for param in teacher.parameters():
             param.requires_grad = False
-        print(f"[KDTrainer] Student teacher ({variant}, reads {config.teacher_input}) "
+        print(f"[KDTrainer] Student teacher ({variant}, {task}, reads {config.teacher_input}) "
               f"loaded from {ckpt_path}")
         return teacher
 
@@ -364,6 +369,7 @@ class KDTrainer(Trainer):
 
         total_cls = 0.0
         total_box = 0.0
+        total_mask = 0.0
         total_kd = 0.0
         total_loss = 0.0
         steps_taken = 0
@@ -403,8 +409,12 @@ class KDTrainer(Trainer):
                         }
 
                     # --- Detection loss ---
-                    targets = {"bboxes": bboxes, "labels": labels}
-                    det_loss, det_dict = self.criterion(s_out["preds"], targets)
+                    targets = self._loss_targets(batch, bboxes, labels)
+                    mask_outputs = self._mask_outputs(s_out)
+                    if mask_outputs is None:
+                        det_loss, det_dict = self.criterion(s_out["preds"], targets)
+                    else:
+                        det_loss, det_dict = self.criterion(s_out["preds"], targets, mask_outputs)
 
                     # --- KD loss ---
                     if crosshead:
@@ -474,6 +484,7 @@ class KDTrainer(Trainer):
 
             total_cls += det_dict["cls_loss"]
             total_box += det_dict["box_loss"]
+            total_mask += det_dict.get("mask_loss", 0.0)
             total_kd += kd_loss.item()
             total_loss += loss.item()
             steps_taken += 1
@@ -488,7 +499,7 @@ class KDTrainer(Trainer):
                 "openspec/changes/fusion-redesign/design.md D-G."
             )
 
-        return {
+        result = {
             "cls_loss": total_cls / steps_taken,
             "box_loss": total_box / steps_taken,
             "kd_loss": total_kd / steps_taken,
@@ -497,3 +508,6 @@ class KDTrainer(Trainer):
             "nan_skipped": float(nan_skipped),
             "steps_taken": float(steps_taken),
         }
+        if self.config.task == "segment":
+            result["mask_loss"] = total_mask / steps_taken
+        return result

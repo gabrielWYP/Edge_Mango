@@ -19,6 +19,13 @@ Outside the plan, only when `--arms` names it:
     crosskd_rgbnir_low     the same on the cells where it depends least (kd_gate=nir_low).
     crosskd_rgbnir_better  as crosskd_rgbnir, on the cells where the teacher beats the student (kd_gate=teacher_better).
 
+Segment arms (YOLOv8-seg student on polygon labels, see docs/tesis/runbook-v4.md, section Segment arms), opt-in by name:
+every arm above has a `<arm>_seg` twin (`est_rgb_seg`, `kd_rgbnir_seg`, `crosskd_rgbnir_seg`, ...) that trains with
+`task=segment`, so the dataset yields instance masks, and its evaluation records `mask_map50` and `mask_map_50_95`.
+A KD `_seg` arm distills from the `_seg` teacher of its fold and seed (est_rgbnir_seg for kd_rgbnir_seg). Its `_segdt`
+twin (`kd_rgbnir_segdt`) distills the same student from the DETECT teacher (est_rgbnir); only cls/box are distilled.
+`--mask-weight` and `--mask-ratio` apply to them. They are in no default list: name them in `--arms`.
+
 Every run is evaluated on val and test, with predictions and metrics_v4.json, under
 `<reports-root>/<arm>/fold<k>_seed<S>/<split>/`, the layout of `scripts/aggregate_kfold.py`.
 Re-run the same command to resume: finished steps are skipped, and an interrupted training continues from
@@ -44,7 +51,7 @@ import subprocess
 import sys
 import threading
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -64,6 +71,7 @@ class Arm:
     teacher: str | None = None
     in_channels: int = 3
     kd_overrides: tuple[str, ...] = ()  # key=value appended to the KD training command
+    task: str = "detect"  # "segment": the arm trains and is evaluated as a YOLOv8-seg student
 
 
 ARMS = {
@@ -81,6 +89,21 @@ ARMS = {
         teacher="est_rgbnir", kd_overrides=("kd_mode=crosshead", "kd_gate=teacher_better")
     ),
 }
+
+
+def _segment_twins(arms: dict[str, Arm]) -> dict[str, Arm]:
+    """`<arm>_seg` (segment teacher) and, for KD arms, `<arm>_segdt` (detect teacher) of every arm."""
+    twins = {}
+    for name, arm in arms.items():
+        if arm.teacher is None:
+            twins[f"{name}_seg"] = replace(arm, task="segment")
+        else:
+            twins[f"{name}_seg"] = replace(arm, task="segment", teacher=f"{arm.teacher}_seg")
+            twins[f"{name}_segdt"] = replace(arm, task="segment")
+    return twins
+
+
+ARMS |= _segment_twins(ARMS)
 # kd_nir and the crosskd arms are outside the plan: they run only when `--arms` names them.
 PLANNED_ARMS = ["est_rgb", "est_rgbnir", "est_nir", "kd_rgb", "kd_rgbnir"]
 
@@ -114,6 +137,8 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--extra-override", nargs="*", default=[], help="key=value on every training and evaluation")
     parser.add_argument("--pixel-cache-root", type=Path, default=None,
                         help="with rgb/ and nir_as_rgb/ from build_pixel_cache.py; only for speed")
+    parser.add_argument("--mask-weight", type=float, default=7.5, help="mask loss gain of the `_seg` arms")
+    parser.add_argument("--mask-ratio", type=int, default=4, help="input size over mask size of the `_seg` arms")
     parser.add_argument("--jobs", type=int, default=1, help="runs at the same time")
     parser.add_argument("--no-resume", action="store_true", help="train interrupted runs from scratch")
     parser.add_argument("--dry-run", action="store_true")
@@ -149,6 +174,9 @@ def plan_arm(args, arm_name: str, fold: int, seed: int) -> list[tuple[str, list[
     ]
     if arm.in_channels != 3:
         data.append(f"student_in_channels={arm.in_channels}")
+    if arm.task == "segment":
+        # `load_masks` follows: the trainers and evaluate_checkpoint build the dataset from the task.
+        data += ["task=segment", f"mask_ratio={args.mask_ratio}", f"mask_weight={args.mask_weight}"]
     if arm.reads_nir:
         # The dataset pads NIR with its mean and RGB with 114. This keeps the pad of
         # the NIR student equal to the one its KD input has as a teacher.
@@ -182,7 +210,7 @@ def plan_arm(args, arm_name: str, fold: int, seed: int) -> list[tuple[str, list[
             rk.build_eval_command(
                 args.python, Path(STUDENT_CONFIG), run / rk.CHECKPOINT, split, fold_path,
                 run / "eval_scratch", out, rk.machine_overrides(args.machine),
-                [x for x in data if not x.startswith(("labels_dir=", "split_manifest="))],
+                [x for x in data if not x.startswith(("labels_dir=", "split_manifest=", "task="))],  # the task comes from the checkpoint
                 model="student", save_predictions=True,
             ),
             out / "metrics.json",

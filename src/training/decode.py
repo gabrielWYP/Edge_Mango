@@ -21,6 +21,7 @@ from __future__ import annotations
 from typing import Sequence
 
 import torch
+import torch.nn.functional as F
 from torchvision.ops import batched_nms
 
 
@@ -33,6 +34,35 @@ def _cxcywh_to_xyxy(boxes: torch.Tensor) -> torch.Tensor:
 def decode_detections(
     preds: list[torch.Tensor],
     cls_preds: list[torch.Tensor],
+    **kwargs,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Decode raw anchor-free YOLO outputs into (boxes, scores, labels) for one image.
+
+    See `_decode` for the arguments (keyword-only: `batch_idx`, `num_classes`, `image_size`,
+    `strides` are required) and the semantics.
+    """
+    boxes, scores, labels, _ = _decode(preds, cls_preds, None, **kwargs)
+    return boxes, scores, labels
+
+
+def decode_detections_with_coefs(
+    preds: list[torch.Tensor],
+    cls_preds: list[torch.Tensor],
+    mask_coefs: list[torch.Tensor],
+    **kwargs,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """`decode_detections` for a segment student: also the (P, nm) mask coefficients of each
+    kept detection, taken at its anchor from `mask_coefs` (list of (B, nm, H_i, W_i)).
+
+    Boxes, scores and labels are exactly those of `decode_detections`.
+    """
+    return _decode(preds, cls_preds, mask_coefs, **kwargs)
+
+
+def _decode(
+    preds: list[torch.Tensor],
+    cls_preds: list[torch.Tensor],
+    mask_coefs: list[torch.Tensor] | None,
     *,
     batch_idx: int,
     num_classes: int,
@@ -45,7 +75,7 @@ def decode_detections(
     max_detections: int = 300,
     normalize: bool = True,
     ignore_classes: Sequence[int] = (),
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None]:
     """Decode raw anchor-free YOLO outputs into detections for one image.
 
     Args:
@@ -53,6 +83,7 @@ def decode_detections(
             The first `num_classes` channels are unused here (class logits
             live in `cls_preds`); the last 4 are bbox regression deltas.
         cls_preds: list of (B, nc, H_i, W_i) classification logits per level.
+        mask_coefs: list of (B, nm, H_i, W_i) mask coefficients per level, or None.
         batch_idx: which image in the batch to decode.
         num_classes: number of detection classes.
         image_size: input image size (square), used to normalize output boxes.
@@ -77,6 +108,7 @@ def decode_detections(
         boxes: (P, 4) cxcywh detections.
         scores: (P,) confidence scores.
         labels: (P,) integer class IDs.
+        coefs: (P, nm) mask coefficients of the detections, None without `mask_coefs`.
     """
     if not (len(preds) == len(cls_preds) == len(strides)):
         raise ValueError(
@@ -88,8 +120,9 @@ def decode_detections(
     all_boxes: list[torch.Tensor] = []
     all_scores: list[torch.Tensor] = []
     all_labels: list[torch.Tensor] = []
+    all_coefs: list[torch.Tensor] = []
 
-    for pred, cls_pred, stride in zip(preds, cls_preds, strides):
+    for level, (pred, cls_pred, stride) in enumerate(zip(preds, cls_preds, strides)):
         p = pred[batch_idx]  # (nc+4, H, W)
         c = cls_pred[batch_idx]  # (nc, H, W)
         reg = p[num_classes:]  # (4, H, W)
@@ -132,17 +165,21 @@ def decode_detections(
         all_boxes.append(boxes)
         all_scores.append(cand_scores)
         all_labels.append(cand_labels.long())
+        if mask_coefs is not None:
+            all_coefs.append(mask_coefs[level][batch_idx][:, ys, xs].T)  # (K, nm)
 
     if not all_boxes:
         return (
             torch.zeros((0, 4)),
             torch.zeros((0,)),
             torch.zeros((0,), dtype=torch.long),
+            None if mask_coefs is None else torch.zeros((0, mask_coefs[0].shape[1])),
         )
 
     boxes = torch.cat(all_boxes)
     scores = torch.cat(all_scores)
     labels = torch.cat(all_labels)
+    coefs = torch.cat(all_coefs) if mask_coefs is not None else None
 
     if nms_enabled and boxes.shape[0] > 0:
         boxes_xyxy = _cxcywh_to_xyxy(boxes)
@@ -150,14 +187,57 @@ def decode_detections(
         boxes = boxes[keep]
         scores = scores[keep]
         labels = labels[keep]
+        coefs = coefs[keep] if coefs is not None else None
 
     if boxes.shape[0] > max_detections:
         top_scores, top_idx = scores.topk(max_detections)
         boxes = boxes[top_idx]
         scores = top_scores
         labels = labels[top_idx]
+        coefs = coefs[top_idx] if coefs is not None else None
 
     if normalize:
         boxes = boxes / image_size
 
-    return boxes, scores, labels
+    return boxes, scores, labels, coefs
+
+
+def process_masks(
+    protos: torch.Tensor,
+    coefs: torch.Tensor,
+    boxes: torch.Tensor,
+    out_size: tuple[int, int] | None = None,
+    threshold: float = 0.5,
+) -> torch.Tensor:
+    """Binary instance masks of the detections of one image (YOLOv8-seg).
+
+    `sigmoid(coefs . protos)`, cropped to each detection's box, optionally upsampled
+    (bilinear) to `out_size`, then thresholded.
+
+    Args:
+        protos: (nm, h, w) prototypes of the image.
+        coefs: (P, nm) mask coefficients of the detections.
+        boxes: (P, 4) detections, cxcywh normalized to the model input.
+        out_size: (H, W) to upsample to, e.g. the input size. None keeps the prototype
+            resolution, which is what mask AP is measured at.
+        threshold: Probability above which a pixel belongs to the mask.
+
+    Returns:
+        (P, H, W) bool tensor.
+    """
+    nm, h, w = protos.shape
+    if len(coefs) == 0:
+        return torch.zeros((0, *(out_size or (h, w))), dtype=torch.bool, device=protos.device)
+    probs = (coefs.to(protos) @ protos.flatten(1)).sigmoid().view(-1, h, w)
+
+    cx, cy, bw, bh = boxes.to(protos).unbind(-1)
+    cols = torch.arange(w, device=protos.device, dtype=protos.dtype).view(1, 1, w)
+    rows = torch.arange(h, device=protos.device, dtype=protos.dtype).view(1, h, 1)
+    inside = (
+        (cols >= ((cx - bw / 2) * w).view(-1, 1, 1)) & (cols < ((cx + bw / 2) * w).view(-1, 1, 1))
+        & (rows >= ((cy - bh / 2) * h).view(-1, 1, 1)) & (rows < ((cy + bh / 2) * h).view(-1, 1, 1))
+    )
+    probs = probs * inside
+    if out_size is not None and tuple(out_size) != (h, w):
+        probs = F.interpolate(probs[None], size=tuple(out_size), mode="bilinear", align_corners=False)[0]
+    return probs > threshold

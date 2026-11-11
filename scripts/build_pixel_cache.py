@@ -27,6 +27,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.training.nir_registration import register_nir_to_rgb  # noqa: E402
 from src.training.roi_crop import MANGO_CLASS_ID  # noqa: E402
+from src.training.seg_labels import read_label_boxes  # noqa: E402
 
 # The widest window of the v4 configs: margin 0.10 with jitter 0.5.
 DEFAULT_MAX_MARGIN = 0.15
@@ -51,12 +52,12 @@ def store_pair(job: tuple) -> str:
     height, width = rgb.shape[:2]
     # The fill value never shows: the v4 NIR is registered already, and this homography is the identity.
     nir = register_nir_to_rgb(nir, np.load(homography), (width, height), 0)
-    rows = np.loadtxt(label_path, ndmin=2, dtype=np.float32)
-    mangos = rows[rows[:, 0] == MANGO_CLASS_ID]
+    all_boxes, classes = read_label_boxes(label_path)  # box and polygon lines alike
+    mangos = all_boxes[classes == MANGO_CLASS_ID]
     if len(mangos) == 0:
         raise ValueError(f"{label_path}: no mango box, so no window to store")
     # The largest mango box, with the first one on ties, as in `crop_to_roi`.
-    boxes = mangos[:, 1:].astype(np.float64)
+    boxes = mangos.astype(np.float64)
     x0, y0, x1, y1 = stored_window(boxes[int(np.argmax(boxes[:, 2] * boxes[:, 3]))], width, height, max_margin)
     temporary = output.with_name(output.name + f".{os.getpid()}.tmp.npz")
     np.savez(

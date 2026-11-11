@@ -11,6 +11,7 @@ import csv
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable
 
 import torch
 import numpy as np
@@ -121,8 +122,13 @@ def _rank_class(
     gt_boxes: list[torch.Tensor],
     gt_labels: list[torch.Tensor],
     cls_id: int,
+    iou_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = box_iou,
 ) -> _RankedClass:
-    """Rank a class's predictions and find the best GT of each."""
+    """Rank a class's predictions and find the best GT of each.
+
+    `iou_fn(preds, gts)` gives the (P, G) overlap; `box_iou` for boxes, `_mask_iou` for the
+    flattened masks of `compute_mask_map`.
+    """
     scores, best_ious, match_keys = [], [], []
     n_gt = 0
     max_gts = max((int((labels == cls_id).sum()) for labels in gt_labels), default=0) + 1
@@ -141,7 +147,7 @@ def _rank_class(
             best_iou = torch.full((len(boxes),), -1.0)
             best_gt = torch.zeros(len(boxes), dtype=torch.int64)
         else:
-            best_iou, best_gt = box_iou(boxes, gts).max(dim=1)
+            best_iou, best_gt = iou_fn(boxes, gts).max(dim=1)
         best_ious.append(best_iou)
         match_keys.append(image_idx * max_gts + best_gt)
 
@@ -387,6 +393,69 @@ def compute_map(
         "per_class_recall": recall,
         "per_class_f1": f1,
         "per_class_counts": counts,
+    }
+
+
+def _mask_iou(pred: torch.Tensor, gt: torch.Tensor) -> torch.Tensor:
+    """(P, G) IoU of flattened binary masks, `pred` (P, N) and `gt` (G, N)."""
+    pred, gt = pred.float(), gt.float()
+    inter = pred @ gt.T
+    union = pred.sum(dim=1, keepdim=True) + gt.sum(dim=1).unsqueeze(0) - inter
+    return inter / union.clamp(min=1.0)
+
+
+def compute_mask_map(
+    pred_masks: list[torch.Tensor],
+    pred_scores: list[torch.Tensor],
+    pred_labels: list[torch.Tensor],
+    gt_masks: list[torch.Tensor],
+    gt_labels: list[torch.Tensor],
+    num_classes: int = 2,
+    gt_has_mask: list[torch.Tensor] | None = None,
+) -> dict:
+    """Mask AP50 and AP50-95, with the same ranking and AP as `compute_map` but mask IoU.
+
+    Masks must share one resolution per image (the trainer uses the prototype one). GT
+    instances without a polygon (`gt_has_mask` False) are left out, so a prediction that
+    only overlaps one counts as a false positive.
+
+    Args:
+        pred_masks: List of (P_i, h, w) bool masks, aligned with `pred_scores`/`pred_labels`.
+        pred_scores: List of (P_i,) confidence scores.
+        pred_labels: List of (P_i,) class IDs.
+        gt_masks: List of (G_i, h, w) bool masks.
+        gt_labels: List of (G_i,) class IDs.
+        num_classes: Number of classes.
+        gt_has_mask: Optional list of (G_i,) bool; all True when absent.
+
+    Returns:
+        Dict with `mask_map50`, `mask_map_50_95`, `mask_per_class_ap_50` and
+        `mask_per_class_ap_50_95`. It never carries the box metrics' keys.
+    """
+    if gt_has_mask is not None:
+        gt_labels = [labels[keep] for labels, keep in zip(gt_labels, gt_has_mask)]
+        gt_masks = [masks[keep] for masks, keep in zip(gt_masks, gt_has_mask)]
+    flat_pred = [m.reshape(len(m), -1) for m in pred_masks]
+    flat_gt = [m.reshape(len(m), -1) for m in gt_masks]
+
+    ranked = {
+        cls_id: _rank_class(flat_pred, pred_scores, pred_labels, flat_gt, gt_labels, cls_id, _mask_iou)
+        for cls_id in range(num_classes)
+    }
+    map50, per_class_50 = _ap_from_ranked(ranked, 0.5)
+    thresholds = [0.50 + 0.05 * i for i in range(10)]
+    per_class_95 = {c: 0.0 for c in range(num_classes)}
+    maps = []
+    for thresh in thresholds:
+        map_t, per_class_t = _ap_from_ranked(ranked, thresh)
+        maps.append(map_t)
+        for c in range(num_classes):
+            per_class_95[c] += per_class_t.get(c, 0.0) / len(thresholds)
+    return {
+        "mask_map50": map50,
+        "mask_map_50_95": float(np.mean(maps)),
+        "mask_per_class_ap_50": per_class_50,
+        "mask_per_class_ap_50_95": per_class_95,
     }
 
 

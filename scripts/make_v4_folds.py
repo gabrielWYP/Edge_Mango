@@ -57,6 +57,7 @@ from scripts.make_grouped_folds import (  # noqa: E402
     write_folds,
 )
 from src.training.roi_crop import crop_to_roi  # noqa: E402
+from src.training.seg_labels import read_label_boxes  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -131,8 +132,8 @@ def image_moments(job: tuple[str, Path, Path]) -> tuple[str, list[float]]:
     nir = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
     if nir is None:
         raise ValueError(f"{stem}: cannot decode {path}")
-    labels = np.loadtxt(label_path, ndmin=2)
-    _, roi, _, _ = crop_to_roi(nir, nir, labels[:, 1:5], labels[:, 0], margin=ROI_MARGIN)
+    boxes, classes = read_label_boxes(label_path)  # box and polygon lines alike
+    _, roi, _, _ = crop_to_roi(nir, nir, boxes, classes, margin=ROI_MARGIN)
     return stem, _moments(nir) + _moments(roi)
 
 
