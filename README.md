@@ -48,6 +48,8 @@ Inferencia a nivel de lote con t corregido y ROPE bayesiana de ±0.02, con umbra
 - **Distinguir una cara dañada de una sana sigue cerca del azar** (AUROC 0.59-0.63), y quedan 5 a 6 cajas falsas por foto sana con confianza 0.25.
 - **El daño cerca del borde de la fruta casi no se detecta.** Las zonas `superior` e `inferior` caen sobre los bordes de arriba y abajo de la imagen, donde la superficie queda más inclinada respecto de la cámara. La detección cae de 0.81 con la superficie de frente a 0.08 a más de 60° de inclinación. Esto motiva la reanotación con polígonos y la cabeza de segmentación (sección 2.3).
 
+- **Localización top-1 (CorLoc y LROC):** disponible con `python scripts/top1_localization.py --runs-root <runs> --dataset <dataset> --split val --output reports/top1-localization`, que mira solo la caja de daño de mayor confianza de cada foto. Los valores están pendientes de una corrida en la máquina de entrenamiento ([runbook](docs/tesis/runbook-v4.md)).
+
 > **Historial (v3, 236 pares, split aleatorio):** el maestro two-stream llegó a 0.398 de AP50 de daño en test, y el estudiante y el destilado quedaron en 0.111 y 0.084 ([`reports/final-run-20261014/`](reports/final-run-20261014/README.md)). Ese split tenía fuga entre fotos casi idénticas, así que se reemplazó por v4.
 
 > **El mAP agregado no mide lo que parece.** La clase mango satura cerca de 1.0, así que el mAP de dos clases

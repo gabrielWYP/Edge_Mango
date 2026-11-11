@@ -231,3 +231,38 @@ python scripts/visualize_damage_predictions.py --checkpoint checkpoints/v4_seg/m
     --config configs/experiment/v4_est_etiquetas.yaml --rgb-dir data/cache/v4_captura_v3_poly/rgb \
     --labels-dir data/cache/v4_captura_v3_poly/folds_lot/fold_0/labels --model-type student --split test --num-samples 20
 ```
+
+## Top-1 localization (CorLoc and LROC)
+
+In operation a photo shows at most one damage and the protocol gives every damaged photo one damage box, so these
+metrics look only at the single highest-score damage box of each photo (any confidence, damage class). A photo with no
+damage prediction has score `-inf`: never above a threshold, never correct. `scripts/top1_localization.py` discovers the
+evaluations like `export_run_results.py` and reads their `predictions.jsonl`, so it runs on the training machine:
+
+```bash
+python scripts/top1_localization.py --runs-root ~/edge_mango/runs/final \
+    --dataset ~/edge_mango/data/v4_captura_v3_final --split val --output reports/top1-localization --plot
+# test only for the pre-registered sets, with the semantics of export_run_results.py:
+#   --split test --test-folds 0 1 --test-seeds 42 [--test-arms est_rgb est_rgbnir]
+```
+
+- **CorLoc@IoU** (0.5 and 0.3): over damaged photos, the fraction whose top-1 box has IoU >= the threshold with the
+  ground-truth box. Reported on the primary window (damaged photos of `LATENT_HOURS`), the developed hours and all
+  hours, with the photo selection of `v4_metrics`. For segment runs, `mask_corloc_*` uses the IoU of the top-1 mask
+  against the ground-truth polygon.
+- **LROC** (Swensson 1996), on the primary-window damaged photos plus `sano`: sweeping a threshold t over the top-1
+  scores, FPF(t) is the fraction of `sano` photos with top-1 score >= t and TPF_loc(t) the fraction of damaged photos
+  with top-1 score >= t and a correct top-1 box (IoU 0.5; also 0.3). **AUC-LROC** is the trapezoidal area over
+  FPF in [0, 1], the curve ending at FPF = 1 at the lowest threshold. Its maximum is CorLoc: **AUC-LROC <= CorLoc**,
+  with equality when every `sano` photo scores below every correct damaged photo.
+- **Top-1 AUROC:** photo-level AUROC of the top-1 score (damaged primary-window photos against `sano`), ignoring
+  localization. It is the `face_auroc` of `metrics_v4.json`, the maximum damage confidence of the photo, with `-inf`
+  instead of 0 for a photo with no prediction; the ranking is the same because confidences are positive.
+- **Operating points** at confidence 0.25 and 0.5: `fpf_at_<c>`, `tpf_loc_at_<c>_iou50` (and `_iou30`) and
+  `tpf_at_<c>` (detected, with no localization requirement).
+
+Outputs under `--output`: `top1_runs.csv` (one row per evaluation), `top1_lroc_curves.csv` (long format, to redraw the
+curves), `top1_differences.csv` (per fold and seed, the `export_run_results.DIFFERENCES` pairs, including the `_seg`
+ones, on `corloc_primary_iou50` and `lroc_auc_iou50`, plus the mask CorLoc for segment arms) and `top1_inference.csv`
+(the same differences averaged over seeds per fold, with the corrected t and the correlated Bayesian ROPE of
+`aggregate_kfold.py`, `--rope` 0.02 by default). `--plot` adds `top1_lroc_curves_<split>.png`.
