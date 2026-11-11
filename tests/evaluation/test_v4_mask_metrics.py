@@ -17,7 +17,7 @@ import pytest
 from scripts import v4_metrics as cli
 from src.data_pipeline.v4_selection import LATENT_HOURS
 from src.evaluation import v4_metrics as module
-from src.training.seg_labels import mask_to_polygon, rasterize_polygons
+from src.training.seg_labels import mask_to_polygon
 
 SANO = "sano"
 LATENT = LATENT_HOURS[0]
@@ -147,16 +147,20 @@ def test_a_detection_without_a_mask_in_a_segment_file_is_rejected(tmp_path: Path
     assert code == 2 and "mask" in capsys.readouterr().err
 
 
-def test_mask_to_polygon_round_trips_and_keeps_the_largest_blob() -> None:
-    mask = np.zeros((40, 40), dtype=np.uint8)
+def _area(polygon: np.ndarray) -> float:
+    x, y = polygon[:, 0], polygon[:, 1]
+    return 0.5 * abs(float(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1))))
+
+
+def test_mask_to_polygon_traces_pixel_edges_and_keeps_the_largest_blob() -> None:
+    mask = np.zeros((40, 50), dtype=np.uint8)
     mask[5:25, 5:25] = 1
     mask[30:33, 30:33] = 1  # smaller blob, dropped
     polygon = mask_to_polygon(mask)
-    assert polygon.shape[1] == 2 and polygon.min() >= 0 and polygon.max() <= 1
-    back = rasterize_polygons([polygon * 40 - 0.5], (40, 40))[0].astype(bool)
-    inter = (back & mask.astype(bool)).sum()
-    assert inter / ((back | mask.astype(bool)).sum()) > 0.9
-    assert not back[30:33, 30:33].any()
+    assert polygon.min() >= 0 and polygon.max() <= 1
+    # Pixel i covers [i, i + 1): the 20 x 20 block is 400 pixels of area, not 19 x 19.
+    assert _area(polygon) * 40 * 50 == pytest.approx(400.0)
+    assert polygon[:, 0].min() == pytest.approx(5 / 50) and polygon[:, 0].max() == pytest.approx(25 / 50)
 
 
 def test_mask_to_polygon_of_an_empty_mask_is_none() -> None:

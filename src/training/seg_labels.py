@@ -135,15 +135,20 @@ def downsample_masks(masks: np.ndarray, ratio: int) -> np.ndarray:
 def mask_to_polygon(mask: np.ndarray, epsilon: float = 0.5) -> np.ndarray | None:
     """Largest outer contour of a (H, W) binary mask as a (n, 2) polygon normalized to the mask.
 
-    Pixel centers map to `(index + 0.5) / size`, so `polygon * size - 0.5` gives the pixel indices
-    back and `rasterize_polygons` fills the same pixels. The contour is simplified
-    (`cv2.approxPolyDP`, `epsilon` in mask pixels). Holes and every blob but the largest are
-    dropped. None when the mask is empty.
+    Pixel i covers [i, i + 1), so the polygon runs along pixel edges (through the pixel corners) and
+    its area is the mask's, not a pixel smaller on every side as a contour through pixel centres
+    would be. The contour is simplified (`cv2.approxPolyDP`, `epsilon` in mask pixels). Holes and
+    every blob but the largest are dropped. None when the mask is empty.
     """
-    contours, _ = cv2.findContours(np.asarray(mask, dtype=np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    mask = np.asarray(mask, dtype=np.uint8)
+    height, width = mask.shape
+    corners = np.zeros((height + 1, width + 1), dtype=np.uint8)  # a corner is on when a pixel touching it is
+    for dy in (0, 1):
+        for dx in (0, 1):
+            corners[dy:dy + height, dx:dx + width] |= mask
+    contours, _ = cv2.findContours(corners, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:
         return None
     largest = max(contours, key=lambda c: (cv2.contourArea(c), len(c)))
     points = cv2.approxPolyDP(largest, epsilon, True).reshape(-1, 2).astype(np.float64)
-    height, width = mask.shape
-    return (points + 0.5) / np.array([width, height], dtype=np.float64)
+    return points / np.array([width, height], dtype=np.float64)

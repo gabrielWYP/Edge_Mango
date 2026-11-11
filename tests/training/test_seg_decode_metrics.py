@@ -132,3 +132,13 @@ def test_box_metrics_are_untouched() -> None:
     boxes = [torch.tensor([[0.5, 0.5, 0.2, 0.2]])]
     result = compute_map(boxes, [torch.tensor([0.9])], [torch.tensor([1])], boxes, [torch.tensor([1])], num_classes=2)
     assert not any(key.startswith("mask_") for key in result)
+
+
+def test_an_image_with_no_ground_truth_does_not_break_mask_ap() -> None:
+    """A sano photo has an empty label file: its GT masks are a (0, h, w) tensor."""
+    gt = [torch.zeros((0, PROTO, PROTO), dtype=torch.bool), torch.stack([_square(2, 2, 10, 10)])]
+    labels = [torch.zeros(0, dtype=torch.long), torch.tensor([1])]
+    pred = [torch.stack([_square(2, 2, 10, 10)]), torch.stack([_square(2, 2, 10, 10)])]
+    scores = [torch.tensor([0.9]), torch.tensor([0.8])]
+    result = compute_mask_map(pred, scores, [torch.tensor([1]), torch.tensor([1])], gt, labels, num_classes=2)
+    assert result["mask_per_class_ap_50"][1] == pytest.approx(0.5)  # the sano false positive ranks first

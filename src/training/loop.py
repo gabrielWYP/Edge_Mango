@@ -928,7 +928,9 @@ class Trainer:
         Args:
             prediction_sink: Called once per image with `(image_id, boxes,
                 scores, labels)`, the decoded predictions AP is computed from
-                (cxcywh normalized to the model input). The metrics do not
+                (cxcywh normalized to the model input). A segment model adds
+                the keyword `masks`, the (P, h, w) bool masks of those
+                detections at prototype resolution. The metrics do not
                 depend on it. `image_id` comes from the batch's `image_ids`,
                 so a loader used with a sink must provide them.
 
@@ -975,13 +977,13 @@ class Trainer:
                         preds, cls_preds, output["mask_coefs"], b, self.config,
                         conf_threshold=self.config.eval_conf_threshold,
                     )
+                    if with_masks or prediction_sink is not None:
+                        masks_b = process_masks(
+                            output["protos"][b].float(), coefs_b.to(output["protos"].device),
+                            pred_boxes_b.to(output["protos"].device),
+                        ).cpu()
                     if with_masks:
-                        all_pred_masks.append(
-                            process_masks(
-                                output["protos"][b].float(), coefs_b.to(output["protos"].device),
-                                pred_boxes_b.to(output["protos"].device),
-                            ).cpu()
-                        )
+                        all_pred_masks.append(masks_b)
                         all_gt_masks.append(batch["masks"][b].bool())
                         all_gt_has_mask.append(batch["has_mask"][b])
                 else:
@@ -992,7 +994,11 @@ class Trainer:
                 all_pred_scores.append(pred_scores_b)
                 all_pred_labels.append(pred_labels_b)
                 if prediction_sink is not None:
-                    prediction_sink(batch["image_ids"][b], pred_boxes_b, pred_scores_b, pred_labels_b)
+                    if segment:  # a detect sink keeps its four arguments
+                        prediction_sink(batch["image_ids"][b], pred_boxes_b, pred_scores_b, pred_labels_b,
+                                        masks=masks_b)
+                    else:
+                        prediction_sink(batch["image_ids"][b], pred_boxes_b, pred_scores_b, pred_labels_b)
 
                 # GT
                 gt_bboxes = batch["bboxes"][b]
