@@ -35,7 +35,7 @@ from torch import Tensor
 
 from src.models.student.backbone import CSPDarknetNano
 from src.models.student.neck import NanoPANet, PANet
-from src.models.student.head import YOLOStudentHead, NUM_CLASSES
+from src.models.student.head import YOLOStudentHead, NUM_CLASSES, TASKS
 
 # Prefix of the training-only KD adapters that `KDTrainer` used to attach to
 # the student as submodules (`kd_proj_backbone`, `kd_proj_fpn`,
@@ -76,12 +76,21 @@ class StudentModel(nn.Module):
     Args:
         num_classes: Number of detection classes (default 2: sano, danado).
         in_channels: 3 reads `x` alone. 4 stacks `nir` after `x`, and then needs both at inference.
+        task: "detect" (default, boxes only) or "segment" (YOLOv8-seg: the head also returns
+            `mask_coefs` and `protos`). "detect" builds exactly the layers it always had.
     """
 
     def __init__(
-        self, num_classes: int = NUM_CLASSES, variant: str = "wide", in_channels: int = 3
+        self,
+        num_classes: int = NUM_CLASSES,
+        variant: str = "wide",
+        in_channels: int = 3,
+        task: str = "detect",
     ) -> None:
         super().__init__()
+        if task not in TASKS:
+            raise ValueError(f"Unknown student task {task!r}: {TASKS}")
+        self.task = task
         if variant not in STUDENT_VARIANTS:
             raise ValueError(f"Unknown student variant {variant!r}: {sorted(STUDENT_VARIANTS)}")
         if in_channels not in STUDENT_IN_CHANNELS:
@@ -97,10 +106,11 @@ class StudentModel(nn.Module):
                 num_classes=num_classes,
                 fpn_channels=NanoPANet.OUTPUT_CHANNELS,
                 stem_channels=NANO_STEM_CHANNELS,
+                task=task,
             )
         else:
             self.neck = PANet()
-            self.head = YOLOStudentHead(num_classes=num_classes)
+            self.head = YOLOStudentHead(num_classes=num_classes, task=task)
 
     def forward(self, x: Tensor, nir: Tensor | None = None) -> dict[str, Any]:
         """
@@ -120,7 +130,9 @@ class StudentModel(nn.Module):
                 'distill_head_cls': [(N,64,80,80), (N,128,40,40), (N,256,20,20)]
                 'distill_head_reg': [(N,64,80,80), (N,128,40,40), (N,256,20,20)]
             plus 'distill_head_cls_mid' / 'distill_head_reg_mid', same shapes:
-            the output of the first stem conv (9 keys in total).
+            the output of the first stem conv (9 keys in total). With `task="segment"` two more:
+                'mask_coefs':       [(N,32,80,80), (N,32,40,40), (N,32,20,20)]
+                'protos':           (N,32,160,160)
         """
         if self.in_channels == 4:
             if nir is None:
@@ -136,7 +148,7 @@ class StudentModel(nn.Module):
         # Head: decoupled detection predictions
         head_out = self.head(fpn)
 
-        return {
+        output = {
             # Detection outputs
             "preds": head_out["preds"],
             "cls_preds": head_out["cls_preds"],
@@ -150,6 +162,11 @@ class StudentModel(nn.Module):
             "distill_head_cls_mid": head_out["distill_head_cls_mid"],
             "distill_head_reg_mid": head_out["distill_head_reg_mid"],
         }
+        if self.task == "segment":
+            # Mask coefficients per level and the P3 prototypes; the keys above are unchanged.
+            output["mask_coefs"] = head_out["mask_coefs"]
+            output["protos"] = head_out["protos"]
+        return output
 
     def freeze_backbone(self, freeze_stages: int = 0) -> None:
         """No-op for single-phase student training (API compatibility).
