@@ -35,6 +35,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from scripts import run_kfold as rk  # noqa: E402
 from scripts import run_small_arms as rs  # noqa: E402
 from scripts.kd_feature_audit import batches, dataset  # noqa: E402
+from src.evaluation.arms import segment_arm_name  # noqa: E402
 from src.evaluation.kd_audit import probe_auroc  # noqa: E402
 from src.training.kd_config import KDConfig  # noqa: E402
 from src.training.kd_crosshead import compute_gate, nir_dependence  # noqa: E402
@@ -59,7 +60,15 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--variant", choices=("wide", "nano"), default="wide")
     parser.add_argument("--cells-per-image", type=int, default=256, help="cap per image and level, for memory")
     parser.add_argument("--batch-size", type=int, default=2)
+    parser.add_argument("--segment", action="store_true",
+                        help="probe the segment masters (master_rgbnir_seg teacher, master_rgb_seg control); "
+                             "their task comes from the checkpoint")
     return parser.parse_args(argv)
+
+
+def arms_of(args) -> tuple[str, str]:
+    """(teacher arm, control arm): the detect `est_*` ones, or the segment masters with `--segment`."""
+    return (segment_arm_name(TEACHER_ARM), segment_arm_name(CONTROL_ARM)) if args.segment else (TEACHER_ARM, CONTROL_ARM)
 
 
 def probe_labels(
@@ -202,9 +211,10 @@ def fold_config(args, fold: int) -> KDConfig:
 
 
 def load_models(config: KDConfig, args, fold: int, device: torch.device):
-    """Frozen est_rgbnir teacher and est_rgb control of this fold and seed."""
+    """Frozen est_rgbnir teacher and est_rgb control of this fold and seed (the segment masters with `--segment`)."""
     models = []
-    for arm, reads in ((TEACHER_ARM, "rgbnir"), (CONTROL_ARM, "rgb")):
+    teacher_arm, control_arm = arms_of(args)
+    for arm, reads in ((teacher_arm, "rgbnir"), (control_arm, "rgb")):
         config.teacher_checkpoint = str(rk.run_path(args.checkpoints_root, arm, fold, args.seed) / rk.CHECKPOINT)
         config.teacher_input = reads
         models.append(KDTrainer._load_student_teacher(config).to(device).eval())

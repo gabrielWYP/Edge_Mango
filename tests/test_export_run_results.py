@@ -53,24 +53,30 @@ def test_crosskd_comparisons_appear_when_their_arms_exist() -> None:
     assert names["gate_better_vs_none"] == 0.4 - 0.3
 
 
-def test_segment_twins_get_the_four_plan_comparisons_for_box_and_mask_metrics() -> None:
+def test_the_segment_comparisons_use_the_masters_and_crosskd() -> None:
+    assert ex.DIFFERENCES["H1_seg"] == ("master_rgbnir_seg", "master_rgb_seg")
+    assert ex.DIFFERENCES["H2_seg"] == ("crosskd_rgbnir_seg", "crosskd_rgb_seg")
+    assert ex.DIFFERENCES["secondary_seg"] == ("crosskd_rgbnir_seg", "master_rgb_seg")
+    assert ex.DIFFERENCES["exploratory_seg"] == ("crosskd_rgb_seg", "master_rgb_seg")
+    assert ex.DIFFERENCES["gate_high_vs_low_seg"] == ("crosskd_rgbnir_high_seg", "crosskd_rgbnir_low_seg")
+    assert ex.DIFFERENCES["gate_better_vs_none_seg"] == ("crosskd_rgbnir_better_seg", "crosskd_rgbnir_seg")
+    # the detect definitions are the ones they always were
+    assert ex.DIFFERENCES["H1"] == ("est_rgbnir", "est_rgb") and ex.DIFFERENCES["H2"] == ("kd_rgbnir", "kd_rgb")
+    assert ex.DIFFERENCES["secondary"] == ("kd_rgbnir", "est_rgb") and ex.DIFFERENCES["exploratory"] == ("kd_rgb", "est_rgb")
+
+
+def test_segment_pairs_give_box_and_mask_rows_and_detect_arms_get_no_mask_rows() -> None:
     ap = {}
     for metric, values in (("latent_ap50", (0.10, 0.30)), ("latent_mask_ap50", (0.05, 0.20)),
                            ("latent_mask_ap30", (0.15, 0.40))):
-        ap[(0, 42, "val", "best", metric, "est_rgb_seg")] = values[0]
-        ap[(0, 42, "val", "best", metric, "est_rgbnir_seg")] = values[1]
+        ap[(0, 42, "val", "best", metric, "master_rgb_seg")] = values[0]
+        ap[(0, 42, "val", "best", metric, "master_rgbnir_seg")] = values[1]
     rows = ex.compute_differences(ap)
     assert {(r["comparison"], r["metric"]) for r in rows} == {
         ("H1_seg", "latent_ap50"), ("H1_seg", "latent_mask_ap50"), ("H1_seg", "latent_mask_ap30")}
     mask = next(r for r in rows if r["metric"] == "latent_mask_ap50")
-    assert (mask["treatment"], mask["baseline"]) == ("est_rgbnir_seg", "est_rgb_seg")
+    assert (mask["treatment"], mask["baseline"]) == ("master_rgbnir_seg", "master_rgb_seg")
     assert mask["delta"] == 0.20 - 0.05
-
-
-def test_segdt_twins_have_their_own_comparisons_and_detect_arms_get_no_mask_rows() -> None:
-    ap = {(0, 42, "val", "best", "latent_mask_ap50", arm): v
-          for arm, v in {"kd_rgb_segdt": 0.1, "kd_rgbnir_segdt": 0.3}.items()}
-    assert [r["comparison"] for r in ex.compute_differences(ap)] == ["H2_segdt"]
     assert {r["metric"] for r in ex.compute_differences(_ap({"est_rgb": 0.1, "est_rgbnir": 0.3}))} == {"latent_ap50"}
 
 

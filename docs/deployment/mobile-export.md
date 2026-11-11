@@ -101,7 +101,7 @@ A checkpoint trained with `task=segment` (YOLOv8-seg: a `Proto` head on P3 and 3
 ```bash
 # ONNX (needs `onnx` and `onnxruntime`); --verify compares it with PyTorch on random inputs, no dataset needed
 CUDA_VISIBLE_DEVICES="" python scripts/export_student.py --format onnx \
-    --checkpoint <run>/best_model.pt --out-dir exports --name est_etiquetas_seg --verify
+    --checkpoint <run>/best_model.pt --out-dir exports --name master_rgb_seg --verify
 # the same checkpoint as LiteRT, in the export venv (section 1)
 CUDA_VISIBLE_DEVICES="" .venv-export/bin/python scripts/export_student.py --checkpoint <run>/best_model.pt --out-dir exports
 ```

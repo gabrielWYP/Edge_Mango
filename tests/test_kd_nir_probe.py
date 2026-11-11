@@ -117,6 +117,33 @@ def test_write_outputs_creates_probe_json_and_readme(tmp_path) -> None:
     assert (tmp_path / "out" / "README.md").read_text().startswith("# ")
 
 
+def _segment_checkpoint(path, in_channels: int) -> None:
+    from src.models.student.student_model import StudentModel
+
+    torch.manual_seed(0)
+    model = StudentModel(num_classes=2, variant="nano", in_channels=in_channels, task="segment")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save({"model_state_dict": model.state_dict(),
+                "config": {"task": "segment", "student_variant": "nano", "student_in_channels": in_channels}}, path)
+
+
+def test_the_probe_reads_segment_teachers_with_the_task_from_the_checkpoint(tmp_path) -> None:
+    for arm, channels in (("master_rgbnir_seg", 4), ("master_rgb_seg", 3)):
+        _segment_checkpoint(tmp_path / "ckpt" / arm / "fold0" / "seed42" / "best_model.pt", channels)
+    args = probe.parse_args(["--dataset", str(tmp_path), "--checkpoints-root", str(tmp_path / "ckpt"), "--segment"])
+    teacher, control = probe.load_models(KDConfig(num_classes=2), args, 0, torch.device("cpu"))
+    assert teacher.task == control.task == "segment" and teacher.in_channels == 4 and control.in_channels == 3
+    result = probe.probe_fold(teacher, control, _fake_batches(), _fake_batches(2), seed=0, cap=64)
+    assert list(result) == ["P3", "P4", "P5"]
+
+
+def test_the_probe_arms_are_the_detect_ones_unless_segment_is_asked() -> None:
+    args = probe.parse_args(["--dataset", "d", "--checkpoints-root", "c"])
+    assert probe.arms_of(args) == ("est_rgbnir", "est_rgb")
+    segment = probe.parse_args(["--dataset", "d", "--checkpoints-root", "c", "--segment"])
+    assert probe.arms_of(segment) == ("master_rgbnir_seg", "master_rgb_seg")
+
+
 def test_the_parser_defaults_follow_the_brief() -> None:
     args = probe.parse_args(["--dataset", "d", "--checkpoints-root", "c"])
     assert args.folds == [0, 1, 2, 3, 4] and args.seed == 42 and args.variant == "wide"

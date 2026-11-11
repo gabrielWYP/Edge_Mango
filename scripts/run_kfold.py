@@ -61,13 +61,12 @@ exact commands in `docs/tesis/runbook-v4.md`). A v4 arm differs from the above i
     `--arms` train first whatever the order given. Any other teacher must already be
     complete, under the same settings, or the runner stops before anything runs;
     there is no fallback;
-  * a segment twin (`est_etiquetas_seg`; `est_kd_rgb_segdt` and `est_kd_rgbnir_segdt` for the KD students)
-    trains and is evaluated as a YOLOv8-seg student: `task=segment`, `mask_ratio` and `mask_weight`
+  * a segment twin (`master_etiquetas_seg`, the undistilled student) trains and is evaluated as a YOLOv8-seg student: `task=segment`, `mask_ratio` and `mask_weight`
     (`--mask-ratio`, `--mask-weight`) go on its commands, and its evaluation also writes the mask of each damage
     detection to `predictions.jsonl`, so `metrics_v4.json` gets the mask metrics. A twin has no config file of
-    its own: `--arms configs/experiment/v4_est_etiquetas_seg.yaml` reads `v4_est_etiquetas.yaml`. The KD twins
-    keep the master teacher of their base arm, which stays a detector (a MasterModel cannot segment, so
-    there is no `_seg` KD arm and no twin of a master); the name follows `scripts/run_small_arms.py`'s `_segdt`;
+    its own: `--arms configs/experiment/v4_master_etiquetas_seg.yaml` reads `v4_est_etiquetas.yaml`. The KD
+    students and the masters of the plan have no twin here (a MasterModel cannot segment): the segment plan with
+    CrossKD is `scripts/run_small_arms.py --arms-preset seg`;
   * each evaluation also writes `predictions.jsonl`, followed by a step that runs
     `scripts/v4_metrics.py` into `metrics_v4.json`, with its own
     `metrics_v4_complete.json` identity marker;
@@ -193,22 +192,18 @@ V4_ARMS = {
 
 
 def _segment_twins(arms: dict[str, V4Arm]) -> dict[str, V4Arm]:
-    """`<student>_seg`, and `<kd student>_segdt` (a detect master teacher); no twin of a master."""
-    twins = {}
-    for name, arm in arms.items():
-        if arm.trainer == "student":
-            twins[f"{name}_seg"] = replace(arm, task="segment")
-        elif arm.trainer == "kd":
-            twins[f"{name}_segdt"] = replace(arm, task="segment")
-    return twins
+    """`master_<x>_seg` of the undistilled student `est_<x>`; none for a master or a KD student (see the docstring)."""
+    return {
+        f"master_{name.removeprefix('est_')}_seg": replace(arm, task="segment")
+        for name, arm in arms.items()
+        if arm.trainer == "student"
+    }
 
 
 V4_SEGMENT_TWINS = _segment_twins(V4_ARMS)
 V4_ARMS |= V4_SEGMENT_TWINS
 # twin -> the arm whose config file it reads
-SEGMENT_BASE = {
-    twin: twin.removesuffix("_segdt").removesuffix("_seg") for twin in V4_SEGMENT_TWINS
-}
+SEGMENT_BASE = {twin: f"est_{twin.removeprefix('master_').removesuffix('_seg')}" for twin in V4_SEGMENT_TWINS}
 
 
 @dataclass(frozen=True)
@@ -907,7 +902,7 @@ def _find_file(value: str, what: str) -> Path:
 
 
 def _find_arm_config(value: str) -> Path:
-    """`_find_file`, except that a segment twin (`v4_est_etiquetas_seg.yaml`) is its base arm's file under its own name."""
+    """`_find_file`, except that a segment twin (`v4_master_etiquetas_seg.yaml`) is its base arm's file under its own name."""
     try:
         return _find_file(value, "Experiment config")
     except RunnerError:

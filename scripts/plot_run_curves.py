@@ -36,14 +36,13 @@ ARMS = [  # (arm, colour, label)
     ("kd_rgbnir", "#e1c300", "kd_rgbnir (RGB, maestro RGB+NIR)"),
     ("est_nir", "#3d3c39", "est_nir (NIR, referencia)"),
 ]
-# Segment twins (runs/<arm>_seg, <arm>_segdt) draw with the hue of their base arm, dash-dot (`_seg`) or dotted
-# (`_segdt`); their box AP and box + class loss are the same tags as a detect run's. Absent twins draw nothing.
-TWIN_STYLE = {"_seg": "-.", "_segdt": ":"}
+# Segment twins (runs/master_<x>_seg, runs/<arm>_seg) draw with the hue of their base arm, dash-dot; their box AP and
+# box + class loss are the same tags as a detect run's. Absent twins draw nothing.
 LINESTYLE = {arm: "-" for arm, _, _ in ARMS}
 for _arm, _color, _label in list(ARMS):
     for _twin in segment_twin_names(_arm):
         ARMS.append((_twin, _color, _twin + _label.removeprefix(_arm)))
-        LINESTYLE[_twin] = TWIN_STYLE[_twin.removeprefix(_arm)]
+        LINESTYLE[_twin] = "-."
 
 def read_curve(path):
     """{(arm, fold): {epoch: ap30}} from the CSV of eval_epoch_curve.py, seed 42."""

@@ -20,11 +20,15 @@ Outside the plan, only when `--arms` names it:
     crosskd_rgbnir_better  as crosskd_rgbnir, on the cells where the teacher beats the student (kd_gate=teacher_better).
 
 Segment arms (YOLOv8-seg student on polygon labels, see docs/tesis/runbook-v4.md, section Segment arms), opt-in by name:
-every arm above has a `<arm>_seg` twin (`est_rgb_seg`, `kd_rgbnir_seg`, `crosskd_rgbnir_seg`, ...) that trains with
-`task=segment`, so the dataset yields instance masks, and its evaluation records `mask_map50` and `mask_map_50_95`.
-A KD `_seg` arm distills from the `_seg` teacher of its fold and seed (est_rgbnir_seg for kd_rgbnir_seg). Its `_segdt`
-twin (`kd_rgbnir_segdt`) distills the same student from the DETECT teacher (est_rgbnir); only cls/box are distilled.
-`--mask-weight` and `--mask-ratio` apply to them. They are in no default list: name them in `--arms`.
+every arm above has a segment twin that trains from scratch with `task=segment`, so the dataset yields instance masks,
+and its evaluation records `mask_map50` and `mask_map_50_95`. An undistilled arm is a "master": `est_rgb` ->
+`master_rgb_seg`, `est_rgbnir` -> `master_rgbnir_seg`, `est_nir` -> `master_nir_seg`. A distilled one keeps its name with
+`_seg` (`crosskd_rgbnir_seg`, `kd_rgbnir_seg`, ...) and distills from the master of its fold and seed
+(`master_rgbnir_seg` for `crosskd_rgbnir_seg`; `master_rgb_seg` for `crosskd_rgb_seg`); only cls/box are distilled.
+`--mask-weight` and `--mask-ratio` apply to them. They are in no default list: name them in `--arms`, or take a plan
+with `--arms-preset`, masters first: `seg` is master_rgb_seg master_rgbnir_seg master_nir_seg crosskd_rgb_seg
+crosskd_rgbnir_seg, `seg-full` adds crosskd_rgbnir_high_seg, crosskd_rgbnir_low_seg and crosskd_rgbnir_better_seg. The
+MSE feature-KD arms (`kd_rgb_seg`, `kd_rgbnir_seg`) are defined and runnable by name, in no preset.
 
 Every run is evaluated on val and test, with predictions and metrics_v4.json, under
 `<reports-root>/<arm>/fold<k>_seed<S>/<split>/`, the layout of `scripts/aggregate_kfold.py`.
@@ -58,6 +62,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from scripts import run_kfold as rk  # noqa: E402
+from src.evaluation.arms import SEGMENT_PRESETS, segment_arm_name  # noqa: E402
 
 STUDENT_CONFIG = "configs/experiment/v4_est_etiquetas.yaml"
 KD_CONFIG = "configs/experiment/v4_est_kd_rgbnir.yaml"
@@ -92,15 +97,13 @@ ARMS = {
 
 
 def _segment_twins(arms: dict[str, Arm]) -> dict[str, Arm]:
-    """`<arm>_seg` (segment teacher) and, for KD arms, `<arm>_segdt` (detect teacher) of every arm."""
-    twins = {}
-    for name, arm in arms.items():
-        if arm.teacher is None:
-            twins[f"{name}_seg"] = replace(arm, task="segment")
-        else:
-            twins[f"{name}_seg"] = replace(arm, task="segment", teacher=f"{arm.teacher}_seg")
-            twins[f"{name}_segdt"] = replace(arm, task="segment")
-    return twins
+    """The segment twin of every arm (`segment_arm_name`), distilling from the segment master of the detect teacher."""
+    return {
+        segment_arm_name(name): replace(
+            arm, task="segment", teacher=None if arm.teacher is None else segment_arm_name(arm.teacher)
+        )
+        for name, arm in arms.items()
+    }
 
 
 ARMS |= _segment_twins(ARMS)
@@ -126,7 +129,10 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--weights", default="", help="YOLOv8n state_dict; empty trains from scratch")
     parser.add_argument("--variant", choices=("wide", "nano"), default="wide")
     parser.add_argument("--epochs", type=int, default=80)
-    parser.add_argument("--arms", nargs="+", choices=sorted(ARMS), default=PLANNED_ARMS)
+    parser.add_argument("--arms", nargs="+", choices=sorted(ARMS), default=None,
+                        help=f"default: {' '.join(PLANNED_ARMS)}")
+    parser.add_argument("--arms-preset", choices=sorted(SEGMENT_PRESETS), default=None,
+                        help="instead of --arms. " + "; ".join(f"{k}: {' '.join(v)}" for k, v in SEGMENT_PRESETS.items()))
     parser.add_argument("--folds", type=int, nargs="+", default=[0, 1, 2, 3, 4])
     parser.add_argument("--seeds", type=int, nargs="+", default=[42])
     parser.add_argument("--checkpoints-root", type=Path, default=Path("checkpoints/v4_small"))
@@ -142,7 +148,11 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--jobs", type=int, default=1, help="runs at the same time")
     parser.add_argument("--no-resume", action="store_true", help="train interrupted runs from scratch")
     parser.add_argument("--dry-run", action="store_true")
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.arms_preset and args.arms:
+        parser.error("--arms-preset and --arms are alternatives")
+    args.arms = list(SEGMENT_PRESETS[args.arms_preset]) if args.arms_preset else args.arms or PLANNED_ARMS
+    return args
 
 
 def make_nir_as_rgb(dataset: Path, target: Path) -> int:

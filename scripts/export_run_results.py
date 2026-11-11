@@ -49,14 +49,20 @@ DIFFERENCES = {
     "gate_high_vs_low": ("crosskd_rgbnir_high", "crosskd_rgbnir_low"),
     "gate_better_vs_none": ("crosskd_rgbnir_better", "crosskd_rgbnir"),
 }
-# Segment twins of every arm (scripts/run_small_arms.py): `_seg` with a segment teacher, `_segdt` with a detect one.
-SEGMENT_SUFFIXES = ("_seg", "_segdt")
+# Segment twins of every arm (scripts/run_small_arms.py) come with val_operating_points.ARMS: `est_*` -> `master_*_seg`, others `_seg`.
 EXPORT_ARMS = list(ARMS)  # val_operating_points.ARMS already holds the twins, detect arms first
-# The plan's four comparisons between segment twins (`H1_seg`, `H2_segdt`, ...). They are computed on the box metrics
-# and, because segment runs also carry them, on the mask ones (`latent_mask_ap50`, `latent_mask_ap30`).
-for _suffix in SEGMENT_SUFFIXES:
-    for _name in ("H1", "H2", "secondary", "exploratory"):
-        DIFFERENCES[f"{_name}{_suffix}"] = tuple(arm + _suffix for arm in DIFFERENCES[_name])
+# The segment plan's comparisons (`H1_seg`, ...), on the box metrics and, because segment runs also carry them, on the
+# mask ones (`latent_mask_ap50`, `latent_mask_ap30`). The segment masters play the part of the detect `est_*` arms and
+# CrossKD is the distillation, so H2 and the secondary and exploratory comparisons use it. The gate comparisons mirror
+# the detect `gate_*` ones.
+DIFFERENCES.update({
+    "H1_seg": ("master_rgbnir_seg", "master_rgb_seg"),
+    "H2_seg": ("crosskd_rgbnir_seg", "crosskd_rgb_seg"),
+    "secondary_seg": ("crosskd_rgbnir_seg", "master_rgb_seg"),
+    "exploratory_seg": ("crosskd_rgb_seg", "master_rgb_seg"),
+    "gate_high_vs_low_seg": ("crosskd_rgbnir_high_seg", "crosskd_rgbnir_low_seg"),
+    "gate_better_vs_none_seg": ("crosskd_rgbnir_better_seg", "crosskd_rgbnir_seg"),
+})
 AP_METRICS = ("latent_ap50", "latent_ap30")
 MASK_AP_METRICS = ("latent_mask_ap50", "latent_mask_ap30")  # only in the metrics_v4.json of segment runs
 METRIC_PREFIXES = ("map", "per_class", "mask_")  # metrics.json scalars exported; mask_* only exist for segment runs
