@@ -39,12 +39,12 @@ from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts, LambdaLR
 from torch.utils.data import DataLoader
 
 from .config import DAMAGE_CLASS_ID, TrainingConfig
-from .decode import decode_detections
+from .decode import decode_detections, decode_detections_with_coefs, process_masks
 from .ema import ModelEMA
 from .loss import YOLOv8Loss
 from .fusion_modes import DEFAULT_FUSION_MODE, arch_version_for_mode
 from .machine import derive_grad_accum_steps
-from .metrics import compute_map, generate_training_curves, LossHistory
+from .metrics import compute_map, compute_mask_map, generate_training_curves, LossHistory
 from .nir_registration import homography_sha256
 from .precision import autocast_ctx, make_scaler
 from .resume import (
@@ -142,6 +142,7 @@ class Trainer:
             num_classes=config.num_classes,
             box_weight=config.box_weight,
             cls_weight=config.cls_weight,
+            mask_weight=getattr(config, "mask_weight", 7.5),
             class_weights=config.class_weights,
             focal_gamma=getattr(config, 'focal_gamma', 2.0),
             strides=resolve_active_strides(config),
@@ -746,6 +747,7 @@ class Trainer:
         accum = self.grad_accum_steps
         total_cls = 0.0
         total_box = 0.0
+        total_mask = 0.0
         total_loss = 0.0
         micro_batches = 0   # successful forward+backward passes
         steps_taken = 0     # optimizer.step() calls (effective steps)
@@ -790,8 +792,12 @@ class Trainer:
                         output = self.model(rgb, nir)
                     predictions = output["preds"]
 
-                    targets = {"bboxes": bboxes, "labels": labels}
-                    loss, loss_dict = self.criterion(predictions, targets)
+                    targets = self._loss_targets(batch, bboxes, labels)
+                    mask_outputs = self._mask_outputs(output)
+                    if mask_outputs is None:
+                        loss, loss_dict = self.criterion(predictions, targets)
+                    else:
+                        loss, loss_dict = self.criterion(predictions, targets, mask_outputs)
 
                 # NaN / Inf guard: skip batch if loss explodes. Always
                 # counted — see D-G docstring above for why this must not
@@ -849,6 +855,7 @@ class Trainer:
 
             total_cls += loss_dict["cls_loss"]
             total_box += loss_dict["box_loss"]
+            total_mask += loss_dict.get("mask_loss", 0.0)
             total_loss += loss.item()
             micro_batches += 1
             self.global_step += 1
@@ -876,9 +883,26 @@ class Trainer:
             "nan_skipped": float(nan_skipped),
             "steps_taken": float(steps_taken),
         }
+        if self.config.task == "segment":
+            result["mask_loss"] = total_mask / micro_batches
         for name, values in module_grad_norms.items():
             result[f"grad_norm_{name}"] = sum(values) / len(values)
         return result
+
+    def _loss_targets(self, batch: dict, bboxes: list, labels: list) -> dict:
+        """Loss targets of a batch: boxes and labels, plus the instance masks when it has any."""
+        targets = {"bboxes": bboxes, "labels": labels}
+        if "masks" in batch:
+            targets["masks"] = [m.to(self.device) for m in batch["masks"]]
+            targets["has_mask"] = [h.to(self.device) for h in batch["has_mask"]]
+        return targets
+
+    @staticmethod
+    def _mask_outputs(output: dict) -> dict | None:
+        """The part of a segment student's output the mask loss reads, None for a detect model."""
+        if "protos" not in output:
+            return None
+        return {"mask_coefs": output["mask_coefs"], "protos": output["protos"]}
 
     @torch.no_grad()
     def _validate(self, epoch: int, phase: int) -> dict:
@@ -922,6 +946,9 @@ class Trainer:
         all_pred_labels = []
         all_gt_boxes = []
         all_gt_labels = []
+        # Mask AP inputs, at prototype resolution (segment student on a batch with GT masks).
+        all_pred_masks, all_gt_masks, all_gt_has_mask = [], [], []
+        masks_complete = True
 
         for batch in self.val_loader:
             rgb = batch["rgb"].to(self.device)
@@ -938,11 +965,29 @@ class Trainer:
             cls_preds = output["cls_preds"]  # list of (B, nc, H, W)
 
             B = rgb.shape[0]
+            segment = "protos" in output
+            with_masks = segment and "masks" in batch
+            masks_complete = masks_complete and with_masks
             for b in range(B):
                 # AP needs the full ranked list, not just the operating point.
-                pred_boxes_b, pred_scores_b, pred_labels_b = self._decode_predictions(
-                    preds, cls_preds, b, conf_threshold=self.config.eval_conf_threshold
-                )
+                if segment:
+                    pred_boxes_b, pred_scores_b, pred_labels_b, coefs_b = self._decode_segmentation_static(
+                        preds, cls_preds, output["mask_coefs"], b, self.config,
+                        conf_threshold=self.config.eval_conf_threshold,
+                    )
+                    if with_masks:
+                        all_pred_masks.append(
+                            process_masks(
+                                output["protos"][b].float(), coefs_b.to(output["protos"].device),
+                                pred_boxes_b.to(output["protos"].device),
+                            ).cpu()
+                        )
+                        all_gt_masks.append(batch["masks"][b].bool())
+                        all_gt_has_mask.append(batch["has_mask"][b])
+                else:
+                    pred_boxes_b, pred_scores_b, pred_labels_b = self._decode_predictions(
+                        preds, cls_preds, b, conf_threshold=self.config.eval_conf_threshold
+                    )
                 all_pred_boxes.append(pred_boxes_b)
                 all_pred_scores.append(pred_scores_b)
                 all_pred_labels.append(pred_labels_b)
@@ -965,8 +1010,48 @@ class Trainer:
             num_classes=self.config.num_classes,
             score_threshold=self.config.conf_threshold,
         )
+        if all_pred_masks and masks_complete:
+            metrics.update(
+                compute_mask_map(
+                    pred_masks=all_pred_masks,
+                    pred_scores=all_pred_scores,
+                    pred_labels=all_pred_labels,
+                    gt_masks=all_gt_masks,
+                    gt_labels=all_gt_labels,
+                    num_classes=self.config.num_classes,
+                    gt_has_mask=all_gt_has_mask,
+                )
+            )
 
         return metrics
+
+    @staticmethod
+    def _decode_segmentation_static(
+        preds: list[torch.Tensor],
+        cls_preds: list[torch.Tensor],
+        mask_coefs: list[torch.Tensor],
+        batch_idx: int,
+        config: TrainingConfig,
+        conf_threshold: float | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """`_decode_predictions_static` plus the (P, nm) mask coefficients of the detections."""
+        boxes, scores, labels, coefs = decode_detections_with_coefs(
+            preds,
+            cls_preds,
+            mask_coefs,
+            batch_idx=batch_idx,
+            num_classes=config.num_classes,
+            image_size=config.image_size,
+            strides=tuple(resolve_active_strides(config)),
+            conf_threshold=config.conf_threshold if conf_threshold is None else conf_threshold,
+            nms_iou_threshold=config.nms_iou_threshold,
+            nms_enabled=config.nms_enabled,
+            per_class_candidates=config.decode_per_class,
+            max_detections=config.max_detections,
+            normalize=True,
+            ignore_classes=config.ignore_classes,
+        )
+        return boxes.cpu(), scores.cpu(), labels.cpu(), coefs.cpu()
 
     @staticmethod
     def _decode_predictions_static(

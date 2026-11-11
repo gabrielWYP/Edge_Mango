@@ -236,6 +236,8 @@ def main():
         roi_crop_jitter=config.roi_crop_jitter,
         pixel_cache_dir=config.pixel_cache_dir,
         modality_ablation=config.modality_ablation,
+        load_masks=config.task == "segment",
+        mask_ratio=config.mask_ratio,
     )
 
     val_dataset = YOLODataset(
@@ -254,6 +256,8 @@ def main():
         roi_crop_jitter=config.roi_crop_jitter,
         pixel_cache_dir=config.pixel_cache_dir,
         modality_ablation=config.modality_ablation,
+        load_masks=config.task == "segment",
+        mask_ratio=config.mask_ratio,
     )
 
     print(f"Dataset: {len(train_dataset)} train, {len(val_dataset)} val images")
@@ -285,6 +289,7 @@ def main():
             num_classes=config.num_classes,
             variant=config.student_variant,
             in_channels=config.student_in_channels,
+            task=config.task,
         )
         if config.student_pretrained_path:
             report = load_yolov8n_weights(model, config.student_pretrained_path)

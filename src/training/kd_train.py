@@ -169,6 +169,8 @@ def main():
         roi_crop_jitter=config.roi_crop_jitter,
         pixel_cache_dir=config.pixel_cache_dir,
         modality_ablation=config.modality_ablation,
+        load_masks=config.task == "segment",
+        mask_ratio=config.mask_ratio,
     )
 
     val_dataset = YOLODataset(
@@ -187,6 +189,8 @@ def main():
         roi_crop_jitter=config.roi_crop_jitter,
         pixel_cache_dir=config.pixel_cache_dir,
         modality_ablation=config.modality_ablation,
+        load_masks=config.task == "segment",
+        mask_ratio=config.mask_ratio,
     )
 
     print(f"Dataset: {len(train_dataset)} train, {len(val_dataset)} val images")
@@ -217,7 +221,9 @@ def main():
         raise ValueError(f"A master teacher needs the wide student, not {config.student_variant!r}.")
     if config.student_in_channels != 3:
         raise ValueError("A distilled student reads RGB alone: student_in_channels must be 3.")
-    model = StudentModel(num_classes=config.num_classes, variant=config.student_variant)
+    model = StudentModel(
+        num_classes=config.num_classes, variant=config.student_variant, task=config.task
+    )
     if config.student_pretrained_path:
         report = load_yolov8n_weights(model, config.student_pretrained_path)
         print(f"Pretrained {config.student_pretrained_path}: {report['loaded']} tensors loaded")

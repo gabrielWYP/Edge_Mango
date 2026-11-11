@@ -36,6 +36,8 @@ from .roi_crop import validate_roi_crop
 
 # The variants of src/models/student/student_model.py, without importing the models here.
 STUDENT_VARIANT_NAMES = ("wide", "nano")
+# "detect" predicts boxes; "segment" (student only) adds the YOLOv8-seg mask branch.
+TASK_NAMES = ("detect", "segment")
 from .strides import (
     CROSS_ATTENTION_SUPPORTED_HEAD_STRIDES,
     DEFAULT_HEAD_STRIDES,
@@ -94,6 +96,12 @@ class TrainingConfig:
         weight_decay: AdamW weight decay.
         box_weight: Regression loss weight.
         cls_weight: Classification loss weight.
+        task: "detect" (default) or "segment". "segment" needs `model_type="student"`: the
+            student gets the YOLOv8-seg Proto and mask branch, the dataset yields instance
+            masks, and the loss and the evaluation gain their mask terms.
+        mask_weight: Gain of the mask loss (segment only). 7.5 = ultralytics' segmentation gain.
+        mask_ratio: Input size over mask size: the dataset's GT mask resolution, 4 for the
+            160x160 prototypes of a 640 input.
         class_weights: Per-class BCE weights [mango, danado].
         ignore_classes: Class IDs the model does not learn or predict. `[0]` trains on damage
             alone; the mango box still defines the crop.
@@ -240,6 +248,10 @@ class TrainingConfig:
     student_in_channels: int = 3
     student_pretrained_path: str = ""
     pixel_cache_dir: str = ""
+    # Instance segmentation (YOLOv8-seg head on the student). Off by default, so every
+    # existing config, checkpoint and arm keeps the detection model it has today.
+    task: str = "detect"
+    mask_ratio: int = 4
 
     roi_crop: bool = False
     roi_crop_margin: float = 0.10
@@ -256,6 +268,8 @@ class TrainingConfig:
     # Loss
     box_weight: float = 7.5
     cls_weight: float = 0.5
+    # Mask loss gain, used only when `task == "segment"`.
+    mask_weight: float = 7.5
     # [mango, damage]. `[0.5, 1.5]` is the value every recorded checkpoint was
     # trained under; held constant for the duration of the damage-map-audit
     # experiment ladder so a class-1 AP change can be attributed to the
@@ -424,6 +438,14 @@ class TrainingConfig:
         if self.student_in_channels not in (3, 4):
             raise ValueError(
                 f"Invalid student_in_channels {self.student_in_channels}: 3 is RGB, 4 is RGB and NIR."
+            )
+        if self.task not in TASK_NAMES:
+            raise ValueError(f"Invalid task '{self.task}'. Must be one of: {TASK_NAMES}")
+        if self.task == "segment" and self.model_type != "student":
+            raise ValueError("task='segment' is only implemented for model_type='student'.")
+        if self.mask_ratio < 1 or self.image_size % self.mask_ratio:
+            raise ValueError(
+                f"mask_ratio ({self.mask_ratio}) must be >= 1 and divide image_size ({self.image_size})."
             )
         validate_roi_crop(self.roi_crop_margin, self.roi_crop_jitter)
         validate_neck_norm(self.neck_norm, self.neck_gn_groups)

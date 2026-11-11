@@ -2,7 +2,8 @@
 
 The file holds the tensors of the official checkpoint under their own names, `model.<i>...`, so
 loading it needs no ultralytics package. Its head predicts 80 classes and 64 box values, so only
-what has the same shape is copied. The backbone must match in full: both variants have it. A
+what has the same shape is copied. The backbone must match in full: both variants have it.
+A yolov8n-seg file also fills the `nano` student's Proto and mask-coefficient layers (`task="segment"`). A
 student with a NIR input channel starts that channel from the mean of the three RGB filters.
 """
 
@@ -34,10 +35,18 @@ def official_key(key: str, variant: str) -> str | None:
     if section == "neck":
         block, _, tail = rest.partition(".")
         return f"model.{_NANO_NECK[block]}.{tail}"
-    parts = key.split(".")  # head.heads.<level>.<cls_stem|reg_stem>.<layer>.<tail>
+    if section == "head" and rest.startswith("proto."):
+        # yolov8n-seg: `Proto` keeps its layer names (cv1, upsample, cv2, cv3).
+        return f"model.22.{rest}"
+    parts = key.split(".")  # head.heads.<level>.<cls_stem|reg_stem|mask_stem>.<layer>.<tail>
     if section == "head" and parts[3] in ("cls_stem", "reg_stem"):
         branch = "cv3" if parts[3] == "cls_stem" else "cv2"
         return f"model.22.{branch}.{parts[2]}.{parts[4]}.{'.'.join(parts[5:])}"
+    if section == "head" and parts[3] == "mask_stem":
+        # The official `cv4` branch: two Conv blocks, then a plain Conv2d at index 2.
+        return f"model.22.cv4.{parts[2]}.{parts[4]}.{'.'.join(parts[5:])}"
+    if section == "head" and parts[3] == "mask_pred":
+        return f"model.22.cv4.{parts[2]}.2.{'.'.join(parts[4:])}"
     return None
 
 
