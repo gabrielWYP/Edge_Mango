@@ -20,6 +20,7 @@ import torch
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.training.kd_config import KDConfig
+from src.training.threads import cap_main_threads
 from src.training.dataset import YOLODataset, build_dataloader, collate_fn, build_weighted_sampler
 from src.training.fusion_modes import DEFAULT_MODALITY_ABLATION, validate_kd_modality_ablation
 from src.training.kd_trainer import KDTrainer
@@ -150,6 +151,8 @@ def main():
     if config.modality_ablation != DEFAULT_MODALITY_ABLATION:
         print(f"  modality_ablation: {config.modality_ablation}")
 
+    cap_main_threads()  # 8 cores shared by several runs: the GPU process needs few threads
+
     # Create datasets. Do not pass explicit transforms here: YOLODataset's
     # default path keeps spatial augmentations synchronized across RGB, NIR,
     # and bounding boxes.
@@ -171,6 +174,7 @@ def main():
         modality_ablation=config.modality_ablation,
         load_masks=config.task == "segment",
         mask_ratio=config.mask_ratio,
+        defer_normalization=True,
     )
 
     val_dataset = YOLODataset(
@@ -191,6 +195,7 @@ def main():
         modality_ablation=config.modality_ablation,
         load_masks=config.task == "segment",
         mask_ratio=config.mask_ratio,
+        defer_normalization=True,
     )
 
     print(f"Dataset: {len(train_dataset)} train, {len(val_dataset)} val images")
@@ -204,6 +209,7 @@ def main():
         collate_fn=collate_fn,
         num_workers=config.num_workers,
         pin_memory=config.pin_memory,
+        limit_threads=True,
         drop_last=True,
     )
 
@@ -214,6 +220,7 @@ def main():
         collate_fn=collate_fn,
         num_workers=config.num_workers,
         pin_memory=config.pin_memory,
+        limit_threads=True,
     )
 
     # Create student model. A master teacher's adapters are sized for the wide student's channels.

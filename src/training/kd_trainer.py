@@ -377,8 +377,7 @@ class KDTrainer(Trainer):
         nan_skipped = 0
 
         for batch in self.train_loader:
-            rgb = batch["rgb"].to(self.device)
-            nir = batch["nir"].to(self.device)
+            rgb, nir = self._device_inputs(batch, self.train_loader)
             bboxes = [b.to(self.device) for b in batch["bboxes"]]
             labels = [l.to(self.device) for l in batch["labels"]]
 
