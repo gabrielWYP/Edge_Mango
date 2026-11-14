@@ -14,9 +14,16 @@ Written for Ubuntu with an NVIDIA driver and Python 3.12. Nothing below needs th
 ## 0. By hand, once
 
 - On the rental machine: `gh auth login -h github.com -p https -w` (device flow). No token goes in any script or file.
-- Get the starting weights to the machine (the COCO YOLOv8n state_dict of the earlier runs, see `student_pretrained_path`
-  in `run_complete.json` of any of them). Decide whether the `_seg` masters start from a yolov8n-seg state dict
-  (initialises the Proto and mask layers) and say so in the plan row before the first run; this kit does not choose.
+- Starting weights: all six arms start from the same yolov8n-seg state dict (plan section 11, 2026-11-13 row). Build it
+  once, locally, from the official checkpoint (no ultralytics package needed):
+
+  ```bash
+  curl -L -o /tmp/yolov8n-seg.pt https://github.com/ultralytics/assets/releases/download/v8.2.0/yolov8n-seg.pt
+  sha256sum /tmp/yolov8n-seg.pt   # a7cd8f929e1903d78a12a48efecab430209f18dc46cb96c3599a5980c63c423c
+  python scripts/convert_ultralytics_weights.py /tmp/yolov8n-seg.pt data/weights/yolov8n-seg_state.pt
+  ```
+
+  Detect arms take its backbone, neck and box/class head; segment arms also take the Proto and mask-coefficient layers.
 
 ## 1. Package the data (local machine)
 
@@ -40,7 +47,7 @@ The host and user come from the rental provider.
 
 ```bash
 rsync -avP --partial /tmp/v4_poly.tar.zst /tmp/v4_poly.tar.zst.sha256 <user>@<host>:<WORK>/upload/
-rsync -avP data/weights/yolov8n_state.pt <user>@<host>:<WORK>/upload/
+rsync -avP data/weights/yolov8n-seg_state.pt <user>@<host>:<WORK>/upload/
 # or: scp -r /tmp/v4_poly.tar.zst* <user>@<host>:<WORK>/upload/
 ```
 
@@ -54,7 +61,7 @@ Get the script first (it is in the repo; for the first run fetch just that file,
 mkdir -p $WORK/upload && cd $WORK
 gh repo clone gabrielWYP/Edge_Mango edge_mango -- --branch <branch>      # or: git clone, once gh is logged in
 edge_mango/scripts/remote/setup_remote.sh --data $WORK/upload/v4_poly.tar.zst --workdir $WORK \
-    --branch <branch> --weights $WORK/upload/yolov8n_state.pt --smoke
+    --branch <branch> --weights $WORK/upload/yolov8n-seg_state.pt --smoke
 ```
 
 The script is safe to re-run. It prints `nvidia-smi` and the Python version, updates the repo, makes `$WORK/.venv`,
