@@ -19,7 +19,7 @@
 #     --smoke             after the setup, train 2 epochs of master_rgb_seg on fold 0 into <workdir>/runs/smoke and
 #                         print seconds per epoch (the number the cost estimate needs)
 #     --smoke-arm ARM     default master_rgb_seg
-#     --image-size N      input side of the smoke run, recorded in env.sh (default 800, the thesis value)
+#     --image-size N      input side of the smoke run, recorded in env.sh (default 640, the thesis value)
 #
 # GitHub: the script never stores a secret. If the repository is private, log in once by hand with the device flow:
 #   gh auth login -h github.com -p https -w     (then re-run this script)
@@ -40,7 +40,7 @@ SKIP_CACHE=0
 SKIP_TESTS=0
 SMOKE=0
 SMOKE_ARM="master_rgb_seg"
-IMAGE_SIZE=800
+IMAGE_SIZE=640
 
 usage() {
     sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'

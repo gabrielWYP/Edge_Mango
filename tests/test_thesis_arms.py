@@ -92,18 +92,18 @@ def _image_sizes(args) -> set[str]:
     return {str(x) for cmd in cmds for x in cmd if str(x).startswith("image_size=")}
 
 
-def test_the_thesis_preset_trains_and_evaluates_every_arm_at_800(tmp_path) -> None:
+def test_the_thesis_preset_trains_and_evaluates_every_arm_at_640(tmp_path) -> None:
     args = _args(tmp_path, "--arms-preset", "thesis")
-    assert rs.THESIS_IMAGE_SIZE == 800
-    assert _image_sizes(args) == {"image_size=800"}
+    assert rs.THESIS_IMAGE_SIZE == 640
+    assert _image_sizes(args) == {"image_size=640"}
     steps = [(key, cmd) for arm in args.arms for key, cmd, _ in rs.plan_arm(args, arm, 0, 42)]
     model_steps = [cmd for key, cmd in steps if "/metrics_" not in key]  # v4_metrics only reads predictions
     assert len(model_steps) == 6 * 3
-    assert all("image_size=800" in [str(x) for x in cmd] for cmd in model_steps)
+    assert all("image_size=640" in [str(x) for x in cmd] for cmd in model_steps)
 
 
 def test_an_explicit_image_size_wins_over_the_preset(tmp_path) -> None:
-    assert _image_sizes(_args(tmp_path, "--arms-preset", "thesis", "--image-size", "640")) == {"image_size=640"}
+    assert _image_sizes(_args(tmp_path, "--arms-preset", "thesis", "--image-size", "800")) == {"image_size=800"}
 
 
 def test_without_preset_or_flag_the_config_size_is_kept(tmp_path) -> None:

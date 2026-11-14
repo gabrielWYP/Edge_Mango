@@ -1,12 +1,13 @@
 # Runbook: the final thesis runs on a rented GPU machine
 
-The final plan: **6 arms x 5 folds x 3 seeds (42, 1337, 2024) = 90 trainings**, from scratch, on the polygon v4
+The final plan: **6 arms x 5 folds x 1 seed (42) = 30 trainings**, from scratch, on the polygon v4
 dataset. The arms are the `thesis` preset of [`run_small_arms.py`](../../scripts/run_small_arms.py): `master_rgb_seg`,
 `master_rgbnir_seg`, `master_nir_seg`, `master_rgb_det`, `crosskd_rgb_seg`, `crosskd_rgbnir_seg` (masters first; each
 CrossKD student distills from the master of its fold and seed). `master_rgb_det` is `est_rgb` trained on the
 polygon-derived boxes; `master_rgb_seg - master_rgb_det` is the mask-supervision comparison. The plan row
 ([plan-experimental.md](plan-experimental.md), section 11, 2026-11-13) was confirmed by the author before the first
-run. Every thesis run trains and evaluates at **800 x 800** (`--image-size 800`, the default of the `thesis` preset). Segment details are in [runbook-v4.md](runbook-v4.md), "Segment arms (opt-in)".
+run and amended on 2026-11-14 (one seed, 640 px). Every thesis run trains and evaluates at **640 x 640**
+(`--image-size 640`, the default of the `thesis` preset). Segment details are in [runbook-v4.md](runbook-v4.md), "Segment arms (opt-in)".
 
 Written for Ubuntu with an NVIDIA driver and Python 3.12. Nothing below needs the image or GPU to be known in advance.
 `$WORK` is a folder on the rented machine with about 60 GB free (dataset 10 GB, pixel cache, checkpoints, logs).
@@ -71,7 +72,7 @@ override with `--torch-index cu126` or `TORCH_INDEX=https://download.pytorch.org
 the archive had none), runs a quick pytest subset and writes `$WORK/env.sh`.
 
 `--smoke` trains 2 epochs of `master_rgb_seg` on fold 0 into `$WORK/runs/smoke` (not a result) at `--image-size`
-(default 800, also written to `env.sh` as `IMAGE_SIZE`) and prints the mean **seconds per epoch**. Keep that number for the cost estimate. `--machine configs/machines/<x>.yaml` picks the profile
+(default 640, also written to `env.sh` as `IMAGE_SIZE`) and prints the mean **seconds per epoch**. Keep that number for the cost estimate. `--machine configs/machines/<x>.yaml` picks the profile
 (default `rtx_a5000`, batch 8, for 20 GB or more; `rtx3080` below that).
 
 From now on, in every shell: `source $WORK/env.sh && cd $REPO` (defines `PY`, `REPO`, `DATASET`, `PIXEL`, `RUNS`,
@@ -79,11 +80,11 @@ From now on, in every shell: `source $WORK/env.sh && cd $REPO` (defines `PY`, `R
 
 ## 4. Launch
 
-Review the plan first: 450 lines (90 runs x 5 steps), masters before the CrossKD runs of the same fold and seed.
+Review the plan first: 150 lines (30 runs x 5 steps), masters before the CrossKD runs of the same fold and seed.
 
 ```bash
 python scripts/run_small_arms.py --dataset $DATASET --weights $WEIGHTS --variant nano --epochs 80 \
-    --arms-preset thesis --image-size $IMAGE_SIZE --folds 0 1 2 3 4 --seeds 42 1337 2024 --machine $MACHINE \
+    --arms-preset thesis --image-size $IMAGE_SIZE --folds 0 1 2 3 4 --seeds 42 --machine $MACHINE \
     --pixel-cache-root $PIXEL --checkpoints-root $RUNS --reports-root $RUNS/reports --jobs 3 --dry-run | head -12
 ```
 
@@ -105,7 +106,7 @@ step: use the same flags, or new roots.
 **Cost.** wall hours = runs x epochs x s_per_epoch(k) / k / 3600, with k = `--jobs` and `s_per_epoch(k)` measured at
 that concurrency (the smoke gives k = 1, so it is an upper bound for the per-run time and a lower bound for the
 total; CrossKD runs also forward a teacher, so they are slower than masters). Add the evaluations (val and test of every run, a few
-minutes in total per run). Example, only to show the arithmetic: 90 x 80 x 40 s / 3 = 96,000 s = 26.7 h; multiply by the
+minutes in total per run). Example, only to show the arithmetic: 30 x 80 x 40 s / 3 = 32,000 s = 8.9 h; multiply by the
 hourly price. Measure instead of trusting the example.
 
 ## 5. Push progress to git (remote)
@@ -128,7 +129,7 @@ the export command and the branch.
 git fetch origin runs/thesis-<YYYYMMDD>                       # the small report files
 mkdir -p runs_thesis
 rsync -avP --include='*/' --include='best_model.pt' --include='run_complete.json' --exclude='*' \
-    <user>@<host>:<WORK>/runs/thesis/ runs_thesis/            # checkpoints (90 of them, small)
+    <user>@<host>:<WORK>/runs/thesis/ runs_thesis/            # checkpoints (30 of them, small)
 rsync -avP --include='*/' --include='predictions.jsonl' --include='metrics*.json' --exclude='*' \
     <user>@<host>:<WORK>/runs/thesis/reports/ runs_thesis/reports/    # for plots and top-1 localization; several GB
 ```
@@ -156,7 +157,7 @@ Then, with the new dataset, take the evaluation commands `run_small_arms.py` wou
 ```bash
 LE=$WORK/runs/label_effect
 python scripts/run_small_arms.py --dataset $DATASET --variant nano --epochs 80 --arms est_rgb \
-    --folds 0 1 2 3 4 --seeds 42 1337 2024 --machine $MACHINE \
+    --folds 0 1 2 3 4 --seeds 42 --machine $MACHINE \
     --checkpoints-root $WORK/runs/old_est_rgb --reports-root $LE/reports --val-only --dry-run \
   | grep -E '^\[run\] [^:]*/(eval|metrics)_(val|test):' | sed -E 's/^\[run\] [^:]*: //' \
   | while IFS= read -r cmd; do echo ">> $cmd"; bash -c "$cmd" || break; done
@@ -171,5 +172,4 @@ python scripts/export_run_results.py --runs-root $LE --dataset $DATASET --output
 ```
 
 `est_rgb` (old checkpoints, new labels) against `master_rgb_det` (new training, new labels) is the label effect, reported as
-a description. The old checkpoints run at 640, their training size, while `master_rgb_det` runs at 800, so the label and
-resolution changes are mixed in it; the plan registers no test on it. The old `est_rgb` results on the old labels stay in their own tables.
+a description. Both run at 640, so only the labels differ; the plan registers no test on it. The old `est_rgb` results on the old labels stay in their own tables.
