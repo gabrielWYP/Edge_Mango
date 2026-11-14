@@ -123,6 +123,18 @@ which are passed through unchanged, so use them only for the sets the plan regis
 `predictions.jsonl` and plots are never added. With nothing new it prints "nothing new" and exits 0. `--dry-run` shows
 the export command and the branch.
 
+### Per fold: one release asset with everything
+
+```bash
+scripts/remote/publish_folds.sh --runs-root $RUNS --dataset $DATASET --tag thesis-runs-<YYYYMMDD> --every-min 10
+```
+
+When every arm of a fold has its val and test metrics, it uploads `fold<k>_seed42.tar.gz` to that GitHub release
+(a prerelease, created if missing): per arm the run folder (`best_model.pt`, history, config, completion marker; no other
+`.pt`, no `eval_scratch/`), the val/test reports with `predictions.jsonl`, and the training log. Then it runs
+`push_progress.sh` once. A marker in `$RUNS/.published/` keeps a fold from being uploaded twice; it exits once every fold
+is published. The test results are archived, not read: the plan reads them once the reported set is complete.
+
 ## 6. Pull the results back (local)
 
 ```bash
