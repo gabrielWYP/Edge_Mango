@@ -1,0 +1,16 @@
+# Minimal environment to TRAIN and EVALUATE the thesis arms on a rented GPU machine (scripts/remote/setup_remote.sh).
+# requirements.txt also holds the LangChain/AWS/Florence stack, which training does not import.
+# torch and torchvision are installed first, from the PyTorch wheel index that matches the driver.
+numpy
+scipy>=1.11
+pandas
+scikit-learn>=1.3.0
+pyyaml
+tqdm>=4.65.0
+Pillow>=10.0.0
+matplotlib
+tensorboard
+timm>=0.9.12
+albumentations==2.0.8
+opencv-contrib-python-headless
+pytest
