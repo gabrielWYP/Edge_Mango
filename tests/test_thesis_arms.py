@@ -85,3 +85,36 @@ def test_the_detect_arm_is_in_the_analysis_tables_with_the_est_rgb_colour() -> N
     assert vop.ARMS[DET][0] == vop.ARMS["est_rgb"][0] and vop.ARMS[DET][1] != vop.ARMS["est_rgb"][1]
     assert vop.ARMS[DET][2].startswith(DET)
     assert list(vop.ARMS)[:5] == ["est_rgb", "est_rgbnir", "kd_rgb", "kd_rgbnir", "est_nir"]
+
+
+def _image_sizes(args) -> set[str]:
+    cmds = [cmd for arm in args.arms for _, cmd, _ in rs.plan_arm(args, arm, 0, 42)]
+    return {str(x) for cmd in cmds for x in cmd if str(x).startswith("image_size=")}
+
+
+def test_the_thesis_preset_trains_and_evaluates_every_arm_at_800(tmp_path) -> None:
+    args = _args(tmp_path, "--arms-preset", "thesis")
+    assert rs.THESIS_IMAGE_SIZE == 800
+    assert _image_sizes(args) == {"image_size=800"}
+    steps = [(key, cmd) for arm in args.arms for key, cmd, _ in rs.plan_arm(args, arm, 0, 42)]
+    model_steps = [cmd for key, cmd in steps if "/metrics_" not in key]  # v4_metrics only reads predictions
+    assert len(model_steps) == 6 * 3
+    assert all("image_size=800" in [str(x) for x in cmd] for cmd in model_steps)
+
+
+def test_an_explicit_image_size_wins_over_the_preset(tmp_path) -> None:
+    assert _image_sizes(_args(tmp_path, "--arms-preset", "thesis", "--image-size", "640")) == {"image_size=640"}
+
+
+def test_without_preset_or_flag_the_config_size_is_kept(tmp_path) -> None:
+    assert _image_sizes(_args(tmp_path, "--arms", "est_rgb")) == set()
+    assert _image_sizes(_args(tmp_path, "--arms", "master_rgb_seg", "--image-size", "800")) == {"image_size=800"}
+
+
+def test_the_image_size_must_be_a_multiple_of_32_and_of_the_mask_ratio(tmp_path) -> None:
+    import pytest
+
+    with pytest.raises(SystemExit):
+        _args(tmp_path, "--image-size", "810")
+    with pytest.raises(SystemExit):
+        _args(tmp_path, "--image-size", "800", "--mask-ratio", "3")

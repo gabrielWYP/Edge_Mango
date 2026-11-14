@@ -123,6 +123,11 @@ def arm_input(name: str) -> str:
     return "rgbnir" if arm.in_channels == 4 else "nir" if arm.reads_nir else "rgb"
 
 
+# Input side of every `thesis` run (plan section 11, 2026-11-13): the mango crop is ~1240 px in the
+# source frame, so 800 keeps more real detail than 640. Other arms keep the size of their config.
+THESIS_IMAGE_SIZE = 800
+STRIDE = 32
+
 # This runner does not hash its settings: the trainer refuses a state from other ones, by name.
 IDENTITY = {"sha256": "small-arms"}
 
@@ -151,6 +156,9 @@ def parse_args(argv=None) -> argparse.Namespace:
                         help="with rgb/ and nir_as_rgb/ from build_pixel_cache.py; only for speed")
     parser.add_argument("--mask-weight", type=float, default=7.5, help="mask loss gain of the `_seg` arms")
     parser.add_argument("--mask-ratio", type=int, default=4, help="input size over mask size of the `_seg` arms")
+    parser.add_argument("--image-size", type=int, default=None,
+                        help=f"input side of every run; default {THESIS_IMAGE_SIZE} with --arms-preset thesis, "
+                        "else the config value")
     parser.add_argument("--jobs", type=int, default=1, help="runs at the same time")
     parser.add_argument("--no-resume", action="store_true", help="train interrupted runs from scratch")
     parser.add_argument("--dry-run", action="store_true")
@@ -158,6 +166,10 @@ def parse_args(argv=None) -> argparse.Namespace:
     if args.arms_preset and args.arms:
         parser.error("--arms-preset and --arms are alternatives")
     args.arms = list(SEGMENT_PRESETS[args.arms_preset]) if args.arms_preset else args.arms or PLANNED_ARMS
+    if args.image_size is None and args.arms_preset == "thesis":
+        args.image_size = THESIS_IMAGE_SIZE
+    if args.image_size is not None and (args.image_size % STRIDE or args.image_size % args.mask_ratio):
+        parser.error(f"--image-size must be a multiple of {STRIDE} and of --mask-ratio, got {args.image_size}")
     return args
 
 
@@ -186,6 +198,7 @@ def plan_arm(args, arm_name: str, fold: int, seed: int) -> list[tuple[str, list[
         f"nir_mean={roi['mean']}",
         f"nir_std={roi['std']}",
         f"student_variant={args.variant}",
+        *([f"image_size={args.image_size}"] if args.image_size is not None else []),
         *args.extra_override,
     ]
     if arm.in_channels != 3:

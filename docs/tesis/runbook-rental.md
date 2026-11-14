@@ -5,8 +5,8 @@ dataset. The arms are the `thesis` preset of [`run_small_arms.py`](../../scripts
 `master_rgbnir_seg`, `master_nir_seg`, `master_rgb_det`, `crosskd_rgb_seg`, `crosskd_rgbnir_seg` (masters first; each
 CrossKD student distills from the master of its fold and seed). `master_rgb_det` is `est_rgb` trained on the
 polygon-derived boxes; `master_rgb_seg - master_rgb_det` is the mask-supervision comparison. The plan row
-([plan-experimental.md](plan-experimental.md), section 11, 2026-11-13) is a DRAFT: the author confirms it before the
-first run. Segment details are in [runbook-v4.md](runbook-v4.md), "Segment arms (opt-in)".
+([plan-experimental.md](plan-experimental.md), section 11, 2026-11-13) was confirmed by the author before the first
+run. Every thesis run trains and evaluates at **800 x 800** (`--image-size 800`, the default of the `thesis` preset). Segment details are in [runbook-v4.md](runbook-v4.md), "Segment arms (opt-in)".
 
 Written for Ubuntu with an NVIDIA driver and Python 3.12. Nothing below needs the image or GPU to be known in advance.
 `$WORK` is a folder on the rented machine with about 60 GB free (dataset 10 GB, pixel cache, checkpoints, logs).
@@ -70,12 +70,12 @@ override with `--torch-index cu126` or `TORCH_INDEX=https://download.pytorch.org
 `requirements-remote.txt`, unpacks the archive, verifies the manifest, builds the pixel cache (and the folds only if
 the archive had none), runs a quick pytest subset and writes `$WORK/env.sh`.
 
-`--smoke` trains 2 epochs of `master_rgb_seg` on fold 0 into `$WORK/runs/smoke` (not a result) and prints the mean
-**seconds per epoch**. Keep that number for the cost estimate. `--machine configs/machines/<x>.yaml` picks the profile
+`--smoke` trains 2 epochs of `master_rgb_seg` on fold 0 into `$WORK/runs/smoke` (not a result) at `--image-size`
+(default 800, also written to `env.sh` as `IMAGE_SIZE`) and prints the mean **seconds per epoch**. Keep that number for the cost estimate. `--machine configs/machines/<x>.yaml` picks the profile
 (default `rtx_a5000`, batch 8, for 20 GB or more; `rtx3080` below that).
 
 From now on, in every shell: `source $WORK/env.sh && cd $REPO` (defines `PY`, `REPO`, `DATASET`, `PIXEL`, `RUNS`,
-`WEIGHTS`, `MACHINE`).
+`WEIGHTS`, `MACHINE`, `IMAGE_SIZE`).
 
 ## 4. Launch
 
@@ -83,7 +83,7 @@ Review the plan first: 450 lines (90 runs x 5 steps), masters before the CrossKD
 
 ```bash
 python scripts/run_small_arms.py --dataset $DATASET --weights $WEIGHTS --variant nano --epochs 80 \
-    --arms-preset thesis --folds 0 1 2 3 4 --seeds 42 1337 2024 --machine $MACHINE \
+    --arms-preset thesis --image-size $IMAGE_SIZE --folds 0 1 2 3 4 --seeds 42 1337 2024 --machine $MACHINE \
     --pixel-cache-root $PIXEL --checkpoints-root $RUNS --reports-root $RUNS/reports --jobs 3 --dry-run | head -12
 ```
 
@@ -171,4 +171,5 @@ python scripts/export_run_results.py --runs-root $LE --dataset $DATASET --output
 ```
 
 `est_rgb` (old checkpoints, new labels) against `master_rgb_det` (new training, new labels) is the label effect, reported as
-a description; the plan registers no test on it. The old `est_rgb` results on the old labels stay in their own tables.
+a description. The old checkpoints run at 640, their training size, while `master_rgb_det` runs at 800, so the label and
+resolution changes are mixed in it; the plan registers no test on it. The old `est_rgb` results on the old labels stay in their own tables.

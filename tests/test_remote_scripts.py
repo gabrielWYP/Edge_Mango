@@ -162,3 +162,11 @@ def test_push_progress_does_not_pass_test_flags_unless_given(repo) -> None:
     assert "export_run_results.py" in plain and "--test-" not in plain
     given = _run("bash", PUSH, "--repo", work, "--dry-run", "--test-folds", "0", "1", "--test-seeds", "42").stdout
     assert "--test-folds 0 1" in given and "--test-seeds 42" in given
+
+
+def test_setup_passes_the_image_size_to_the_smoke_and_to_env_sh() -> None:
+    text = SETUP.read_text()
+    assert 'IMAGE_SIZE=800' in text
+    assert '--image-size) IMAGE_SIZE=' in text
+    assert '--image-size "$IMAGE_SIZE"' in text
+    assert "export IMAGE_SIZE=" in text
