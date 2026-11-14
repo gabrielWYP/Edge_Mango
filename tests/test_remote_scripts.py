@@ -166,7 +166,7 @@ def test_push_progress_does_not_pass_test_flags_unless_given(repo) -> None:
 
 def test_setup_passes_the_image_size_to_the_smoke_and_to_env_sh() -> None:
     text = SETUP.read_text()
-    assert 'IMAGE_SIZE=800' in text
+    assert 'IMAGE_SIZE=640' in text
     assert '--image-size) IMAGE_SIZE=' in text
     assert '--image-size "$IMAGE_SIZE"' in text
     assert "export IMAGE_SIZE=" in text

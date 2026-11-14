@@ -123,9 +123,9 @@ def arm_input(name: str) -> str:
     return "rgbnir" if arm.in_channels == 4 else "nir" if arm.reads_nir else "rgb"
 
 
-# Input side of every `thesis` run (plan section 11, 2026-11-13): the mango crop is ~1240 px in the
-# source frame, so 800 keeps more real detail than 640. Other arms keep the size of their config.
-THESIS_IMAGE_SIZE = 800
+# Input side of every `thesis` run (plan section 11, 2026-11-14 row): 640, the size of every earlier
+# run, chosen over 800 for the compute budget. Other arms keep the size of their config.
+THESIS_IMAGE_SIZE = 640
 STRIDE = 32
 
 # This runner does not hash its settings: the trainer refuses a state from other ones, by name.
