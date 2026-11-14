@@ -43,6 +43,9 @@ for _arm, _color, _label in list(ARMS):
     for _twin in segment_twin_names(_arm):
         ARMS.append((_twin, _color, _twin + _label.removeprefix(_arm)))
         LINESTYLE[_twin] = "-."
+# The thesis plan's detect student on polygon-derived boxes: the hue of est_rgb, dotted.
+ARMS.append(("master_rgb_det", ARMS[0][1], "master_rgb_det (RGB, cajas de poligono)"))
+LINESTYLE["master_rgb_det"] = ":"
 
 def read_curve(path):
     """{(arm, fold): {epoch: ap30}} from the CSV of eval_epoch_curve.py, seed 42."""

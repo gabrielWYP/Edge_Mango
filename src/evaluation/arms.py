@@ -21,7 +21,15 @@ SEGMENT_PRESETS = {
         "master_rgb_seg", "master_rgbnir_seg", "master_nir_seg", "crosskd_rgb_seg", "crosskd_rgbnir_seg",
         "crosskd_rgbnir_high_seg", "crosskd_rgbnir_low_seg", "crosskd_rgbnir_better_seg",
     ),
+    # The final thesis plan: `seg` plus the detect arm trained on the polygon-derived boxes (`DETECT_MASTER_ARM`).
+    "thesis": (
+        "master_rgb_seg", "master_rgbnir_seg", "master_nir_seg", "master_rgb_det", "crosskd_rgb_seg", "crosskd_rgbnir_seg",
+    ),
 }
+# Detect RGB student with exactly the training config of `est_rgb`, trained on the polygon v4 dataset: its labels are the
+# tight boxes of the polygons. Its output folder is the only difference from `est_rgb`. Mask supervision is the
+# comparison `master_rgb_seg - master_rgb_det`. It is not a segment twin of any arm.
+DETECT_MASTER_ARM = "master_rgb_det"
 
 
 def segment_arm_name(arm: str) -> str:

@@ -30,6 +30,10 @@ with `--arms-preset`, masters first: `seg` is master_rgb_seg master_rgbnir_seg m
 crosskd_rgbnir_seg, `seg-full` adds crosskd_rgbnir_high_seg, crosskd_rgbnir_low_seg and crosskd_rgbnir_better_seg. The
 MSE feature-KD arms (`kd_rgb_seg`, `kd_rgbnir_seg`) are defined and runnable by name, in no preset.
 
+`master_rgb_det` is a detect student with the exact training of `est_rgb` (same command, other output folder), meant
+for the polygon v4 dataset, where its boxes are the tight boxes of the polygons. The preset `thesis` is `seg` plus this
+arm: the mask supervision effect is `master_rgb_seg - master_rgb_det`.
+
 Every run is evaluated on val and test, with predictions and metrics_v4.json, under
 `<reports-root>/<arm>/fold<k>_seed<S>/<split>/`, the layout of `scripts/aggregate_kfold.py`.
 Re-run the same command to resume: finished steps are skipped, and an interrupted training continues from
@@ -62,7 +66,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from scripts import run_kfold as rk  # noqa: E402
-from src.evaluation.arms import SEGMENT_PRESETS, segment_arm_name  # noqa: E402
+from src.evaluation.arms import DETECT_MASTER_ARM, SEGMENT_PRESETS, segment_arm_name  # noqa: E402
 
 STUDENT_CONFIG = "configs/experiment/v4_est_etiquetas.yaml"
 KD_CONFIG = "configs/experiment/v4_est_kd_rgbnir.yaml"
@@ -107,6 +111,8 @@ def _segment_twins(arms: dict[str, Arm]) -> dict[str, Arm]:
 
 
 ARMS |= _segment_twins(ARMS)
+# Detect student on polygon-derived boxes: the command of `est_rgb`, under its own output folder (preset `thesis`).
+ARMS[DETECT_MASTER_ARM] = Arm()
 # kd_nir and the crosskd arms are outside the plan: they run only when `--arms` names them.
 PLANNED_ARMS = ["est_rgb", "est_rgbnir", "est_nir", "kd_rgb", "kd_rgbnir"]
 

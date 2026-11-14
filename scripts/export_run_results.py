@@ -62,6 +62,9 @@ DIFFERENCES.update({
     "exploratory_seg": ("crosskd_rgb_seg", "master_rgb_seg"),
     "gate_high_vs_low_seg": ("crosskd_rgbnir_high_seg", "crosskd_rgbnir_low_seg"),
     "gate_better_vs_none_seg": ("crosskd_rgbnir_better_seg", "crosskd_rgbnir_seg"),
+    # Thesis plan: the same student with and without mask supervision, both on the polygon-derived ground truth. The
+    # detect arm has no mask metrics, so only the box ones (latent_ap50, latent_ap30) produce rows.
+    "mask_supervision": ("master_rgb_seg", "master_rgb_det"),
 })
 AP_METRICS = ("latent_ap50", "latent_ap30")
 MASK_AP_METRICS = ("latent_mask_ap50", "latent_mask_ap30")  # only in the metrics_v4.json of segment runs
