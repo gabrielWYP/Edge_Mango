@@ -56,6 +56,15 @@ def test_rasterize_and_tight_box_agree() -> None:
     assert seg_labels.mask_bbox_cxcywh(np.zeros((10, 10), np.uint8)) is None
 
 
+def test_an_empty_polygon_rasterizes_to_an_empty_mask() -> None:
+    """A predicted mask with no contour reaches the rasterizer as a (0, 2) polygon: zero area, no error."""
+    square = np.array([[10.0, 20.0], [50.0, 20.0], [50.0, 60.0], [10.0, 60.0]])
+    masks = seg_labels.rasterize_polygons([np.zeros((0, 2)), square, np.zeros(0)], (100, 100))
+    assert masks.shape == (3, 100, 100)
+    assert masks[0].sum() == 0 and masks[2].sum() == 0
+    assert masks[1].sum() > 0
+
+
 # --- ROI crop ----------------------------------------------------------------------------------
 
 

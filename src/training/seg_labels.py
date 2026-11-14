@@ -100,6 +100,8 @@ def rasterize_polygons(polygons_px: list[np.ndarray], size: tuple[int, int]) -> 
     height, width = size
     masks = np.zeros((len(polygons_px), height, width), dtype=np.uint8)
     for i, polygon in enumerate(polygons_px):
+        if np.size(polygon) == 0:
+            continue  # a predicted mask with no contour: zero area (OpenCV 5 rejects an empty point set)
         cv2.fillPoly(masks[i], [np.round(polygon).astype(np.int32).reshape(-1, 1, 2)], 1)
     return masks
 
