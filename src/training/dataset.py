@@ -35,6 +35,7 @@ from .fusion_modes import (
     MODALITY_ABLATION_RGB_CONST,
     validate_modality_ablation,
 )
+from .threads import compose_worker_init, limit_worker_threads
 from .nir_registration import load_homography, register_nir_to_rgb
 from .roi_crop import MANGO_CLASS_ID, crop_to_roi, validate_roi_crop
 from .seg_labels import (
@@ -118,6 +119,37 @@ def normalize_rgb(image: np.ndarray) -> torch.Tensor:
     img = image.astype(np.float32) / 255.0
     img = (img - np.array(IMAGENET_MEAN)) / np.array(IMAGENET_STD)
     return torch.from_numpy(img.transpose(2, 0, 1)).float()
+
+
+def normalize_on_device(
+    rgb: torch.Tensor,
+    nir: torch.Tensor,
+    nir_mean: float,
+    nir_std: float,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Normalize uint8 RGB/NIR batches on the device they are on, like `YOLODataset` does.
+
+    The counterpart of `YOLODataset(defer_normalization=True)`: ImageNet mean/std for the RGB
+    (`normalize_rgb`) and `(nir / 255 - nir_mean) / nir_std` for the NIR (`_normalize_nir`),
+    in float32. A tensor that is not uint8 (the constant of a modality ablation, which the
+    dataset already returns as float32 zeros) is returned as it is.
+
+    Args:
+        rgb: (B, 3, H, W) uint8 (or the float32 ablation constant).
+        nir: (B, 1, H, W) uint8 (or the float32 ablation constant).
+        nir_mean: The dataset's NIR mean.
+        nir_std: The dataset's NIR std.
+
+    Returns:
+        (B, 3, H, W) and (B, 1, H, W) float32 tensors.
+    """
+    if rgb.dtype == torch.uint8:
+        mean = rgb.new_tensor(IMAGENET_MEAN, dtype=torch.float32).view(1, 3, 1, 1)
+        std = rgb.new_tensor(IMAGENET_STD, dtype=torch.float32).view(1, 3, 1, 1)
+        rgb = (rgb.float() / 255.0 - mean) / std
+    if nir.dtype == torch.uint8:
+        nir = (nir.float() / 255.0 - nir_mean) / nir_std
+    return rgb, nir
 
 
 def _scale_bboxes_letterbox(
@@ -229,6 +261,10 @@ class YOLODataset(Dataset):
             their boxes are re-derived from the transformed masks. Off by default: the item
             is then exactly what it was, and polygon files give boxes only.
         mask_ratio: Input size over mask size; 4 matches the YOLOv8-seg prototypes.
+        defer_normalization: Return `rgb` (3, S, S) and `nir` (1, S, S) as the final uint8
+            pixels instead of normalized float32: `normalize_on_device` gives exactly the eager
+            tensors. An ablated modality is the float32 zeros of the eager item, as always. The trainers use it
+            to normalize on the GPU (4x fewer bytes through the workers and pin-memory thread).
     """
 
     def __init__(
@@ -252,12 +288,14 @@ class YOLODataset(Dataset):
         modality_ablation: str = DEFAULT_MODALITY_ABLATION,
         load_masks: bool = False,
         mask_ratio: int = 4,
+        defer_normalization: bool = False,
     ):
         validate_roi_crop(roi_crop_margin, roi_crop_jitter)
         if mask_ratio < 1 or image_size % mask_ratio:
             raise ValueError(f"mask_ratio must divide image_size, got {mask_ratio} for {image_size}.")
         self.load_masks = load_masks
         self.mask_ratio = mask_ratio
+        self.defer_normalization = defer_normalization
         # Here as well as in TrainingConfig: `--override` assigns with setattr,
         # which never re-runs TrainingConfig.__post_init__.
         validate_modality_ablation(modality_ablation)
@@ -571,19 +609,30 @@ class YOLODataset(Dataset):
                 labels_aug = np.zeros((0,), dtype=np.int64)
             nir_aug = nir_lb
 
-        # Normalize RGB (ImageNet stats)
-        rgb_tensor = self._normalize_rgb(rgb_aug)
+        if self.defer_normalization:
+            # Final pixels only; `normalize_on_device` normalizes and applies the ablation.
+            rgb_tensor = torch.from_numpy(np.ascontiguousarray(rgb_aug.transpose(2, 0, 1)))
+            nir_tensor = torch.from_numpy(np.ascontiguousarray(nir_aug[np.newaxis, :, :]))
+            # Modality ablation (plan E1): the constant is 0 after normalization, so the
+            # blank modality stays float32 zeros, which `normalize_on_device` leaves alone.
+            if self.modality_ablation == MODALITY_ABLATION_NIR_CONST:
+                nir_tensor = torch.zeros(nir_tensor.shape, dtype=torch.float32)
+            elif self.modality_ablation == MODALITY_ABLATION_RGB_CONST:
+                rgb_tensor = torch.zeros(rgb_tensor.shape, dtype=torch.float32)
+        else:
+            # Normalize RGB (ImageNet stats)
+            rgb_tensor = self._normalize_rgb(rgb_aug)
 
-        # Normalize NIR (dataset stats)
-        nir_tensor = self._normalize_nir(nir_aug)
+            # Normalize NIR (dataset stats)
+            nir_tensor = self._normalize_nir(nir_aug)
 
-        # Modality ablation (plan E1): after normalization, so 0 is the
-        # constant, and after every random draw, so the arms keep the same RNG
-        # stream and differ only in this tensor.
-        if self.modality_ablation == MODALITY_ABLATION_NIR_CONST:
-            nir_tensor = torch.zeros_like(nir_tensor)
-        elif self.modality_ablation == MODALITY_ABLATION_RGB_CONST:
-            rgb_tensor = torch.zeros_like(rgb_tensor)
+            # Modality ablation (plan E1): after normalization, so 0 is the
+            # constant, and after every random draw, so the arms keep the same RNG
+            # stream and differ only in this tensor.
+            if self.modality_ablation == MODALITY_ABLATION_NIR_CONST:
+                nir_tensor = torch.zeros_like(nir_tensor)
+            elif self.modality_ablation == MODALITY_ABLATION_RGB_CONST:
+                rgb_tensor = torch.zeros_like(rgb_tensor)
 
         # Convert bboxes to tensor
         bboxes_tensor = torch.from_numpy(bboxes_aug).float()
@@ -939,6 +988,7 @@ def build_dataloader(
     collate_fn=None,
     pin_memory: bool = True,
     drop_last: bool = False,
+    limit_threads: bool = False,
     **kwargs,
 ) -> DataLoader:
     """Build a DataLoader with graceful fallback to single-process loading.
@@ -962,12 +1012,18 @@ def build_dataloader(
         collate_fn: Optional collate function.
         pin_memory: Whether to pin memory.
         drop_last: Whether to drop the last incomplete batch.
+        limit_threads: Run `threads.limit_worker_threads` in every worker (one torch and one
+            OpenCV thread), after any `worker_init_fn` passed in `kwargs`.
         **kwargs: Additional DataLoader arguments.
 
     Returns:
         A DataLoader configured with ``num_workers`` if supported, otherwise
         with ``num_workers=0``.
     """
+    if limit_threads:
+        kwargs["worker_init_fn"] = compose_worker_init(
+            kwargs.get("worker_init_fn"), limit_worker_threads
+        )
     loader_kwargs = {
         "batch_size": batch_size,
         "shuffle": shuffle,

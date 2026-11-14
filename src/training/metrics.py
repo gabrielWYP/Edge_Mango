@@ -442,6 +442,11 @@ def compute_mask_map(
         cls_id: _rank_class(flat_pred, pred_scores, pred_labels, flat_gt, gt_labels, cls_id, _mask_iou)
         for cls_id in range(num_classes)
     }
+    return _mask_map_from_ranked(ranked, num_classes)
+
+
+def _mask_map_from_ranked(ranked: dict[int, _RankedClass], num_classes: int) -> dict:
+    """The `compute_mask_map` dict of already ranked classes (shared with the IoU-matrix entry)."""
     map50, per_class_50 = _ap_from_ranked(ranked, 0.5)
     thresholds = [0.50 + 0.05 * i for i in range(10)]
     per_class_95 = {c: 0.0 for c in range(num_classes)}
@@ -457,6 +462,49 @@ def compute_mask_map(
         "mask_per_class_ap_50": per_class_50,
         "mask_per_class_ap_50_95": per_class_95,
     }
+
+
+def _select_iou_columns(rows: torch.Tensor, gt_index: torch.Tensor) -> torch.Tensor:
+    """`iou_fn` of `_rank_class` for precomputed IoUs: `rows` (P, G) and `gt_index` (g,) -> (P, g)."""
+    return rows[:, gt_index]
+
+
+def compute_mask_map_from_ious(
+    ious: list[torch.Tensor],
+    pred_scores: list[torch.Tensor],
+    pred_labels: list[torch.Tensor],
+    gt_labels: list[torch.Tensor],
+    num_classes: int = 2,
+    gt_has_mask: list[torch.Tensor] | None = None,
+) -> dict:
+    """`compute_mask_map` from per-image mask IoU matrices instead of the masks.
+
+    The IoUs (`_mask_iou` of the flattened masks) can be computed on the device the masks
+    live on, so only these small matrices have to reach the CPU.
+
+    Args:
+        ious: List of (P_i, G_i) CPU float IoU matrices between the predictions and ALL the
+            GT instances of the image (before the `gt_has_mask` filter).
+        pred_scores: List of (P_i,) confidence scores.
+        pred_labels: List of (P_i,) class IDs.
+        gt_labels: List of (G_i,) GT class IDs (unfiltered).
+        num_classes: Number of classes.
+        gt_has_mask: Optional list of (G_i,) bool; GT instances without a polygon are left out.
+
+    Returns:
+        The same dict as `compute_mask_map`.
+    """
+    if gt_has_mask is not None:
+        ious = [iou[:, keep] for iou, keep in zip(ious, gt_has_mask)]
+        gt_labels = [labels[keep] for labels, keep in zip(gt_labels, gt_has_mask)]
+    # `_rank_class` indexes the GT with a label mask: a per-image arange stands in for the GT
+    # boxes, and `_select_iou_columns` turns the selected indices into the IoU columns.
+    gt_index = [torch.arange(labels.shape[0]) for labels in gt_labels]
+    ranked = {
+        cls_id: _rank_class(ious, pred_scores, pred_labels, gt_index, gt_labels, cls_id, _select_iou_columns)
+        for cls_id in range(num_classes)
+    }
+    return _mask_map_from_ranked(ranked, num_classes)
 
 
 def _write_metrics_csv(history: LossHistory, output_dir: Path) -> None:

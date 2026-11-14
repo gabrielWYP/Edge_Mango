@@ -39,12 +39,19 @@ from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts, LambdaLR
 from torch.utils.data import DataLoader
 
 from .config import DAMAGE_CLASS_ID, TrainingConfig
+from .dataset import normalize_on_device
 from .decode import decode_detections, decode_detections_with_coefs, process_masks
 from .ema import ModelEMA
 from .loss import YOLOv8Loss
 from .fusion_modes import DEFAULT_FUSION_MODE, arch_version_for_mode
 from .machine import derive_grad_accum_steps
-from .metrics import compute_map, compute_mask_map, generate_training_curves, LossHistory
+from .metrics import (
+    _mask_iou,
+    compute_map,
+    compute_mask_map_from_ious,
+    generate_training_curves,
+    LossHistory,
+)
 from .nir_registration import homography_sha256
 from .precision import autocast_ctx, make_scaler
 from .resume import (
@@ -779,8 +786,7 @@ class Trainer:
             steps_taken += 1
 
         for batch in self.train_loader:
-            rgb = batch["rgb"].to(self.device)
-            nir = batch["nir"].to(self.device)
+            rgb, nir = self._device_inputs(batch, self.train_loader)
             bboxes = [b.to(self.device) for b in batch["bboxes"]]
             labels = [l.to(self.device) for l in batch["labels"]]
 
@@ -917,6 +923,25 @@ class Trainer:
         """
         return self.evaluate()
 
+    def _device_inputs(self, batch: dict, loader) -> tuple[torch.Tensor, torch.Tensor]:
+        """The model's RGB and NIR inputs of `batch`, on the device and normalized.
+
+        A loader whose dataset defers normalization (`YOLODataset(defer_normalization=True)`)
+        yields uint8 pixels: they travel to the device as such and are normalized there. Any
+        other batch (float32, already normalized) is only moved. A modality ablation leaves one
+        of the two as float32 zeros, which stays as it is.
+        """
+        rgb, nir = batch["rgb"], batch["nir"]
+        if rgb.dtype != torch.uint8 and nir.dtype != torch.uint8:
+            return rgb.to(self.device), nir.to(self.device)
+        dataset = loader.dataset
+        return normalize_on_device(
+            rgb.to(self.device, non_blocking=True),
+            nir.to(self.device, non_blocking=True),
+            dataset.nir_mean,
+            dataset.nir_std,
+        )
+
     @torch.no_grad()
     def evaluate(self, prediction_sink: Callable[..., None] | None = None) -> dict:
         """Run evaluation over `val_loader` and compute mAP metrics.
@@ -948,13 +973,13 @@ class Trainer:
         all_pred_labels = []
         all_gt_boxes = []
         all_gt_labels = []
-        # Mask AP inputs, at prototype resolution (segment student on a batch with GT masks).
-        all_pred_masks, all_gt_masks, all_gt_has_mask = [], [], []
+        # Mask AP inputs: the (P, G) mask IoUs (computed on the device, at prototype
+        # resolution) of a segment student on a batch with GT masks, and the GT flags.
+        all_mask_ious, all_gt_has_mask = [], []
         masks_complete = True
 
         for batch in self.val_loader:
-            rgb = batch["rgb"].to(self.device)
-            nir = batch["nir"].to(self.device)
+            rgb, nir = self._device_inputs(batch, self.val_loader)
 
             with autocast_ctx(self.device.type, self.config.precision):
                 if self.config.model_type == "student" and self.config.student_in_channels == 3:
@@ -978,14 +1003,19 @@ class Trainer:
                         conf_threshold=self.config.eval_conf_threshold,
                     )
                     if with_masks or prediction_sink is not None:
-                        masks_b = process_masks(
+                        masks_dev = process_masks(
                             output["protos"][b].float(), coefs_b.to(output["protos"].device),
                             pred_boxes_b.to(output["protos"].device),
-                        ).cpu()
+                        )
                     if with_masks:
-                        all_pred_masks.append(masks_b)
-                        all_gt_masks.append(batch["masks"][b].bool())
+                        # IoU on the device; only the small (P, G) matrix reaches the CPU.
+                        gt_dev = batch["masks"][b].to(masks_dev.device).bool()
+                        all_mask_ious.append(
+                            _mask_iou(masks_dev.flatten(1), gt_dev.flatten(1)).cpu()
+                        )
                         all_gt_has_mask.append(batch["has_mask"][b])
+                    if prediction_sink is not None:
+                        masks_b = masks_dev.cpu()
                 else:
                     pred_boxes_b, pred_scores_b, pred_labels_b = self._decode_predictions(
                         preds, cls_preds, b, conf_threshold=self.config.eval_conf_threshold
@@ -1016,13 +1046,12 @@ class Trainer:
             num_classes=self.config.num_classes,
             score_threshold=self.config.conf_threshold,
         )
-        if all_pred_masks and masks_complete:
+        if all_mask_ious and masks_complete:
             metrics.update(
-                compute_mask_map(
-                    pred_masks=all_pred_masks,
+                compute_mask_map_from_ious(
+                    ious=all_mask_ious,
                     pred_scores=all_pred_scores,
                     pred_labels=all_pred_labels,
-                    gt_masks=all_gt_masks,
                     gt_labels=all_gt_labels,
                     num_classes=self.config.num_classes,
                     gt_has_mask=all_gt_has_mask,
