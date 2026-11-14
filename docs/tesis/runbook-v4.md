@@ -167,7 +167,9 @@ detect arms (`est_*`, `kd_*`, `crosskd_*`) keep their names and results:
 | `kd_rgb`, `kd_rgbnir` (MSE feature KD) | `kd_rgb_seg`, `kd_rgbnir_seg` | `master_rgb_seg`, `master_rgbnir_seg` (in no preset) |
 
 `--arms-preset seg` runs master_rgb_seg, master_rgbnir_seg, master_nir_seg, crosskd_rgb_seg and crosskd_rgbnir_seg;
-`seg-full` adds the three gated CrossKD arms. Masters come first in both. A segment student can still load a detect
+`seg-full` adds the three gated CrossKD arms. Masters come first in both. `thesis` is `seg` plus `master_rgb_det`, a detect RGB student with the exact training of `est_rgb` (same
+command, other output folder) that learns from the tight boxes of the polygons: the final plan's six arms, run on the
+rental machine ([`runbook-rental.md`](runbook-rental.md)). A segment student can still load a detect
 teacher (the loader reads `task` from the checkpoint), but no arm name does it.
 
 ```bash
@@ -208,7 +210,8 @@ source RGB frame like `xyxy`. `scripts/v4_metrics.py` then adds mask-IoU twins o
 "Mask AP" section from `metrics.json`. `export_run_results.py` carries the `mask_*` columns and reads the segment arm
 folders; `differences.csv` has the segment comparisons H1_seg (master_rgbnir_seg - master_rgb_seg), H2_seg
 (crosskd_rgbnir_seg - crosskd_rgb_seg), secondary_seg (crosskd_rgbnir_seg - master_rgb_seg), exploratory_seg
-(crosskd_rgb_seg - master_rgb_seg) and the gate_high_vs_low_seg and gate_better_vs_none_seg ones, each for
+(crosskd_rgb_seg - master_rgb_seg), mask_supervision (master_rgb_seg - master_rgb_det, box metrics only: the detect
+arm has no masks) and the gate_high_vs_low_seg and gate_better_vs_none_seg ones, each for
 `latent_ap50`, `latent_ap30`, `latent_mask_ap50` and `latent_mask_ap30` when both arms of a pair were exported.
 `val_operating_points.py`, `plot_run_curves.py` and `zone_analysis.py` read the twins too (box AP, per-photo
 classification); the mask metrics are in `metrics_v4.json` only. Box metrics, the latent AP and every detect result keep
