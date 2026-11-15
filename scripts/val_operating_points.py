@@ -71,6 +71,9 @@ for _base, (_color, _style, _label) in list(ARMS.items()):
         ARMS[_twin] = (_color, "-.", _twin + _label.removeprefix(_base))
 # The thesis plan's detect student on polygon-derived boxes: the colour of est_rgb, dotted (not a segment twin).
 ARMS["master_rgb_det"] = (ARMS["est_rgb"][0], ":", "master_rgb_det (RGB, cajas de poligono)")
+# Exploratory arm after the thesis set: RGB student, CrossKD from the NIR-only segment master. Segment only (no detect
+# twin), so it has a colour of its own.
+ARMS["crosskd_nir_seg"] = ("#00a3b4", "-.", "crosskd_nir_seg (RGB, maestro NIR, exploratorio)")
 RUN_DIR = re.compile(r"fold(\d+)_seed(\d+)")
 
 

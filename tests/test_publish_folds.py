@@ -108,3 +108,26 @@ def test_val_only_folds_are_finished_without_test(tmp_path, setup) -> None:
         _run_files(runs, arm, 1, splits=("val",))
     _publish(tmp_path, runs, "--val-only")
     assert (store / "fold1_seed42.tar.gz").exists()
+
+
+def test_two_publishers_with_their_own_marker_dir_and_tag_both_upload_a_fold(tmp_path, setup) -> None:
+    runs, log, store = setup
+    for arm in ARMS:
+        _run_files(runs, arm, 0)
+    _publish(tmp_path, runs, "--tag", "thesis-a", "--marker-dir", str(runs / ".published_a"))
+    _publish(tmp_path, runs, "--tag", "thesis-b", "--marker-dir", str(runs / ".published_b"))
+    calls = log.read_text()
+    assert calls.count("release upload") == 2
+    assert "release upload thesis-a" in calls and "release upload thesis-b" in calls
+    assert (runs / ".published_a" / "fold0_seed42").exists() and (runs / ".published_b" / "fold0_seed42").exists()
+    assert not (runs / ".published").exists()
+    _publish(tmp_path, runs, "--tag", "thesis-b", "--marker-dir", str(runs / ".published_b"))
+    assert log.read_text().count("release upload") == 2
+
+
+def test_the_default_marker_dir_is_unchanged(tmp_path, setup) -> None:
+    runs, log, store = setup
+    for arm in ARMS:
+        _run_files(runs, arm, 0)
+    _publish(tmp_path, runs)
+    assert (runs / ".published" / "fold0_seed42").exists()

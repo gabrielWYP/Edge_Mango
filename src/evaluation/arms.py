@@ -25,6 +25,9 @@ SEGMENT_PRESETS = {
     "thesis": (
         "master_rgb_seg", "master_rgbnir_seg", "master_nir_seg", "master_rgb_det", "crosskd_rgb_seg", "crosskd_rgbnir_seg",
     ),
+    # Exploratory, run after the `thesis` set under the same checkpoints root: an RGB student distilled with CrossKD from
+    # `master_nir_seg`, which that set already trained. It is not part of `thesis`.
+    "thesis_explore": ("crosskd_nir_seg",),
 }
 # Detect RGB student with exactly the training config of `est_rgb`, trained on the polygon v4 dataset: its labels are the
 # tight boxes of the polygons. Its output folder is the only difference from `est_rgb`. Mask supervision is the

@@ -118,3 +118,76 @@ def test_the_image_size_must_be_a_multiple_of_32_and_of_the_mask_ratio(tmp_path)
         _args(tmp_path, "--image-size", "810")
     with pytest.raises(SystemExit):
         _args(tmp_path, "--image-size", "800", "--mask-ratio", "3")
+
+
+# Exploratory arm: an RGB student distilled with CrossKD from the NIR-only segment master (run after the thesis set).
+EXPLORE = "crosskd_nir_seg"
+
+
+def test_the_explore_preset_is_the_single_nir_crosskd_arm_and_not_part_of_the_thesis_preset() -> None:
+    assert arms.SEGMENT_PRESETS["thesis_explore"] == (EXPLORE,)
+    assert EXPLORE not in arms.SEGMENT_PRESETS["thesis"]
+    assert len(arms.SEGMENT_PRESETS["thesis"]) == 6
+
+
+def test_the_explore_arm_is_an_rgb_segment_student_with_the_nir_master_as_teacher() -> None:
+    arm = rs.ARMS[EXPLORE]
+    assert (arm.task, arm.in_channels, arm.reads_nir) == ("segment", 3, False)
+    assert arm.teacher == "master_nir_seg" and rs.arm_input(arm.teacher) == "nir"
+    assert arm.kd_overrides == rs.ARMS["crosskd_rgb_seg"].kd_overrides == ("kd_mode=crosshead",)
+
+
+def test_the_explore_train_command_equals_crosskd_rgb_seg_apart_from_name_and_teacher(tmp_path) -> None:
+    args = _args(tmp_path, "--arms-preset", "thesis_explore")
+    base = rs.plan_arm(args, "crosskd_rgb_seg", 2, 42)
+    explore = rs.plan_arm(args, EXPLORE, 2, 42)
+    assert len(base) == len(explore) == 5
+    for (_, b_cmd, _), (_, e_cmd, _) in zip(base, explore, strict=True):
+        renamed = [str(x).replace("/crosskd_rgb_seg/", f"/{EXPLORE}/").replace("master_rgb_seg", "master_nir_seg")
+                   .replace("teacher_input=rgb", "teacher_input=nir") for x in b_cmd]
+        assert renamed == [str(x) for x in e_cmd]
+    train = [str(x) for x in explore[0][1]]
+    assert "teacher_input=nir" in train
+    assert any(x.startswith("teacher_checkpoint=") and "/master_nir_seg/fold2/seed42/" in x for x in train)
+    assert "student_in_channels=4" not in train
+
+
+def test_the_explore_dry_run_plans_the_arm_only_and_defaults_to_640(tmp_path, capsys) -> None:
+    _args(tmp_path)
+    code = rs.main([
+        "--dataset", str(tmp_path), "--arms-preset", "thesis_explore", "--folds", "0", "1", "2", "3", "4",
+        "--seeds", "42", "--dry-run", "--nir-as-rgb-dir", str(tmp_path / "links"),
+    ])
+    assert code == 0
+    lines = [x for x in capsys.readouterr().out.splitlines() if x.startswith("[")]
+    assert len(lines) == 5 * 5 and all(f"{EXPLORE}/fold" in x.split(": ")[0] for x in lines)
+    trains = [x for x in lines if "/train: " in x]
+    assert len(trains) == 5 and all("image_size=640" in x and "teacher_input=nir" in x for x in trains)
+
+
+def test_the_explore_preset_defaults_to_the_thesis_image_size(tmp_path) -> None:
+    assert _image_sizes(_args(tmp_path, "--arms-preset", "thesis_explore")) == {"image_size=640"}
+    assert _image_sizes(_args(tmp_path, "--arms-preset", "thesis_explore", "--image-size", "800")) == {"image_size=800"}
+
+
+def test_the_explore_arm_is_in_the_analysis_tables_with_its_own_colour() -> None:
+    assert EXPLORE in export.EXPORT_ARMS and EXPLORE in zones.ARMS and EXPLORE in vop.ARMS
+    colour, style, label = vop.ARMS[EXPLORE]
+    assert label.startswith(EXPLORE)
+    assert colour not in {v[0] for k, v in vop.ARMS.items() if k != EXPLORE}
+    assert len(export.EXPORT_ARMS) == len(set(export.EXPORT_ARMS)) and len(zones.ARMS) == len(set(zones.ARMS))
+    assert "crosskd_nir" not in vop.ARMS  # no detect twin: the arm is segment only
+
+
+def test_the_explore_comparisons_are_registered_and_use_every_metric() -> None:
+    assert export.DIFFERENCES["crosskd_nir"] == (EXPLORE, "master_rgb_seg")
+    assert export.DIFFERENCES["crosskd_nir_vs_rgbnir"] == (EXPLORE, "crosskd_rgbnir_seg")
+    ap = {}
+    for metric in ("latent_ap50", "latent_mask_ap50"):
+        for arm, value in ((EXPLORE, 0.5), ("master_rgb_seg", 0.4), ("crosskd_rgbnir_seg", 0.45)):
+            ap[(0, 42, "val", "best", metric, arm)] = value
+    rows = [r for r in export.compute_differences(ap) if r["comparison"].startswith("crosskd_nir")]
+    assert sorted((r["comparison"], r["metric"]) for r in rows) == [
+        ("crosskd_nir", "latent_ap50"), ("crosskd_nir", "latent_mask_ap50"),
+        ("crosskd_nir_vs_rgbnir", "latent_ap50"), ("crosskd_nir_vs_rgbnir", "latent_mask_ap50"),
+    ]

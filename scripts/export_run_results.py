@@ -65,6 +65,11 @@ DIFFERENCES.update({
     # Thesis plan: the same student with and without mask supervision, both on the polygon-derived ground truth. The
     # detect arm has no mask metrics, so only the box ones (latent_ap50, latent_ap30) produce rows.
     "mask_supervision": ("master_rgb_seg", "master_rgb_det"),
+    # Exploratory, outside the registered set (plan section 11, 2026-11-14): the RGB student distilled from the NIR master,
+    # against the undistilled RGB master and against the student distilled from the RGB+NIR master. Same metrics as the
+    # other segment comparisons (box and mask); descriptive, not confirmatory.
+    "crosskd_nir": ("crosskd_nir_seg", "master_rgb_seg"),
+    "crosskd_nir_vs_rgbnir": ("crosskd_nir_seg", "crosskd_rgbnir_seg"),
 })
 AP_METRICS = ("latent_ap50", "latent_ap30")
 MASK_AP_METRICS = ("latent_mask_ap50", "latent_mask_ap30")  # only in the metrics_v4.json of segment runs

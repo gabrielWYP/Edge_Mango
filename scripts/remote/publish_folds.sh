@@ -11,12 +11,17 @@
 #     --dataset DIR       forwarded to push_progress.sh (default: $DATASET)
 #     --no-push-progress  do not run push_progress.sh after a fold is published
 #     --every-min N       loop every N minutes until every fold is published (default: one pass)
+#     --marker-dir DIR    where the "already published" markers live (default: <runs-root>/.published). A second
+#                         publisher under the same runs root (another --arms and --tag) needs its own directory
+#
+#   e.g. the exploratory arm after the thesis set:
+#     --arms crosskd_nir_seg --tag thesis-runs-explore-DATE --marker-dir $RUNS/.published_explore
 #
 # A fold is finished when every arm has reports/<arm>/fold<k>_seed<s>/<split>/metrics_v4.json. Its asset
 # fold<k>_seed<s>.tar.gz holds, per arm: the run folder without eval_scratch/ and without any .pt but
 # best_model.pt (history, config, completion marker), the val/test reports with predictions.jsonl and the
 # training log. Parts of 1900 MB are uploaded if the archive is larger (GitHub's limit is 2 GB per asset).
-# A marker in <runs-root>/.published/ keeps each fold from being uploaded twice. Then push_progress.sh pushes
+# A marker in <runs-root>/.published/ (or --marker-dir) keeps each fold from being uploaded twice. Then push_progress.sh pushes
 # the small report files. Nothing is deleted from the machine.
 set -euo pipefail
 
@@ -31,10 +36,11 @@ FOLDS="0 1 2 3 4"
 SPLITS="val test"
 PUSH_PROGRESS=1
 EVERY_MIN=0
+MARKER_DIR=""
 PART_BYTES=$((1900 * 1024 * 1024))
 
 usage() {
-    sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'
     exit "${1:-0}"
 }
 
@@ -49,6 +55,7 @@ while [ $# -gt 0 ]; do
         --dataset) DATASET="${2:?}"; shift 2 ;;
         --no-push-progress) PUSH_PROGRESS=0; shift ;;
         --every-min) EVERY_MIN="${2:?}"; shift 2 ;;
+        --marker-dir) MARKER_DIR="${2:?}"; shift 2 ;;
         -h | --help) usage 0 ;;
         *) echo "unknown option: $1" >&2; usage 2 ;;
     esac
@@ -61,7 +68,7 @@ if [ -z "$ARMS" ]; then
     ARMS="$(cd "$REPO" && "${PY:-python}" -c \
         'from src.evaluation.arms import SEGMENT_PRESETS; print(*SEGMENT_PRESETS["thesis"])')"
 fi
-MARKERS="$RUNS_ROOT/.published"
+MARKERS="${MARKER_DIR:-$RUNS_ROOT/.published}"
 mkdir -p "$MARKERS"
 
 fold_finished() {
