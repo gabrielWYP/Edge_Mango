@@ -8,6 +8,7 @@ import kotlin.math.sqrt
  * Percentiles use linear interpolation between order statistics (numpy's default), the standard deviation is the
  * sample one (n - 1), and `fps = 1000 / mean`, i.e. throughput of sequential single-image inference.
  */
+@kotlinx.serialization.Serializable
 data class LatencyStats(
     val count: Int,
     val meanMs: Double,
