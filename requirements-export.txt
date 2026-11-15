@@ -12,7 +12,7 @@
 litert-torch==0.9.4          # PyTorch -> .tflite converter (formerly ai-edge-torch)
 litert-converter==0.4.0
 ai-edge-litert==2.2.0        # LiteRT interpreter used by the parity check
-ai-edge-quantizer==0.9.0     # pulled by litert-torch; needed for the future INT8 step
+ai-edge-quantizer==0.9.0     # pulled by litert-torch; static INT8 PTQ (src/export/quantize.py)
 torch==2.13.0+cpu
 torchvision==0.28.0+cpu      # src/training/decode.py uses torchvision.ops.batched_nms
 numpy==2.5.3

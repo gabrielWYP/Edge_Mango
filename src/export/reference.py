@@ -14,7 +14,10 @@ This is the executable spec the mobile app mirrors:
    per-class NMS, max-detections cap) exists in exactly one place.
 3. `unletterbox_boxes` — maps detections from the 640x640 letterboxed frame
    back to original image pixels.
-4. `decode_exported_segmentation` — the same decode for a segment export
+4. `preprocess_roi_bgr` / `roi_letterbox_to_source` — the same preprocessing for a model trained with
+   `roi_crop` (crop to the mango box + margin, then letterbox) and the inverse map of a point of the
+   letterboxed input to the normalized source frame, as `scripts/evaluate_checkpoint.py` does it.
+5. `decode_exported_segmentation` — the same decode for a segment export
    (`mask_coefs`, `protos` besides the two raw tensors): the boxes are those of
    (2), and each detection's mask is `sigmoid(coefs . protos)` cropped to its
    box and thresholded, by `src.training.decode.process_masks`.
@@ -23,6 +26,7 @@ This is the executable spec the mobile app mirrors:
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Sequence
 
 import cv2
@@ -32,6 +36,8 @@ import torch
 from src.export.layout import unflatten_levels
 from src.training.dataset import letterbox, normalize_rgb
 from src.training.decode import decode_detections, decode_detections_with_coefs, process_masks
+from src.training.roi_crop import MANGO_CLASS_ID, crop_to_roi
+from src.training.seg_labels import read_label_boxes
 
 
 @dataclass(frozen=True)
@@ -66,6 +72,77 @@ def preprocess_bgr(
         scale=float(scale), pad_x=int(pad_x), pad_y=int(pad_y),
     )
     return tensor, info
+
+
+@dataclass(frozen=True)
+class RoiLetterboxInfo:
+    """Crop window and letterbox geometry of one image: source pixel -> model input pixel.
+
+    `crop_*` is the window cut from the source frame (the whole frame when there is no ROI
+    crop); `scale`, `pad_x`, `pad_y` are the letterbox of that window.
+    """
+
+    orig_w: int
+    orig_h: int
+    crop_x: int
+    crop_y: int
+    crop_w: int
+    crop_h: int
+    scale: float
+    pad_x: int
+    pad_y: int
+
+
+def preprocess_roi_bgr(
+    image_bgr: np.ndarray,
+    label_path: str | Path | None,
+    image_size: int = 640,
+    pad_value: int = 114,
+    roi_margin: float | None = 0.10,
+) -> tuple[torch.Tensor, RoiLetterboxInfo]:
+    """Eval-time preprocessing of a model trained with `roi_crop` (`YOLODataset` without jitter).
+
+    The window is the ground-truth mango box (class 0, the largest one) of `label_path` plus
+    `roi_margin` per side, cut by `crop_to_roi` exactly as in training; an image without a mango
+    box, `label_path=None` or `roi_margin=None` stays full-frame. Then BGR->RGB, `letterbox`
+    and `normalize_rgb`, so the tensor equals the dataset's val/test item.
+
+    Returns:
+        (1, 3, image_size, image_size) float32 NCHW tensor and the geometry to map detections
+        back to the source frame (`roi_letterbox_to_source`).
+    """
+    if image_bgr is None or image_bgr.ndim != 3 or image_bgr.shape[2] != 3:
+        raise ValueError("preprocess_roi_bgr expects an (H, W, 3) BGR uint8 image.")
+    rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+    height, width = rgb.shape[:2]
+    crop_x, crop_y = 0, 0
+    if roi_margin is not None and label_path is not None:
+        boxes, labels = read_label_boxes(label_path)
+        # `crop_to_roi` does not return its window: crop images that hold their own coordinates.
+        xs = np.broadcast_to(np.arange(width, dtype=np.int32), (height, width))
+        ys = np.broadcast_to(np.arange(height, dtype=np.int32)[:, None], (height, width))
+        rgb_c, xs_c = crop_to_roi(rgb, xs, boxes, labels, roi_class=MANGO_CLASS_ID, margin=roi_margin)[:2]
+        _, ys_c = crop_to_roi(rgb, ys, boxes, labels, roi_class=MANGO_CLASS_ID, margin=roi_margin)[:2]
+        crop_x, crop_y, rgb = int(xs_c[0, 0]), int(ys_c[0, 0]), rgb_c
+    padded, scale, pad_x, pad_y = letterbox(rgb, image_size, pad_value)
+    info = RoiLetterboxInfo(
+        orig_w=width, orig_h=height, crop_x=crop_x, crop_y=crop_y,
+        crop_w=int(rgb.shape[1]), crop_h=int(rgb.shape[0]),
+        scale=float(scale), pad_x=int(pad_x), pad_y=int(pad_y),
+    )
+    return normalize_rgb(padded).unsqueeze(0), info
+
+
+def roi_letterbox_to_source(points_xy: torch.Tensor, info: RoiLetterboxInfo) -> torch.Tensor:
+    """Points `(..., 2)` in letterboxed-input pixels -> the source frame, normalized to [0, 1].
+
+    The map `scripts/evaluate_checkpoint.py::_to_source_frame` applies to boxes and mask
+    polygons: undo the letterbox, add the crop window, divide by the source size. No clipping.
+    """
+    points = points_xy.double()
+    x = (points[..., 0] - info.pad_x) / info.scale + info.crop_x
+    y = (points[..., 1] - info.pad_y) / info.scale + info.crop_y
+    return torch.stack([x / info.orig_w, y / info.orig_h], dim=-1)
 
 
 def decode_exported_outputs(

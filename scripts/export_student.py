@@ -7,7 +7,15 @@ come from the checkpoint's config), wraps it so the graph returns only raw
 head outputs, converts it with litert-torch (formerly ai-edge-torch) to an
 FP32 .tflite with an NHWC input, or with torch.onnx to an .onnx with an NCHW
 input, and writes a metadata sidecar JSON next to it describing preprocessing,
-output layout, anchors, decode/NMS settings, source checkpoint and tool versions.
+output layout, anchors, decode/NMS settings, parameter count and FLOPs, source
+checkpoint and tool versions.
+
+`--precision fp16` stores the weights as float16; `--precision int8` is static
+post-training quantization (int8 weights and activations, ai-edge-quantizer)
+calibrated on `--calib-samples` train images preprocessed exactly like training
+inputs (ROI crop, letterbox, ImageNet normalization). Both keep a float32 input
+and float32 outputs, so the app contract does not change. Their `--verify` run
+compares against PyTorch FP32 and is informational: it never fails the export.
 
 A segment student (`task=segment`) exports four outputs instead of two:
 `boxes_raw`, `cls_logits`, `mask_coefs` and `protos` (YOLOv8-seg style; the mask
@@ -18,6 +26,11 @@ Runs in the export venv only (see requirements-export.txt):
     CUDA_VISIBLE_DEVICES="" .venv-export/bin/python scripts/export_student.py \\
         --checkpoint checkpoints/final_runs/<run>/destilado/<best>/best_model.pt \\
         --out-dir exports --verify --data-root data
+
+    # INT8 from the fold's train split (labels/<split>/*.txt define the splits)
+    CUDA_VISIBLE_DEVICES="" .venv-export/bin/python scripts/export_student.py --precision int8 \\
+        --checkpoint <run>/best_model.pt --rgb-dir data/cache/v4_captura_v3_poly/rgb \\
+        --labels-dir data/cache/v4_captura_v3_poly/folds_lot/fold_0/labels --verify
 
     # ONNX (needs `onnx` and `onnxruntime`); --verify compares it with PyTorch on random inputs
     CUDA_VISIBLE_DEVICES="" python scripts/export_student.py --format onnx \\
@@ -45,11 +58,12 @@ from src.export.parity import (
     run_parity,
 )
 from src.export.onnx_export import check_onnx_parity, convert_to_onnx, onnx_io_names
+from src.export.quantize import calibration_inputs, model_complexity, select_calibration_samples
 from src.export.student_export import (
     SUPPORTED_PRECISIONS,
     StudentExportWrapper,
     build_metadata,
-    convert_to_tflite,
+    export_tflite,
     load_student_checkpoint,
     resolve_decode_settings,
     tflite_io_names,
@@ -78,8 +92,22 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--format", type=str, choices=["tflite", "onnx"], default="tflite")
     parser.add_argument(
         "--precision", type=str, choices=list(SUPPORTED_PRECISIONS), default="fp32",
-        help="Numeric precision. Only fp32 is implemented; fp16/int8 are planned.",
+        help="fp32; fp16 (float16 weights); int8 (static PTQ, needs --rgb-dir/--labels-dir calibration data). "
+             "The input and outputs stay float32 in every precision.",
     )
+    parser.add_argument("--rgb-dir", type=str, default=None,
+                        help="RGB images for --precision int8 calibration and --verify (default: <data-root>/cache/mango/rgb).")
+    parser.add_argument("--labels-dir", type=str, default=None,
+                        help="Label root holding <split>/*.txt, e.g. <dataset>/folds_lot/fold_0/labels "
+                             "(default: <data-root>/annotations/yolo/labels).")
+    parser.add_argument("--calib-split", type=str, default="train", help="Split the INT8 calibration images come from.")
+    parser.add_argument("--calib-samples", type=int, default=200, help="INT8 calibration images (default: 200).")
+    parser.add_argument("--calib-seed", type=int, default=0, help="Seed of the calibration sample.")
+    parser.add_argument("--roi-margin", type=float, default=None,
+                        help="ROI crop margin (default: the checkpoint's roi_crop_margin, else 0.10).")
+    parser.add_argument("--no-roi-crop", action="store_true",
+                        help="Whole-frame model: no ROI crop in calibration and verification. "
+                             "Default: the checkpoint's roi_crop (--random-init: on).")
     parser.add_argument("--image-size", type=int, default=None, help="Default: checkpoint config, else 640.")
     parser.add_argument("--seed", type=int, default=0, help="Seed for --random-init.")
     parser.add_argument("--task", type=str, choices=["detect", "segment"], default="detect",
@@ -128,6 +156,13 @@ def main(argv: list[str] | None = None) -> int:
             checkpoint_meta.update(variant=args.variant, task=args.task)
         logger.warning("Exporting a RANDOM-INIT student (no checkpoint).")
 
+    roi_enabled = not args.no_roi_crop and bool(config.get("roi_crop", args.checkpoint is None))
+    roi_margin = args.roi_margin if args.roi_margin is not None else float(config.get("roi_crop_margin", 0.10))
+    roi_crop = {"enabled": roi_enabled, "margin": roi_margin}
+    data_root = Path(args.data_root)
+    rgb_dir = Path(args.rgb_dir) if args.rgb_dir else data_root / "cache" / "mango" / "rgb"
+    labels_dir = Path(args.labels_dir) if args.labels_dir else data_root / "annotations" / "yolo" / "labels"
+
     image_size = args.image_size or int(config.get("image_size", 640))
     letterbox_value = int(config.get("letterbox_value", 114))
     decode = resolve_decode_settings(config)
@@ -136,11 +171,40 @@ def main(argv: list[str] | None = None) -> int:
     layout = "NCHW" if args.format == "onnx" else "NHWC"
     logger.info("Converting to %s %s at %dx%d (%s input, task=%s) ...",
                 args.format, args.precision, image_size, image_size, layout, student.task)
+    quantization = calibration = None
     if args.format == "onnx":
+        if args.precision != "fp32":
+            raise SystemExit("--format onnx exports FP32 only.")
         convert_to_onnx(wrapper, model_path, image_size=image_size)
         io_names = onnx_io_names(wrapper)
     else:
-        convert_to_tflite(wrapper, model_path, image_size=image_size, precision=args.precision)
+        calibration_stream = None
+        if args.precision == "int8":
+            samples = select_calibration_samples(
+                rgb_dir, labels_dir, split=args.calib_split, n=args.calib_samples, seed=args.calib_seed
+            )
+            calibration_stream = calibration_inputs(
+                samples, image_size, letterbox_value, roi_margin if roi_enabled else None
+            )
+            calibration = {
+                "split": args.calib_split,
+                "num_samples": len(samples),
+                "seed": args.calib_seed,
+                "rgb_dir": str(rgb_dir),
+                "labels_dir": str(labels_dir),
+                "preprocessing": (
+                    f"ROI crop (margin {roi_margin:g}), letterbox {image_size} pad {letterbox_value}, ImageNet "
+                    "normalization: the training eval path (src/export/reference.py::preprocess_roi_bgr)"
+                    if roi_enabled
+                    else f"letterbox {image_size} pad {letterbox_value}, ImageNet normalization"
+                ),
+                "stems": [image.stem for image, _ in samples],
+            }
+            logger.info("INT8 calibration on %d '%s' images", len(samples), args.calib_split)
+        quantization = export_tflite(
+            wrapper, model_path, image_size=image_size, precision=args.precision,
+            calibration_inputs=calibration_stream,
+        ) or None
         io_names = tflite_io_names(model_path, wrapper.output_names)
     size_mb = model_path.stat().st_size / (1024 * 1024)
     logger.info("Wrote %s (%.2f MiB)", model_path, size_mb)
@@ -157,6 +221,10 @@ def main(argv: list[str] | None = None) -> int:
         num_parameters=sum(p.numel() for p in student.parameters()),
         task=student.task,
         num_prototypes=NUM_MASKS,
+        roi_crop=roi_crop,
+        complexity=model_complexity(wrapper, image_size),
+        quantization=quantization,
+        calibration=calibration,
     )
     write_metadata(metadata, metadata_path)
     logger.info("Wrote %s", metadata_path)
@@ -174,14 +242,24 @@ def main(argv: list[str] | None = None) -> int:
             model_path=model_path,
             metadata=metadata,
             wrapper=wrapper,
-            data_root=Path(args.data_root),
+            data_root=data_root,
+            rgb_dir=rgb_dir,
+            labels_dir=labels_dir,
             split=args.split,
             num_images=args.num_images,
             max_abs_diff=args.max_abs_diff,
             min_match_rate=args.min_match_rate,
+            informational=args.precision != "fp32",
         )
     result = report.to_dict()
     print(json.dumps(result, indent=2))
+    if result["informational"]:
+        logger.info(
+            "%s vs PyTorch FP32 on %d images (informational, not enforced): detection match rate %.4f, raw max abs diff %s",
+            args.precision, result["images"], result["detections"]["match_rate"],
+            {name: f"{v['max_abs_diff']:.3g}" for name, v in result["raw"].items()},
+        )
+        return 0 if not result["failures"] else 1
     if not result["passed"]:
         logger.error("Parity FAILED: %s", "; ".join(result["failures"]))
         return 1
