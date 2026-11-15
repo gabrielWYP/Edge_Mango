@@ -1,0 +1,9 @@
+# Keep LF everywhere so gradlew and the shell-facing files work on Linux/macOS even when
+# the checkout runs with core.autocrlf=true (Windows).
+* text=auto eol=lf
+*.bat text eol=crlf
+*.jar binary
+*.gz binary
+*.bin binary
+*.tflite binary
+*.png binary

@@ -1,0 +1,195 @@
+{
+  "schema_version": 1,
+  "model": {
+    "name": "student",
+    "architecture": "StudentModel (CSPDarknetNano + PANet + decoupled anchor-free head, no DFL)",
+    "num_parameters": 3354818,
+    "format": "tflite",
+    "precision": "fp32",
+    "file": "student_seg_nano_random_fp32.tflite",
+    "file_sha256": "74809e75179c5bc757d9c46d8cbef9de2d094b83cfd4ce7b0620b95b513bbe9f",
+    "file_size_bytes": 13653616
+  },
+  "source_checkpoint": {
+    "path": null,
+    "random_init_seed": 0,
+    "variant": "nano",
+    "task": "segment"
+  },
+  "signature_key": "serving_default",
+  "input": {
+    "signature_name": "args_0",
+    "tensor_name": "serving_default_args_0",
+    "shape": [
+      1,
+      640,
+      640,
+      3
+    ],
+    "layout": "NHWC",
+    "dtype": "float32",
+    "color_order": "RGB"
+  },
+  "preprocessing": {
+    "reference": "src/export/reference.py::preprocess_bgr (== YOLODataset val/test path)",
+    "steps": [
+      "Decode the image to 8-bit RGB (the training loader reads BGR with cv2.imread and converts BGR->RGB).",
+      "Letterbox: scale = image_size / max(w, h); new_w = floor(w * scale), new_h = floor(h * scale).",
+      "Resize to (new_w, new_h) with bilinear interpolation (cv2.INTER_LINEAR).",
+      "Paste centered on an image_size x image_size canvas filled with pad_value on every channel: pad_x = (image_size - new_w) // 2, pad_y = (image_size - new_h) // 2.",
+      "Per channel: value = (pixel / 255 - mean[c]) / std[c], float32.",
+      "Write as NHWC (row-major, RGB interleaved)."
+    ],
+    "letterbox": {
+      "target_size": 640,
+      "pad_value": 114,
+      "interpolation": "bilinear (cv2.INTER_LINEAR)",
+      "centered": true
+    },
+    "normalization": {
+      "scale": 0.00392156862745098,
+      "mean": [
+        0.485,
+        0.456,
+        0.406
+      ],
+      "std": [
+        0.229,
+        0.224,
+        0.225
+      ],
+      "formula": "(pixel / 255 - mean[c]) / std[c]",
+      "baked_into_model": false
+    }
+  },
+  "outputs": [
+    {
+      "logical_name": "boxes_raw",
+      "signature_name": "output_0",
+      "tensor_name": "serving_default_output_0_output",
+      "shape": [
+        1,
+        8400,
+        4
+      ],
+      "dtype": "float32",
+      "channels": [
+        "dx",
+        "dy",
+        "log_w",
+        "log_h"
+      ]
+    },
+    {
+      "logical_name": "cls_logits",
+      "signature_name": "output_1",
+      "tensor_name": "serving_default_output_1_output",
+      "shape": [
+        1,
+        8400,
+        2
+      ],
+      "dtype": "float32",
+      "channels": [
+        "mango",
+        "damage"
+      ]
+    },
+    {
+      "logical_name": "mask_coefs",
+      "signature_name": "output_2",
+      "tensor_name": "serving_default_output_2_output",
+      "shape": [
+        1,
+        8400,
+        32
+      ],
+      "dtype": "float32",
+      "channels": "mask coefficients of each anchor, same anchor order as boxes_raw"
+    },
+    {
+      "logical_name": "protos",
+      "signature_name": "output_3",
+      "tensor_name": "serving_default_output_3_output",
+      "shape": [
+        1,
+        32,
+        160,
+        160
+      ],
+      "dtype": "float32",
+      "channels": "prototype masks, NCHW, at 1/4 of the input resolution"
+    }
+  ],
+  "anchors": {
+    "num_anchors": 8400,
+    "order": "level-major (finest stride first), then row-major within a level (y outer, x inner)",
+    "levels": [
+      {
+        "stride": 8,
+        "grid_h": 80,
+        "grid_w": 80,
+        "offset": 0,
+        "count": 6400
+      },
+      {
+        "stride": 16,
+        "grid_h": 40,
+        "grid_w": 40,
+        "offset": 6400,
+        "count": 1600
+      },
+      {
+        "stride": 32,
+        "grid_h": 20,
+        "grid_w": 20,
+        "offset": 8000,
+        "count": 400
+      }
+    ]
+  },
+  "decode": {
+    "reference": "src/export/reference.py::decode_exported_outputs (delegates to src/training/decode.py)",
+    "cx": "(gx + 0.5) * stride + dx",
+    "cy": "(gy + 0.5) * stride + dy",
+    "w": "exp(log_w)",
+    "h": "exp(log_h)",
+    "box_units": "pixels of the letterboxed image_size x image_size input (dx/dy are NOT scaled by stride)",
+    "score": "sigmoid(cls_logit)",
+    "candidates": "one candidate per (anchor, class) with score > conf_threshold",
+    "per_class_candidates": true,
+    "conf_threshold": 0.25,
+    "nms": {
+      "type": "greedy, per class (class-aware / batched), on xyxy boxes, highest score first",
+      "iou_threshold": 0.5
+    },
+    "max_detections": 300,
+    "to_original_image": "x = (x_letterboxed - pad_x) / scale, y = (y_letterboxed - pad_y) / scale, clip to image"
+  },
+  "class_names": [
+    "mango",
+    "damage"
+  ],
+  "num_classes": 2,
+  "tools": {
+    "python": "3.12.13",
+    "torch": "2.13.0+cpu",
+    "litert-torch": "0.9.4",
+    "ai-edge-litert": "2.2.0",
+    "litert-converter": "0.4.0",
+    "numpy": "2.5.3"
+  },
+  "exported_at": "2026-11-15T01:12:04+00:00",
+  "task": "segment",
+  "segmentation": {
+    "reference": "src/export/reference.py::decode_exported_segmentation (delegates to src/training/decode.py)",
+    "num_prototypes": 32,
+    "mask_ratio": 4,
+    "prototype_size": [
+      160,
+      160
+    ],
+    "threshold": 0.5,
+    "assembly": "For each detection kept by the box decode, take the coefficient vector of the anchor it came from (row i of mask_coefs, the same i as in boxes_raw). mask = sigmoid(coefs . protos), with protos flattened to (nm, h*w) and the result reshaped to (h, w). Crop it to the detection box in prototype coordinates (box in letterboxed pixels / mask_ratio): pixels outside the box are zeroed. Optionally upsample bilinearly to the input size. Threshold at `threshold`. Letterbox padding and the ROI crop are undone on the mask exactly as on the box."
+  }
+}

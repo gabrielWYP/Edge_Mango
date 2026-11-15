@@ -1,0 +1,195 @@
+{
+ "cases": [
+  {
+   "file": "frame0_320.rgb.gz",
+   "source": "mango_rgb_1792867325.jpg",
+   "width": 320,
+   "height": 240,
+   "bbox": [
+    110,
+    95,
+    204,
+    174
+   ],
+   "mask_area": 5731,
+   "full_frame": [
+    3264,
+    2448
+   ],
+   "full_res_bbox": [
+    1124,
+    969,
+    2077,
+    1777
+   ]
+  },
+  {
+   "file": "frame1_320.rgb.gz",
+   "source": "mango_rgb_1792987818.jpg",
+   "width": 320,
+   "height": 240,
+   "bbox": [
+    130,
+    57,
+    243,
+    135
+   ],
+   "mask_area": 6994,
+   "full_frame": [
+    3264,
+    2448
+   ],
+   "full_res_bbox": [
+    1321,
+    583,
+    2474,
+    1380
+   ]
+  },
+  {
+   "file": "frame2_320.rgb.gz",
+   "source": "mango_rgb_1793494271.jpg",
+   "width": 320,
+   "height": 240,
+   "bbox": [
+    129,
+    62,
+    216,
+    127
+   ],
+   "mask_area": 4612,
+   "full_frame": [
+    3264,
+    2448
+   ],
+   "full_res_bbox": [
+    1314,
+    631,
+    2206,
+    1297
+   ]
+  }
+ ],
+ "crop_windows": [
+  {
+   "frame": [
+    1280,
+    720
+   ],
+   "box": [
+    500,
+    200,
+    780,
+    480
+   ],
+   "window": [
+    472,
+    172,
+    808,
+    508
+   ]
+  },
+  {
+   "frame": [
+    1280,
+    720
+   ],
+   "box": [
+    10,
+    5,
+    300,
+    200
+   ],
+   "window": [
+    0,
+    0,
+    329,
+    220
+   ]
+  },
+  {
+   "frame": [
+    1280,
+    720
+   ],
+   "box": [
+    1000,
+    400,
+    1275,
+    718
+   ],
+   "window": [
+    972,
+    368,
+    1280,
+    720
+   ]
+  },
+  {
+   "frame": [
+    320,
+    180
+   ],
+   "box": [
+    100,
+    40,
+    180,
+    130
+   ],
+   "window": [
+    92,
+    31,
+    188,
+    139
+   ]
+  },
+  {
+   "frame": [
+    1280,
+    720
+   ],
+   "box": [
+    600,
+    300,
+    601,
+    301
+   ],
+   "window": [
+    599,
+    299,
+    602,
+    302
+   ]
+  }
+ ],
+ "letterbox": {
+  "cases": [
+   {
+    "name": "full",
+    "window": null,
+    "scale": 2.0,
+    "pad_x": 0,
+    "pad_y": 80,
+    "new_w": 640,
+    "new_h": 480,
+    "file": "letterbox_full.rgb.gz"
+   },
+   {
+    "name": "crop",
+    "window": [
+     40,
+     20,
+     200,
+     140
+    ],
+    "scale": 4.0,
+    "pad_x": 0,
+    "pad_y": 80,
+    "new_w": 640,
+    "new_h": 480,
+    "file": "letterbox_crop.rgb.gz"
+   }
+  ],
+  "source": "frame0_320.rgb.gz"
+ }
+}

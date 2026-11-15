@@ -1,0 +1,12 @@
+# Build outputs and local machine config (never commit these)
+.gradle/
+build/
+app/build/
+local.properties
+*.iml
+.idea/
+.kotlin/
+captures/
+.cxx/
+*.apk
+*.aab
