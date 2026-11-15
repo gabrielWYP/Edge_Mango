@@ -904,13 +904,16 @@ def collate_fn(batch: list[dict]) -> dict:
     """Custom collate function for variable-length bbox lists.
 
     Stacks RGB and NIR tensors; keeps bboxes and labels as lists, and so the instance
-    `masks` / `has_mask` of a `load_masks` dataset.
+    `masks` / `has_mask` of a `load_masks` dataset. It also provides the same targets padded
+    (`bboxes_padded` (B, N, 4), `labels_padded` (B, N), `counts` (B,), and `masks_padded` /
+    `has_mask_padded` for a mask dataset), which the trainers move to the device in one
+    transfer each; the list fields stay for every other consumer.
 
     Args:
         batch: List of dataset items.
 
     Returns:
-        dict with stacked rgb/nir tensors and list bboxes/labels.
+        dict with stacked rgb/nir tensors, list bboxes/labels and their padded form.
     """
     rgb = torch.stack([item["rgb"] for item in batch])
     nir = torch.stack([item["nir"] for item in batch])
@@ -925,9 +928,31 @@ def collate_fn(batch: list[dict]) -> dict:
         "labels": labels,
         "image_ids": image_ids,
     }
+    # The same targets as ONE padded tensor + counts: a trainer moves three tensors to the
+    # device (and the pin-memory thread pins three) instead of two per image.
+    n_max = max((len(b) for b in bboxes), default=0)
+    counts = torch.tensor([len(b) for b in bboxes], dtype=torch.long)
+    bboxes_padded = torch.zeros(len(batch), n_max, 4, dtype=bboxes[0].dtype)
+    labels_padded = torch.zeros(len(batch), n_max, dtype=torch.long)
+    for i, (boxes, lab) in enumerate(zip(bboxes, labels)):
+        bboxes_padded[i, : len(boxes)] = boxes
+        labels_padded[i, : len(boxes)] = lab
+    out["bboxes_padded"] = bboxes_padded
+    out["labels_padded"] = labels_padded
+    out["counts"] = counts
     if "masks" in batch[0]:
         out["masks"] = [item["masks"] for item in batch]
         out["has_mask"] = [item["has_mask"] for item in batch]
+        masks = out["masks"]
+        masks_padded = torch.zeros(
+            len(batch), n_max, *masks[0].shape[1:], dtype=masks[0].dtype
+        )
+        has_mask_padded = torch.zeros(len(batch), n_max, dtype=torch.bool)
+        for i, (m, h) in enumerate(zip(masks, out["has_mask"])):
+            masks_padded[i, : len(m)] = m
+            has_mask_padded[i, : len(h)] = h
+        out["masks_padded"] = masks_padded
+        out["has_mask_padded"] = has_mask_padded
     return out
 
 

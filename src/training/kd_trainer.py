@@ -378,8 +378,7 @@ class KDTrainer(Trainer):
 
         for batch in self.train_loader:
             rgb, nir = self._device_inputs(batch, self.train_loader)
-            bboxes = [b.to(self.device) for b in batch["bboxes"]]
-            labels = [l.to(self.device) for l in batch["labels"]]
+            targets, bboxes, labels = self._device_targets(batch)
 
             optimizer.zero_grad(set_to_none=True)
 
@@ -408,7 +407,6 @@ class KDTrainer(Trainer):
                         }
 
                     # --- Detection loss ---
-                    targets = self._loss_targets(batch, bboxes, labels)
                     mask_outputs = self._mask_outputs(s_out)
                     if mask_outputs is None:
                         det_loss, det_dict = self.criterion(s_out["preds"], targets)
@@ -430,7 +428,7 @@ class KDTrainer(Trainer):
                 # NaN / Inf guard: skip batch if loss explodes. Always
                 # counted — see D-G docstring above for why this must not
                 # also be silent.
-                if torch.isnan(loss) or torch.isinf(loss):
+                if not bool(torch.isfinite(loss)):
                     nan_skipped += 1
                     print(f"  [NaN] Skipping batch (loss={loss.item():.2f}), "
                           f"nan_skipped={nan_skipped}")
@@ -484,8 +482,8 @@ class KDTrainer(Trainer):
             total_cls += det_dict["cls_loss"]
             total_box += det_dict["box_loss"]
             total_mask += det_dict.get("mask_loss", 0.0)
-            total_kd += kd_loss.item()
-            total_loss += loss.item()
+            total_kd += kd_loss.detach()
+            total_loss += loss.detach()
             steps_taken += 1
             self.global_step += 1
 
@@ -499,14 +497,14 @@ class KDTrainer(Trainer):
             )
 
         result = {
-            "cls_loss": total_cls / steps_taken,
-            "box_loss": total_box / steps_taken,
-            "kd_loss": total_kd / steps_taken,
-            "total_loss": total_loss / steps_taken,
+            "cls_loss": float(total_cls) / steps_taken,
+            "box_loss": float(total_box) / steps_taken,
+            "kd_loss": float(total_kd) / steps_taken,
+            "total_loss": float(total_loss) / steps_taken,
             "oom_skipped": float(oom_skipped),
             "nan_skipped": float(nan_skipped),
             "steps_taken": float(steps_taken),
         }
         if self.config.task == "segment":
-            result["mask_loss"] = total_mask / steps_taken
+            result["mask_loss"] = float(total_mask) / steps_taken
         return result
