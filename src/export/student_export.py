@@ -53,9 +53,9 @@ from src.training.config import TrainingConfig
 from src.training.dataset import IMAGENET_MEAN, IMAGENET_STD
 from src.training.strides import STUDENT_STRIDES
 
-METADATA_SCHEMA_VERSION = 1
+METADATA_SCHEMA_VERSION = 2
 CLASS_NAMES: tuple[str, ...] = ("mango", "damage")
-SUPPORTED_PRECISIONS: tuple[str, ...] = ("fp32",)
+SUPPORTED_PRECISIONS: tuple[str, ...] = ("fp32", "fp16", "int8")
 EXPORT_TOOL_PACKAGES: tuple[str, ...] = (
     "torch", "litert-torch", "ai-edge-litert", "litert-converter", "numpy",
 )
@@ -219,17 +219,26 @@ def build_metadata(
     tools: dict[str, str | None] | None = None,
     task: str = "detect",
     num_prototypes: int = 32,
+    roi_crop: dict[str, Any] | None = None,
+    complexity: dict[str, Any] | None = None,
+    quantization: dict[str, Any] | None = None,
+    calibration: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build the metadata sidecar describing the exported model's contract.
 
     `io_names` is `tflite_io_names(...)`'s result: the signature key plus
     the signature-level and tensor-level names of the input and of each
     logical output (`boxes_raw`, `cls_logits`).
+
+    Schema 2 adds, when given: `preprocessing.roi_crop` (`roi_crop`: `{"enabled", "margin"}`),
+    `complexity` (parameters and FLOPs), and for an INT8 file `quantization` and `calibration`.
+    The input and the outputs are float32 in every precision.
     """
     model_file = Path(model_file)
     n = num_anchors(image_size, strides)
     nchw = model_file.suffix == ".onnx"  # ONNX keeps PyTorch's layout; only the .tflite input is channel-last
     proto_side = image_size // PROTO_STRIDE
+    roi_enabled = bool(roi_crop and roi_crop.get("enabled"))
     metadata = {
         "schema_version": METADATA_SCHEMA_VERSION,
         "model": {
@@ -255,6 +264,15 @@ def build_metadata(
             "reference": "src/export/reference.py::preprocess_bgr (== YOLODataset val/test path)",
             "steps": [
                 "Decode the image to 8-bit RGB (the training loader reads BGR with cv2.imread and converts BGR->RGB).",
+                *(
+                    [
+                        "ROI crop: cut the frame to the mango box plus `roi_crop.margin` of the box width / height "
+                        "on each side, snapped outward to whole pixels and clipped to the frame "
+                        "(src/training/roi_crop.py::crop_to_roi). The model was trained on these crops."
+                    ]
+                    if roi_enabled
+                    else []
+                ),
                 "Letterbox: scale = image_size / max(w, h); new_w = floor(w * scale), new_h = floor(h * scale).",
                 "Resize to (new_w, new_h) with bilinear interpolation (cv2.INTER_LINEAR).",
                 "Paste centered on an image_size x image_size canvas filled with pad_value on every channel: "
@@ -264,6 +282,16 @@ def build_metadata(
                 if nchw
                 else "Write as NHWC (row-major, RGB interleaved).",
             ],
+            "roi_crop": {
+                "enabled": roi_enabled,
+                **({"margin": float(roi_crop["margin"]), "class_id": 0} if roi_enabled else {}),
+                "note": (
+                    "The window comes from the ground-truth mango box in evaluation (an oracle ROI). On the "
+                    "phone the app has to supply the same window, e.g. from a mango detector or a framing guide."
+                    if roi_enabled
+                    else "The model reads the whole frame."
+                ),
+            },
             "letterbox": {
                 "target_size": image_size,
                 "pad_value": letterbox_value,
@@ -335,6 +363,12 @@ def build_metadata(
         "tools": tools if tools is not None else tool_versions(),
         "exported_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
+    if complexity is not None:
+        metadata["complexity"] = complexity
+    if quantization is not None:
+        metadata["quantization"] = quantization
+    if calibration is not None:
+        metadata["calibration"] = calibration
     if task == "segment":
         metadata["task"] = "segment"
         metadata["outputs"] += [
@@ -384,14 +418,13 @@ def convert_to_tflite(
     image_size: int,
     precision: str = "fp32",
 ) -> Path:
-    """Convert the wrapper to a .tflite with NHWC input via litert-torch.
+    """Convert the wrapper to an FP32 .tflite with NHWC input via litert-torch.
 
-    `precision` is the extension point for later FP16/INT8 variants; only
-    "fp32" is implemented.
+    FP16 and INT8 files are derived from this one by `export_tflite`.
     """
-    if precision not in SUPPORTED_PRECISIONS:
+    if precision != "fp32":
         raise NotImplementedError(
-            f"precision={precision!r} is not implemented yet; supported: {SUPPORTED_PRECISIONS}."
+            f"convert_to_tflite writes FP32 only (got {precision!r}); use export_tflite for {SUPPORTED_PRECISIONS}."
         )
     import litert_torch  # lazy: only present in the export venv
 
@@ -404,6 +437,51 @@ def convert_to_tflite(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     edge_model.export(str(out_path))
     return out_path
+
+
+def export_tflite(
+    wrapper: StudentExportWrapper,
+    out_path: str | Path,
+    *,
+    image_size: int,
+    precision: str = "fp32",
+    calibration_inputs=None,
+) -> dict[str, Any]:
+    """Write the student as a .tflite of the given precision; the file always has float32 input and outputs.
+
+    fp32: the litert-torch conversion. fp16: its float32 weights stored as float16 (`quantize.weights_to_fp16`).
+    int8: static post-training quantization calibrated on `calibration_inputs`, an iterable of
+    `(1, S, S, 3)` float32 NHWC arrays (`quantize.quantize_int8`). Returns what the sidecar records
+    about the quantization (empty for fp32).
+    """
+    import tempfile
+
+    if precision not in SUPPORTED_PRECISIONS:
+        raise ValueError(f"precision={precision!r} is not supported; supported: {SUPPORTED_PRECISIONS}.")
+    out_path = Path(out_path)
+    if precision == "fp32":
+        convert_to_tflite(wrapper, out_path, image_size=image_size)
+        return {}
+    if precision == "int8" and calibration_inputs is None:
+        raise ValueError("precision='int8' needs calibration_inputs (representative preprocessed images).")
+    from src.export import quantize  # lazy: needs ai-edge-quantizer
+
+    with tempfile.TemporaryDirectory() as tmp:
+        float_path = convert_to_tflite(wrapper, Path(tmp) / "float32.tflite", image_size=image_size)
+        if precision == "fp16":
+            data, info = quantize.weights_to_fp16(float_path.read_bytes())
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_bytes(data)
+            return {
+                "method": "float16 weights (float32 compute graph, DEQUANTIZE in front of each weight)",
+                "tool": "src/export/quantize.py::weights_to_fp16 (flatbuffer edit)",
+                "weight_bits": 16, "float_io": True, **info,
+            }
+        names = tflite_io_names(float_path, wrapper.output_names)
+        return quantize.quantize_int8(
+            float_path, out_path, calibration_inputs,
+            signature_key=names["signature_key"], input_name=names["input"]["signature_name"],
+        )
 
 
 def tflite_io_names(

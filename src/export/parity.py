@@ -20,7 +20,12 @@ import torch
 from torchvision.ops import box_iou
 
 from src.export.layout import BOXES_OUTPUT_NAME, CLASS_OUTPUT_NAME, DETECT_OUTPUT_NAMES
-from src.export.reference import cxcywh_to_xyxy, decode_exported_outputs, preprocess_bgr
+from src.export.reference import (
+    cxcywh_to_xyxy,
+    decode_exported_outputs,
+    preprocess_bgr,
+    preprocess_roi_bgr,
+)
 
 # Pass thresholds for an FP32 export. Raw outputs are logits / pixel
 # offsets / log-sizes, so an absolute tolerance of 1e-3 is far below any
@@ -93,6 +98,8 @@ class ParityReport:
     candidate_detections: int = 0
     images_with_count_mismatch: int = 0
     min_matched_iou: float | None = None
+    # FP16 / INT8 comparisons are reported, never enforced: `failures()` is empty and `passed` is None.
+    informational: bool = False
 
     def add_raw(self, name: str, reference: np.ndarray, candidate: np.ndarray) -> None:
         if reference.shape != candidate.shape:
@@ -126,6 +133,8 @@ class ParityReport:
         return 1.0 if denominator == 0 else self.matched / denominator
 
     def failures(self) -> list[str]:
+        if self.informational:
+            return ["no images were compared"] if self.images == 0 else []
         problems = [
             f"{name}: max abs diff {value:.3e} >= {self.max_abs_diff_threshold:.1e}"
             for name, value in self.raw_max.items()
@@ -162,8 +171,9 @@ class ParityReport:
                 "match_iou": self.match_iou,
                 "min_match_rate": self.min_match_rate,
             },
+            "informational": self.informational,
             "failures": self.failures(),
-            "passed": not self.failures(),
+            "passed": None if self.informational and self.images else not self.failures(),
         }
 
 
@@ -192,19 +202,24 @@ def compare_on_images(
     image_paths: Sequence[Path],
     metadata: dict[str, Any],
     report: ParityReport,
+    label_dir: str | Path | None = None,
 ) -> ParityReport:
     """Feed identical preprocessed inputs to both models and accumulate diffs.
 
     Args:
         reference_fn: NCHW float32 tensor -> (boxes_raw, cls_logits) numpy.
         candidate_fn: NHWC float32 array -> (boxes_raw, cls_logits) numpy.
-        metadata: the export sidecar (image size, strides, decode settings).
+        metadata: the export sidecar (image size, strides, decode settings, ROI crop).
+        label_dir: `<labels>/<split>`; with an ROI-crop sidecar each image is cropped to the mango
+            box of `<label_dir>/<stem>.txt` exactly as in training (an image without label stays full-frame).
     """
     output_names = [output["logical_name"] for output in metadata["outputs"]]
     image_size = metadata["input"]["shape"][1]
     pad_value = metadata["preprocessing"]["letterbox"]["pad_value"]
     strides = [level["stride"] for level in metadata["anchors"]["levels"]]
     decode = metadata["decode"]
+    roi = metadata["preprocessing"].get("roi_crop") or {}
+    roi_margin = float(roi["margin"]) if roi.get("enabled") else None
     decode_kwargs = dict(
         image_size=image_size,
         strides=strides,
@@ -217,7 +232,11 @@ def compare_on_images(
         image = cv2.imread(str(image_path))
         if image is None:
             raise FileNotFoundError(f"Cannot read image: {image_path}")
-        nchw, _ = preprocess_bgr(image, image_size, pad_value)
+        label_path = Path(label_dir) / f"{image_path.stem}.txt" if label_dir is not None else None
+        if roi_margin is not None and label_path is not None and label_path.exists():
+            nchw, _ = preprocess_roi_bgr(image, label_path, image_size, pad_value, roi_margin)
+        else:
+            nchw, _ = preprocess_bgr(image, image_size, pad_value)
         nhwc = np.ascontiguousarray(nchw.permute(0, 2, 3, 1).numpy())
 
         ref_outputs, cand_outputs = reference_fn(nchw), candidate_fn(nhwc)
@@ -245,9 +264,10 @@ def run_parity(
     labels_dir: Path | None = None,
     max_abs_diff: float = DEFAULT_MAX_ABS_DIFF,
     min_match_rate: float = DEFAULT_MIN_MATCH_RATE,
+    informational: bool = False,
 ) -> ParityReport:
     """PyTorch `wrapper` vs the .tflite at `model_path` on `num_images`
-    images of `split`. `rgb_dir` / `labels_dir` default to the training
+    images of `split` (`informational`: report the numbers, never fail: FP16 / INT8). `rgb_dir` / `labels_dir` default to the training
     config's layout under `data_root` (`cache/mango/rgb`,
     `annotations/yolo/labels`)."""
     from src.export.student_export import make_tflite_runner, make_torch_runner
@@ -263,11 +283,14 @@ def run_parity(
         "input": metadata["input"],
         "outputs": {output["logical_name"]: output for output in metadata["outputs"]},
     }
-    report = ParityReport(max_abs_diff_threshold=max_abs_diff, min_match_rate=min_match_rate)
+    report = ParityReport(
+        max_abs_diff_threshold=max_abs_diff, min_match_rate=min_match_rate, informational=informational
+    )
     return compare_on_images(
         make_torch_runner(wrapper),
         make_tflite_runner(model_path, io_names, [output["logical_name"] for output in metadata["outputs"]]),
         image_paths,
         metadata,
         report,
+        label_dir=labels_dir / split,
     )

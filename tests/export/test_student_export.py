@@ -314,3 +314,14 @@ class TestParityHelpers:
         boxes = torch.tensor([[10.0, 10.0, 5.0, 5.0]])
         report.add_detections(match_detections(boxes, torch.tensor([0]), boxes, torch.tensor([0])))
         assert report.to_dict()["passed"] and report.match_rate == 1.0
+
+    def test_informational_report_never_fails_but_keeps_the_numbers(self) -> None:
+        report = ParityReport(max_abs_diff_threshold=1e-3, informational=True)
+        report.add_raw(BOXES_OUTPUT_NAME, np.zeros((1, 4, 4)), np.full((1, 4, 4), 5.0))
+        report.add_detections(match_detections(torch.zeros(0, 4), torch.zeros(0), torch.zeros(0, 4), torch.zeros(0)))
+        result = report.to_dict()
+        assert result["informational"] and result["passed"] is None and result["failures"] == []
+        assert result["raw"][BOXES_OUTPUT_NAME]["max_abs_diff"] == 5.0
+
+    def test_informational_report_without_images_still_fails(self) -> None:
+        assert ParityReport(informational=True).failures() == ["no images were compared"]
