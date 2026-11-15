@@ -19,7 +19,8 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision.ops import complete_box_iou_loss, box_iou
+from torch.nn.utils.rnn import pad_sequence
+from torchvision.ops import complete_box_iou_loss
 
 
 class TaskAlignedAssigner:
@@ -88,20 +89,29 @@ class TaskAlignedAssigner:
         self,
         pred_scores: torch.Tensor,
         pred_bboxes: torch.Tensor,
-        gt_labels: list[torch.Tensor],
-        gt_bboxes: list[torch.Tensor],
+        gt_labels: list[torch.Tensor] | torch.Tensor,
+        gt_bboxes: list[torch.Tensor] | torch.Tensor,
         anchors: torch.Tensor,
         strides: list[int],
         anchor_strides: torch.Tensor | None = None,
         num_per_level: list[int] | None = None,
+        gt_counts: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Assign predictions to ground truth targets.
+        """Assign predictions to ground truth targets, for the whole batch at once.
+
+        Every per-image / per-GT quantity is a batched tensor op over padded GT: there is no
+        Python loop over images or GTs and no host synchronisation (`.item()`, `.any()`,
+        `nonzero`) on the hot path. The result is the one the per-image loop produced
+        (`src/training/loss_reference.py`): same candidates, same fallback, same conflict
+        winner (highest alignment score, the lowest GT index on a tie).
 
         Args:
             pred_scores: (B, num_anchors, num_classes) predicted class scores (sigmoid).
             pred_bboxes: (B, num_anchors, 4) predicted bboxes in cxcywh format.
-            gt_labels: List of (N_i,) GT class labels per image.
-            gt_bboxes: List of (N_i, 4) GT bboxes per image in cxcywh format.
+            gt_labels: List of (N_i,) GT class labels per image, or one padded (B, N) tensor
+                together with `gt_counts`.
+            gt_bboxes: List of (N_i, 4) GT bboxes per image in cxcywh format, or one padded
+                (B, N, 4) tensor together with `gt_counts`.
             anchors: (num_anchors, 2) anchor center points in pixel coords.
             strides: List of stride values per FPN level (retained for
                 backward-compat call signatures; `anchor_strides` is the
@@ -112,6 +122,7 @@ class TaskAlignedAssigner:
             num_per_level: Anchor count per FPN level, from `_generate_anchors`.
                 Required for the per-level mask (D8) and instrumentation (A4);
                 omit to skip both (e.g. single-level synthetic test inputs).
+            gt_counts: (B,) number of real GTs per image; required with padded tensors.
 
         Returns:
             target_classes: (B, num_anchors) assigned class IDs (-1 for negative).
@@ -122,12 +133,26 @@ class TaskAlignedAssigner:
         B, num_anchors, num_classes = pred_scores.shape
         device = pred_scores.device
 
+        if isinstance(gt_labels, torch.Tensor):
+            if gt_counts is None:
+                raise ValueError("padded gt_labels/gt_bboxes need gt_counts")
+            labels, boxes = gt_labels.to(device), gt_bboxes.to(device)
+            counts = gt_counts.to(device)
+        else:
+            boxes, labels, counts, _, _ = pad_targets(
+                {"bboxes": gt_bboxes, "labels": gt_labels}, device=device
+            )
+        N = labels.shape[1]
+        gt_valid = torch.arange(N, device=device).unsqueeze(0) < counts.unsqueeze(1)  # (B, N)
+
         target_classes = torch.full((B, num_anchors), -1, dtype=torch.long, device=device)
         target_bboxes = torch.zeros((B, num_anchors, 4), device=device)
         target_scores = torch.zeros((B, num_anchors), device=device)
         fg_mask = torch.zeros((B, num_anchors), dtype=torch.bool, device=device)
         target_gt_idx = torch.full((B, num_anchors), -1, dtype=torch.long, device=device)
         self.last_gt_idx = target_gt_idx
+        if N == 0:
+            return target_classes, target_bboxes, target_scores, fg_mask
 
         if anchor_strides is None:
             anchor_strides = torch.full((num_anchors,), float(strides[0]), device=device)
@@ -138,87 +163,150 @@ class TaskAlignedAssigner:
             else None
         )
 
-        for b in range(B):
-            n_gt = len(gt_labels[b])
-            if n_gt == 0:
-                continue
+        # Alignment metric score^alpha * iou^beta for every (image, anchor, GT).
+        safe_labels = labels.clamp(0, num_classes - 1)
+        gt_cls_scores = pred_scores.gather(
+            2, safe_labels.unsqueeze(1).expand(B, num_anchors, N)
+        )  # (B, A, N)
+        ious = self._batched_box_iou(
+            self._cxcywh_to_xyxy(pred_bboxes), self._cxcywh_to_xyxy(boxes)
+        )  # (B, A, N)
+        alignment = (gt_cls_scores ** self.alpha) * (ious ** self.beta)
 
-            gt_cls = gt_labels[b]  # (N_gt,)
-            gt_box = gt_bboxes[b]  # (N_gt, 4) cxcywh
+        # D6: spatial admissibility mask, applied BEFORE top-k.
+        admissible = self._spatial_admissibility_batched(
+            anchors, anchor_strides, boxes, self.center_radius
+        )  # (B, A, N)
+        level_mask = None
+        if level_ids is not None and self.level_ranges:
+            target_level = self._target_levels(boxes, self.level_ranges)  # (B, N)
+            level_mask = level_ids.view(1, -1, 1) == target_level.unsqueeze(1)  # (B, A, N)
+            admissible = admissible & level_mask
+        admissible = admissible & gt_valid.unsqueeze(1)
+        alignment = alignment.masked_fill(~admissible, 0.0)
 
-            # Compute alignment metric for each GT-anchor pair
-            # pred_scores[b]: (num_anchors, num_classes)
-            # For each GT, get the predicted score for that GT's class
-            gt_cls_scores = pred_scores[b, :, gt_cls]  # (num_anchors, N_gt)
+        topk = min(self.topk, num_anchors)
+        topk_vals, topk_idx = alignment.transpose(1, 2).topk(topk, dim=-1)  # (B, N, k)
+        valid = topk_vals > 0
 
-            # Compute IoU between predicted bboxes and GT bboxes
-            # Convert cxcywh to xyxy for IoU computation
-            pred_xyxy = self._cxcywh_to_xyxy(pred_bboxes[b])  # (num_anchors, 4)
-            gt_xyxy = self._cxcywh_to_xyxy(gt_box)  # (N_gt, 4)
-            ious = box_iou(pred_xyxy, gt_xyxy)  # (num_anchors, N_gt)
+        # D7: a GT with no usable candidate falls back to the anchors closest to its center,
+        # AFTER the spatial/level filter, ranked by anchor centers (never predicted boxes).
+        need_fallback = gt_valid & ~valid.any(dim=-1)  # (B, N)
+        dist = (
+            (anchors[:, 0].view(1, 1, -1) - boxes[:, :, 0:1]) ** 2
+            + (anchors[:, 1].view(1, 1, -1) - boxes[:, :, 1:2]) ** 2
+        )  # (B, N, A)
+        if level_mask is not None:
+            lm = level_mask.transpose(1, 2)  # (B, N, A)
+            restrict = lm.any(dim=-1, keepdim=True) & ~lm
+            dist = dist.masked_fill(restrict, float("inf"))
+        n_fallback = min(3, num_anchors)
+        _, fallback_idx = dist.topk(n_fallback, dim=-1, largest=False)  # (B, N, f)
 
-            # Alignment metric: score^alpha * iou^beta
-            alignment = (gt_cls_scores ** self.alpha) * (ious ** self.beta)  # (num_anchors, N_gt)
+        width = max(topk, n_fallback)
+        pad = width - n_fallback
+        fb = need_fallback.unsqueeze(-1)
+        main_idx = F.pad(topk_idx, (0, width - topk))
+        main_score = F.pad(topk_vals, (0, width - topk))
+        main_valid = F.pad(valid, (0, width - topk)) & ~fb
+        fb_idx = F.pad(fallback_idx, (0, pad))
+        fb_valid = F.pad(torch.ones_like(fallback_idx, dtype=torch.bool), (0, pad)) & fb
+        cand_idx = torch.where(fb, fb_idx, main_idx)
+        cand_valid = main_valid | fb_valid
+        cand_score = torch.where(fb, torch.full_like(main_score, 0.01), main_score)
 
-            for gt_i in range(n_gt):
-                # D6: spatial admissibility mask, applied BEFORE top-k.
-                admissible = self._spatial_admissibility(
-                    anchors, anchor_strides, gt_box[gt_i], self.center_radius
-                )
+        # Conflict resolution: an anchor taken by several GTs keeps the one with the highest
+        # alignment score; the earliest GT index wins an exact tie (what the sequential
+        # `target_scores < pos_scores` update did). Invalid slots scatter into a spare column.
+        dense = torch.zeros((B, N, num_anchors + 1), device=device)
+        slot = torch.where(cand_valid, cand_idx, torch.full_like(cand_idx, num_anchors))
+        dense.scatter_(2, slot, torch.where(cand_valid, cand_score, torch.zeros_like(cand_score)))
+        best_score, best_gt = dense[:, :, :num_anchors].max(dim=1)  # (B, A)
+        fg_mask = best_score > 0
+        target_gt_idx = torch.where(fg_mask, best_gt, torch.full_like(best_gt, -1))
+        self.last_gt_idx = target_gt_idx
+        target_classes = torch.where(
+            fg_mask, labels.gather(1, best_gt), torch.full_like(best_gt, -1)
+        )
+        target_bboxes = torch.where(
+            fg_mask.unsqueeze(-1),
+            boxes.gather(1, best_gt.unsqueeze(-1).expand(B, num_anchors, 4)),
+            torch.zeros((), device=device),
+        )
+        target_scores = torch.where(fg_mask, best_score, torch.zeros_like(best_score))
 
-                level_mask = None
-                if level_ids is not None and self.level_ranges:
-                    gt_w, gt_h = gt_box[gt_i, 2].item(), gt_box[gt_i, 3].item()
-                    level_mask = self._level_admissibility(level_ids, gt_w, gt_h, self.level_ranges)
-                    admissible = admissible & level_mask
-
-                gt_alignment = alignment[:, gt_i].clone()
-                gt_alignment[~admissible] = 0.0  # mask inadmissible anchors before top-k
-
-                topk = min(self.topk, num_anchors)
-                topk_vals, topk_idx = gt_alignment.topk(topk)
-
-                valid = topk_vals > 0
-                pos_idx = topk_idx[valid]
-                pos_scores = topk_vals[valid]
-
-                # D7: fallback runs AFTER the spatial/level filter (not before,
-                # the pre-fix ordering that let the filter erase it), and ranks
-                # by anchor centers — not predicted-box centers, the pre-fix
-                # coordinate-source bug (predicted boxes move during training;
-                # the filter above tests fixed anchor grid centers).
-                if len(pos_idx) == 0:
-                    gt_cxcy = gt_box[gt_i, :2]
-                    dist = (anchors[:, 0] - gt_cxcy[0]) ** 2 + (anchors[:, 1] - gt_cxcy[1]) ** 2
-                    if level_mask is not None and level_mask.any():
-                        dist = dist.clone()
-                        dist[~level_mask] = float("inf")
-                    _, fallback_idx = dist.topk(min(3, num_anchors), largest=False)
-                    pos_idx = fallback_idx
-                    pos_scores = torch.ones(len(fallback_idx), device=device) * 0.01
-
-                if len(pos_idx) == 0:
-                    continue
-
-                # Conflict resolution: if an anchor is assigned to multiple
-                # GTs, keep the one with the highest alignment score. The top-k
-                # indices are distinct, so this needs no per-anchor loop, whose
-                # comparisons would each wait for the GPU.
-                wins = (target_scores[b, pos_idx] < pos_scores) | (target_classes[b, pos_idx] == -1)
-                winners = pos_idx[wins]
-                target_classes[b, winners] = gt_cls[gt_i]
-                target_bboxes[b, winners] = gt_box[gt_i]
-                target_scores[b, winners] = pos_scores[wins]
-                target_gt_idx[b, winners] = gt_i
-                fg_mask[b, winners] = True
-
-                if self.collect_stats and level_ids is not None:
-                    cls_id = int(gt_cls[gt_i].item())
-                    for idx in pos_idx.tolist():
-                        key = (cls_id, int(level_ids[idx].item()))
-                        self.last_stats[key] = self.last_stats.get(key, 0) + 1
+        if self.collect_stats and level_ids is not None:
+            self._accumulate_stats(labels, cand_idx, cand_valid, level_ids)
 
         return target_classes, target_bboxes, target_scores, fg_mask
+
+    def _accumulate_stats(
+        self,
+        labels: torch.Tensor,
+        cand_idx: torch.Tensor,
+        cand_valid: torch.Tensor,
+        level_ids: torch.Tensor,
+    ) -> None:
+        """A4: count every candidate (also those that lost a conflict) per (class, level).
+
+        Instrumentation only, so one host transfer per call is fine.
+        """
+        n_levels = int(level_ids.max().item()) + 1
+        n_classes = int(labels.max().item()) + 1
+        levels = level_ids[cand_idx]  # (B, N, W)
+        flat = (labels.unsqueeze(-1) * n_levels + levels)[cand_valid]
+        counts = torch.bincount(flat, minlength=n_classes * n_levels).tolist()
+        for key, count in enumerate(counts):
+            if count:
+                pair = (key // n_levels, key % n_levels)
+                self.last_stats[pair] = self.last_stats.get(pair, 0) + count
+
+    @staticmethod
+    def _batched_box_iou(boxes1: torch.Tensor, boxes2: torch.Tensor) -> torch.Tensor:
+        """IoU of (B, A, 4) against (B, N, 4) xyxy boxes -> (B, A, N); torchvision's formula."""
+        area1 = (boxes1[..., 2] - boxes1[..., 0]) * (boxes1[..., 3] - boxes1[..., 1])  # (B, A)
+        area2 = (boxes2[..., 2] - boxes2[..., 0]) * (boxes2[..., 3] - boxes2[..., 1])  # (B, N)
+        lt = torch.max(boxes1[:, :, None, :2], boxes2[:, None, :, :2])
+        rb = torch.min(boxes1[:, :, None, 2:], boxes2[:, None, :, 2:])
+        wh = (rb - lt).clamp(min=0)
+        inter = wh[..., 0] * wh[..., 1]
+        union = area1[:, :, None] + area2[:, None, :] - inter
+        return inter / union
+
+    @staticmethod
+    def _spatial_admissibility_batched(
+        anchors: torch.Tensor,
+        anchor_strides: torch.Tensor,
+        gt_boxes: torch.Tensor,
+        center_radius: float,
+    ) -> torch.Tensor:
+        """D6 for every GT of every image: (B, A, N) bool. See `_spatial_admissibility`."""
+        gt_cxcy = gt_boxes[..., :2]  # (B, N, 2)
+        gt_wh = gt_boxes[..., 2:]
+        gt_min = (gt_cxcy - gt_wh / 2).unsqueeze(1)  # (B, 1, N, 2)
+        gt_max = (gt_cxcy + gt_wh / 2).unsqueeze(1)
+        ax = anchors[:, 0].view(1, -1, 1)
+        ay = anchors[:, 1].view(1, -1, 1)
+        inside = (
+            (ax >= gt_min[..., 0]) & (ax <= gt_max[..., 0])
+            & (ay >= gt_min[..., 1]) & (ay <= gt_max[..., 1])
+        )
+        if center_radius <= 0:
+            return inside
+        radius_px = center_radius * anchor_strides.view(1, -1, 1)
+        dist = (
+            (ax - gt_cxcy[..., 0].unsqueeze(1)) ** 2 + (ay - gt_cxcy[..., 1].unsqueeze(1)) ** 2
+        ).sqrt()
+        return inside | (dist <= radius_px)
+
+    @staticmethod
+    def _target_levels(gt_boxes: torch.Tensor, level_ranges: list[float]) -> torch.Tensor:
+        """D8 on device: (B, N) FPN level each GT is restricted to (see `_level_admissibility`)."""
+        size = torch.maximum(gt_boxes[..., 2], gt_boxes[..., 3])  # (B, N)
+        bounds = torch.tensor(level_ranges, dtype=size.dtype, device=size.device)
+        below = size.unsqueeze(-1) < bounds  # (B, N, K)
+        first = below.int().argmax(dim=-1)  # first bound the size is under
+        return torch.where(below.any(dim=-1), first, torch.full_like(first, len(level_ranges)))
 
     @staticmethod
     def _spatial_admissibility(
@@ -294,6 +382,44 @@ class TaskAlignedAssigner:
         return torch.stack([x1, y1, x2, y2], dim=-1)
 
 
+def pad_targets(
+    targets: dict, device: torch.device | None = None
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None, torch.Tensor | None]:
+    """Per-image target lists -> padded tensors, with no host synchronisation.
+
+    Args:
+        targets: dict with `bboxes` (list of (N_i, 4)) and `labels` (list of (N_i,)), plus the
+            optional `masks` (list of (N_i, h, w)) and `has_mask` (list of (N_i,)).
+        device: Where to build the padded tensors; defaults to where the lists live.
+
+    Returns:
+        boxes (B, N, 4) zero padded, labels (B, N) long (0 padded), counts (B,) long, masks
+        (B, N, h, w) or None, has_mask (B, N) bool (False padded) or None. N is the largest
+        per-image count, read from the list shapes (host ints).
+    """
+    bboxes, labels = list(targets["bboxes"]), list(targets["labels"])
+    if device is not None:
+        bboxes = [b.to(device) for b in bboxes]
+        labels = [l.to(device) for l in labels]
+    dev = bboxes[0].device
+    counts = torch.tensor([len(b) for b in bboxes], dtype=torch.long, device=dev)
+    n_max = max(len(b) for b in bboxes)
+    boxes = pad_sequence(bboxes, batch_first=True) if n_max else bboxes[0].new_zeros(len(bboxes), 0, 4)
+    lab = (
+        pad_sequence([l.long() for l in labels], batch_first=True)
+        if n_max
+        else torch.zeros(len(bboxes), 0, dtype=torch.long, device=dev)
+    )
+    masks = has_mask = None
+    if "masks" in targets:
+        masks = pad_sequence([m.to(dev) for m in targets["masks"]], batch_first=True)
+        if "has_mask" in targets:
+            has_mask = pad_sequence([h.to(dev) for h in targets["has_mask"]], batch_first=True)
+        else:
+            has_mask = torch.arange(n_max, device=dev).unsqueeze(0) < counts.unsqueeze(1)
+    return boxes, lab, counts, masks, has_mask
+
+
 def _generate_anchors(
     feat_sizes: list[tuple[int, int]],
     strides: list[int],
@@ -350,6 +476,9 @@ class YOLOv8Loss(nn.Module):
         assigner_level_ranges: Per-level GT-size admissibility bins (D8).
         assigner_collect_stats: Enable non-destructive per-class/per-level
             positive-anchor instrumentation (A4).
+        log_as_tensors: Return the `loss_dict` terms as detached 0-dim tensors instead of
+            floats, so a trainer can accumulate them on the device and convert once per
+            epoch instead of synchronising with the GPU three times per step.
         mask_weight: Gain of the YOLOv8-seg mask loss. Only used when `forward` receives
             `mask_outputs`, so a detect run never sees it. 7.5 is the value ultralytics
             multiplies its segmentation loss by (its box gain).
@@ -369,8 +498,10 @@ class YOLOv8Loss(nn.Module):
         assigner_collect_stats: bool = False,
         ignore_classes: list[int] | None = None,
         mask_weight: float = 7.5,
+        log_as_tensors: bool = False,
     ):
         super().__init__()
+        self.log_as_tensors = log_as_tensors
         self.mask_weight = mask_weight
         self.ignore_classes = list(ignore_classes or [])
         self.num_classes = num_classes
@@ -427,16 +558,24 @@ class YOLOv8Loss(nn.Module):
     ) -> tuple[torch.Tensor, dict[str, float]]:
         """Compute detection loss, plus the mask loss of a segmentation student.
 
+        The whole batch is processed with padded tensor ops: no Python loop over images and no
+        host synchronisation on the hot path (the one exception is the mask loss, which reads
+        the largest positive count of the batch once to size its padded prototype product).
+
         Args:
             predictions: List of (B, nc+4, H_i, W_i) per FPN level.
                 First nc channels are class logits, last 4 are bbox deltas.
-            targets: Dict with keys:
-                bboxes: List of (N_i, 4) GT bboxes per image (cxcywh, normalized 0-1).
-                labels: List of (N_i,) GT class labels per image.
-                masks: Optional list of (N_i, h, w) instance masks per image, aligned with
-                    `bboxes`. Used only together with `mask_outputs`.
-                has_mask: Optional list of (N_i,) bool; instances without a polygon are False
-                    and take no part in the mask loss. All True when absent.
+            targets: Dict, in either of two forms (identical results):
+                per-image lists
+                    bboxes: List of (N_i, 4) GT bboxes per image (cxcywh, normalized 0-1).
+                    labels: List of (N_i,) GT class labels per image.
+                    masks: Optional list of (N_i, h, w) instance masks per image, aligned with
+                        `bboxes`. Used only together with `mask_outputs`.
+                    has_mask: Optional list of (N_i,) bool; instances without a polygon are
+                        False and take no part in the mask loss. All True when absent.
+                or the padded form the collate function also provides
+                    bboxes_padded (B, N, 4), labels_padded (B, N), counts (B,), and the
+                    optional masks_padded (B, N, h, w) / has_mask_padded (B, N).
             mask_outputs: Optional `{"mask_coefs": [(B, nm, H_i, W_i), ...], "protos":
                 (B, nm, h, w)}` from a segment student. None (default) is the plain detection
                 loss; so is a batch that carries no `masks`.
@@ -444,13 +583,23 @@ class YOLOv8Loss(nn.Module):
         Returns:
             total_loss: Scalar loss for backward().
             loss_dict: {"box_loss": float, "cls_loss": float}, plus "mask_loss" when the
-                mask term ran.
+                mask term ran. Floats by default; detached 0-dim tensors with
+                `log_as_tensors=True`, which spares the host synchronisation of `.item()`.
         """
         predictions = [pred.float() for pred in predictions]
         device = predictions[0].device
         B = predictions[0].shape[0]
+        gt_boxes, gt_labels, gt_counts, gt_masks, gt_has_mask = self._padded_targets(targets, device)
+        gt_valid = torch.arange(gt_labels.shape[1], device=device).unsqueeze(0) < gt_counts.unsqueeze(1)
         if self.ignore_classes:
-            targets = self._without_ignored_classes(targets, device)
+            # Ignored GTs stay in their padded slot but become padding, so slots (and the GT
+            # index the mask loss reads) keep addressing the matching mask.
+            ignored = torch.tensor(self.ignore_classes, device=device)
+            gt_valid = gt_valid & ~torch.isin(gt_labels, ignored)
+            gt_counts = gt_valid.sum(dim=1)
+            gt_boxes, gt_labels, gt_masks, gt_has_mask = self._compact(
+                gt_valid, gt_boxes, gt_labels, gt_masks, gt_has_mask
+            )
 
         # Split predictions into class scores and bbox deltas
         all_cls = []
@@ -483,42 +632,25 @@ class YOLOv8Loss(nn.Module):
         # pred_reg is (cx, cy, w, h) in pixel space relative to anchors
         pred_bboxes = self._decode_bboxes(pred_reg, anchors)  # (B, A, 4) cxcywh pixel
 
-        # Convert GT bboxes from normalized to pixel coords
-        # We need the image size — assume all same size from the batch
-        img_size = predictions[0].shape[2] * self.strides[0]  # approximate
-        # Better: use the actual feature sizes to compute
+        # The image size follows from the first feature map and its stride.
         img_h = feat_sizes[0][0] * self.strides[0]
         img_w = feat_sizes[0][1] * self.strides[0]
 
-        gt_bboxes_pixel = []
-        gt_labels_list = targets["labels"]
-        for b in range(B):
-            gt_b = targets["bboxes"][b]  # (N, 4) normalized cxcywh
-            if len(gt_b) > 0:
-                gt_pixel = gt_b.clone()
-                gt_pixel[:, 0] *= img_w  # cx
-                gt_pixel[:, 1] *= img_h  # cy
-                gt_pixel[:, 2] *= img_w  # w
-                gt_pixel[:, 3] *= img_h  # h
-                gt_bboxes_pixel.append(gt_pixel)
-            else:
-                gt_bboxes_pixel.append(gt_b)
+        # GT boxes: normalized -> pixel coordinates (padding stays zero).
+        scale = gt_boxes.new_tensor([img_w, img_h, img_w, img_h])
+        gt_boxes_pixel = gt_boxes * scale
 
         # TAL assignment
         pred_scores = pred_cls.sigmoid()
         target_classes, target_bboxes, target_scores, fg_mask = self.assigner(
-            pred_scores, pred_bboxes, gt_labels_list, gt_bboxes_pixel, anchors, self.strides,
-            anchor_strides=anchor_strides, num_per_level=num_per_level,
+            pred_scores, pred_bboxes, gt_labels, gt_boxes_pixel, anchors, self.strides,
+            anchor_strides=anchor_strides, num_per_level=num_per_level, gt_counts=gt_counts,
         )
 
         # Build target_cls: one-hot for positives (binary), zero for negatives
-        target_cls = torch.zeros_like(pred_cls)  # (B, A, nc)
-        for b in range(B):
-            pos = fg_mask[b]
-            if pos.any():
-                pos_classes = target_classes[b, pos]  # (K,)
-                pos_classes = pos_classes.clamp(0, self.num_classes - 1)
-                target_cls[b, pos] = F.one_hot(pos_classes, self.num_classes).float()
+        pos_classes = target_classes.clamp(0, self.num_classes - 1)
+        target_cls = F.one_hot(pos_classes, self.num_classes).to(pred_cls.dtype)
+        target_cls = target_cls * fg_mask.unsqueeze(-1)
 
         # --- Classification loss: Focal BCE ---
         # BCE with logits (element-wise)
@@ -536,129 +668,152 @@ class YOLOv8Loss(nn.Module):
         # Sum over classes, then over anchors
         weighted = (focal_weight * cls_weights * bce).sum(dim=-1)  # (B, A)
 
-        # Normalize by number of positive anchors
-        num_pos = fg_mask.sum().clamp(min=1)
-        if self.ignore_classes and not fg_mask.any():
+        # Normalize by number of positive anchors (all on device: no host synchronisation)
+        n_fg = fg_mask.sum()
+        num_pos = n_fg.clamp(min=1).to(weighted.dtype)
+        if self.ignore_classes:
             # A batch of healthy fruit alone has no positives once the mango box is gone.
             # Dividing by 1 would turn its summed negatives into a spike.
-            num_pos = torch.tensor(float(B * self.assigner.topk), device=device)
+            num_pos = torch.where(
+                n_fg == 0, torch.full_like(num_pos, float(B * self.assigner.topk)), num_pos
+            )
         cls_loss = weighted.sum() / num_pos
 
         # --- Regression loss (CIoU on positives only) ---
-        box_loss = torch.tensor(0.0, device=device)
-        if fg_mask.any():
-            for b in range(B):
-                pos = fg_mask[b]
-                if not pos.any():
-                    continue
-                pred_pos = pred_bboxes[b, pos]  # (K, 4) cxcywh
-                target_pos = target_bboxes[b, pos]  # (K, 4) cxcywh
-
-                # Convert to xyxy for CIoU
-                pred_xyxy = TaskAlignedAssigner._cxcywh_to_xyxy(pred_pos)
-                target_xyxy = TaskAlignedAssigner._cxcywh_to_xyxy(target_pos)
-
-                ciou = complete_box_iou_loss(pred_xyxy, target_xyxy, reduction="sum")
-                box_loss = box_loss + ciou
-
-            box_loss = box_loss / num_pos
+        # Dense over every anchor and masked by `fg_mask`, rather than gathering the positives
+        # (`pred[fg_mask]` would synchronise). Negatives are compared with their own detached
+        # prediction (CIoU loss 0, gradient 0), so no degenerate target reaches the loss.
+        safe_target = torch.where(fg_mask.unsqueeze(-1), target_bboxes, pred_bboxes.detach())
+        ciou = complete_box_iou_loss(
+            TaskAlignedAssigner._cxcywh_to_xyxy(pred_bboxes).reshape(-1, 4),
+            TaskAlignedAssigner._cxcywh_to_xyxy(safe_target).reshape(-1, 4),
+            reduction="none",
+        ).view_as(fg_mask)
+        box_loss = (ciou * fg_mask).sum() / num_pos
 
         # --- Total loss ---
         total_loss = self.box_weight * box_loss + self.cls_weight * cls_loss
 
-        loss_dict = {
-            "box_loss": box_loss.item(),
-            "cls_loss": cls_loss.item(),
-        }
+        loss_dict = {"box_loss": self._log(box_loss), "cls_loss": self._log(cls_loss)}
 
         # --- Mask loss (YOLOv8-seg), on the anchors the TAL assignment made positive ---
-        if mask_outputs is not None and "masks" in targets:
+        if mask_outputs is not None and gt_masks is not None:
             mask_loss = self._mask_loss(
-                mask_outputs, targets, fg_mask, self.assigner.last_gt_idx, img_h, img_w
+                mask_outputs, gt_boxes, gt_masks, gt_has_mask, fg_mask, self.assigner.last_gt_idx
             )
             total_loss = total_loss + self.mask_weight * mask_loss
-            loss_dict["mask_loss"] = mask_loss.item()
+            loss_dict["mask_loss"] = self._log(mask_loss)
 
         return total_loss, loss_dict
+
+    def _log(self, value: torch.Tensor):
+        """A loss term as it is logged: a float, or (log_as_tensors) a detached tensor."""
+        return value.detach() if self.log_as_tensors else value.item()
+
+    @staticmethod
+    def _padded_targets(targets: dict, device: torch.device):
+        """The targets of a batch as padded tensors, whichever form they arrive in."""
+        if "bboxes_padded" in targets:
+            masks = targets.get("masks_padded")
+            has_mask = targets.get("has_mask_padded")
+            counts = targets["counts"].to(device)
+            if masks is not None and has_mask is None:
+                n = targets["labels_padded"].shape[1]
+                has_mask = torch.arange(n, device=device).unsqueeze(0) < counts.unsqueeze(1)
+            return (
+                targets["bboxes_padded"].to(device),
+                targets["labels_padded"].to(device),
+                counts,
+                masks.to(device) if masks is not None else None,
+                has_mask.to(device) if has_mask is not None else None,
+            )
+        return pad_targets(targets, device=device)
+
+    @staticmethod
+    def _compact(valid, boxes, labels, masks, has_mask):
+        """Left-pack the valid GTs of every image, order kept (ignored GTs drop out).
+
+        The same GT order and indices the list form gets from filtering the per-image lists.
+        """
+        order = torch.argsort((~valid).to(torch.int8), dim=1, stable=True)  # valid first
+        boxes = boxes.gather(1, order.unsqueeze(-1).expand(-1, -1, 4))
+        labels = labels.gather(1, order)
+        if masks is not None:
+            masks = masks[torch.arange(masks.shape[0], device=masks.device).unsqueeze(1), order]
+            has_mask = has_mask.gather(1, order)
+        return boxes, labels, masks, has_mask
 
     @staticmethod
     def _mask_loss(
         mask_outputs: dict,
-        targets: dict,
+        gt_boxes: torch.Tensor,
+        gt_masks: torch.Tensor,
+        gt_has_mask: torch.Tensor,
         fg_mask: torch.Tensor,
         gt_idx: torch.Tensor,
-        img_h: float,
-        img_w: float,
     ) -> torch.Tensor:
         """Mean, over positive anchors with a GT mask, of the BCE inside the GT box.
 
         Per positive anchor the predicted mask is `sigmoid(coef . protos)`; it is compared
         with its GT instance mask at prototype resolution, only inside the GT box, and the
         BCE is divided by the box area in prototype pixels (the YOLOv8-seg normalisation).
+
+        Batched: each image's positives are packed into a (B, K, nm) coefficient block and
+        multiplied with its prototypes in one `bmm`; empty slots carry weight 0. K, the
+        largest positive count of the batch, is read once from the device.
+
+        Args:
+            gt_boxes: (B, N, 4) normalized cxcywh, padded.
+            gt_masks: (B, N, h, w) instance masks, padded.
+            gt_has_mask: (B, N) bool.
+            fg_mask / gt_idx: (B, A) positives and the GT index each one was assigned to.
         """
         protos = mask_outputs["protos"].float()  # (B, nm, h, w)
         coefs = torch.cat(
             [c.float().flatten(2).permute(0, 2, 1) for c in mask_outputs["mask_coefs"]], dim=1
         )  # (B, A, nm)
         B, nm, h, w = protos.shape
-        has_mask_all = targets.get("has_mask")
-        total = protos.new_zeros(())
-        count = 0
-        for b in range(B):
-            if len(targets["bboxes"][b]) == 0:
-                continue
-            idx = gt_idx[b][fg_mask[b]]  # (K,) GT index of each positive anchor
-            if idx.numel() == 0:
-                continue
-            masks_b = targets["masks"][b]
-            has = (
-                has_mask_all[b].to(idx.device)[idx]
-                if has_mask_all is not None
-                else torch.ones_like(idx, dtype=torch.bool)
-            )
-            if not has.any():
-                continue
-            idx = idx[has]
-            coef = coefs[b][fg_mask[b]][has]  # (K, nm)
-            logits = (coef @ protos[b].flatten(1)).view(-1, h, w)
+        device = protos.device
+        if gt_masks.shape[1] == 0:  # no GT in the whole batch (static shape, no sync)
+            return protos.sum() * 0.0
 
-            gt = masks_b[idx].to(logits.device).float()
-            if gt.shape[-2:] != (h, w):
-                gt = (F.interpolate(gt[:, None], size=(h, w), mode="area")[:, 0] > 0.5).float()
-
-            box = targets["bboxes"][b][idx]  # (K, 4) normalized cxcywh
-            x1 = (box[:, 0] - box[:, 2] / 2) * w
-            x2 = (box[:, 0] + box[:, 2] / 2) * w
-            y1 = (box[:, 1] - box[:, 3] / 2) * h
-            y2 = (box[:, 1] + box[:, 3] / 2) * h
-            cols = torch.arange(w, device=logits.device, dtype=logits.dtype).view(1, 1, w)
-            rows = torch.arange(h, device=logits.device, dtype=logits.dtype).view(1, h, 1)
-            crop = (
-                (cols >= x1.view(-1, 1, 1)) & (cols < x2.view(-1, 1, 1))
-                & (rows >= y1.view(-1, 1, 1)) & (rows < y2.view(-1, 1, 1))
-            ).to(logits.dtype)
-
-            bce = F.binary_cross_entropy_with_logits(logits, gt, reduction="none")
-            per_anchor = (bce * crop).sum(dim=(1, 2)) / crop.sum(dim=(1, 2)).clamp(min=1.0)
-            total = total + per_anchor.sum()
-            count += per_anchor.numel()
-        if count == 0:
+        gt_safe = gt_idx.clamp(min=0)
+        take = fg_mask & gt_has_mask.gather(1, gt_safe)  # (B, A) positives that own a mask
+        n_per_image = take.sum(dim=1)
+        k_max = int(n_per_image.max().item())  # the one host read of the mask loss
+        if k_max == 0:
             return protos.sum() * 0.0  # keeps the graph, adds nothing
-        return total / count
 
-    def _without_ignored_classes(self, targets: dict, device: torch.device) -> dict:
-        ignored = torch.tensor(self.ignore_classes, device=device)
-        keep = [~torch.isin(labels, ignored) for labels in targets["labels"]]
-        filtered = {
-            **targets,
-            "bboxes": [boxes[mask] for boxes, mask in zip(targets["bboxes"], keep)],
-            "labels": [labels[mask] for labels, mask in zip(targets["labels"], keep)],
-        }
-        # Instance masks travel with their boxes.
-        for key in ("masks", "has_mask"):
-            if key in targets:
-                filtered[key] = [values[mask] for values, mask in zip(targets[key], keep)]
-        return filtered
+        # Slot of every taken anchor inside its image's block, in anchor order.
+        rank = take.long().cumsum(dim=1) - 1  # (B, A)
+        b_idx = torch.arange(B, device=device).unsqueeze(1).expand_as(take)
+        slot_b, slot_k = b_idx[take], rank[take]
+        coef_block = coefs.new_zeros(B, k_max, nm)
+        coef_block[slot_b, slot_k] = coefs[take]
+        gt_block = gt_idx.new_zeros(B, k_max)
+        gt_block[slot_b, slot_k] = gt_safe[take]
+        weight = (torch.arange(k_max, device=device).unsqueeze(0) < n_per_image.unsqueeze(1))  # (B, K)
+
+        logits = torch.bmm(coef_block, protos.flatten(2)).view(B, k_max, h, w)
+
+        gt = gt_masks[b_idx[:, :1].expand(B, k_max), gt_block].to(device).float()  # (B, K, h, w)
+        if gt.shape[-2:] != (h, w):
+            gt = (
+                F.interpolate(gt.flatten(0, 1)[:, None], size=(h, w), mode="area")[:, 0] > 0.5
+            ).float().view(B, k_max, h, w)
+
+        box = gt_boxes.gather(1, gt_block.unsqueeze(-1).expand(-1, -1, 4))  # (B, K, 4)
+        x1 = ((box[..., 0] - box[..., 2] / 2) * w).unsqueeze(-1).unsqueeze(-1)
+        x2 = ((box[..., 0] + box[..., 2] / 2) * w).unsqueeze(-1).unsqueeze(-1)
+        y1 = ((box[..., 1] - box[..., 3] / 2) * h).unsqueeze(-1).unsqueeze(-1)
+        y2 = ((box[..., 1] + box[..., 3] / 2) * h).unsqueeze(-1).unsqueeze(-1)
+        cols = torch.arange(w, device=device, dtype=logits.dtype).view(1, 1, 1, w)
+        rows = torch.arange(h, device=device, dtype=logits.dtype).view(1, 1, h, 1)
+        crop = ((cols >= x1) & (cols < x2) & (rows >= y1) & (rows < y2)).to(logits.dtype)
+
+        bce = F.binary_cross_entropy_with_logits(logits, gt, reduction="none")
+        per_anchor = (bce * crop).sum(dim=(2, 3)) / crop.sum(dim=(2, 3)).clamp(min=1.0)  # (B, K)
+        return (per_anchor * weight).sum() / weight.sum()
 
     @staticmethod
     def _decode_bboxes(

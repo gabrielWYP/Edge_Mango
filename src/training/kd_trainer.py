@@ -50,6 +50,7 @@ from .kd_crosshead import NIR_GATES, compute_gate, crosshead_loss, nir_dependenc
 from .kd_loss import KDLoss
 from .loop import Trainer
 from .neck_norm import neck_norm_from_checkpoint
+from .perf import GraphedForward
 from .precision import autocast_ctx
 from .strides import STUDENT_STRIDES, select_by_strides
 from src.models.master.master_model import MasterModel
@@ -119,6 +120,12 @@ class KDTrainer(Trainer):
             })
         self.kd_adapters.to(self.device)
         self.teacher.to(self.device)
+        # The teacher is frozen, in eval mode and fed fixed shapes: on CUDA its forward is
+        # replayed as one CUDA graph instead of being relaunched op by op every step. Eager on
+        # CPU, on a new shape and when capture fails (see `perf.GraphedForward`).
+        self._graphed_teacher = GraphedForward(
+            self._teacher_forward, enabled=self.device.type == "cuda"
+        )
 
         # KD loss
         self.kd_criterion = KDLoss(
@@ -198,13 +205,31 @@ class KDTrainer(Trainer):
               f"loaded from {ckpt_path}")
         return teacher
 
+    def _teacher_forward(self, *inputs: torch.Tensor) -> dict:
+        """The teacher's eager forward on the tensors `_teacher_inputs` selects (graph-captured on CUDA)."""
+        return self.teacher(*inputs)
+
+    def _teacher_inputs(self, rgb: torch.Tensor, nir: torch.Tensor) -> tuple[torch.Tensor, ...]:
+        """The tensors the teacher reads: nothing else is copied into its graph's buffers.
+
+        A NIR-reading teacher gets the NIR as a 3-channel image, built here, outside the graph
+        (it creates small constants from host values, which a capture cannot do).
+        """
+        if self.config.teacher_kind == "student":
+            if self.config.teacher_input == "rgbnir":
+                return (rgb, nir)
+            if self.config.teacher_input == "nir":
+                return (nir_as_rgb_tensor(nir, self.config.nir_mean, self.config.nir_std),)
+            return (rgb,)
+        return (rgb, nir)
+
+    def _run_teacher(self, rgb: torch.Tensor, nir: torch.Tensor) -> dict:
+        """Teacher forward on a batch, through the CUDA graph when there is one. Call under no_grad."""
+        return self._graphed_teacher(*self._teacher_inputs(rgb, nir))
+
     def _student_teacher_output(self, rgb: torch.Tensor, nir: torch.Tensor) -> dict:
         """Full output of a student teacher on the modality it reads. Call under no_grad."""
-        if self.config.teacher_input == "rgbnir":
-            return self.teacher(rgb, nir)
-        if self.config.teacher_input == "nir":
-            return self.teacher(nir_as_rgb_tensor(nir, self.config.nir_mean, self.config.nir_std))
-        return self.teacher(rgb)
+        return self._run_teacher(rgb, nir)
 
     def _teacher_features(self, rgb: torch.Tensor, nir: torch.Tensor) -> dict:
         """The teacher's features at the student's levels. Call under no_grad."""
@@ -216,7 +241,7 @@ class KDTrainer(Trainer):
                 "head_cls": t_out["distill_head_cls"],
                 "head_reg": t_out["distill_head_reg"],
             }
-        t_out = self.teacher(rgb, nir)
+        t_out = self._run_teacher(rgb, nir)
         # `distill_backbone` (renamed from `distill_backbone_rgb`,
         # fusion-redesign W7/W4): the teacher's backbone is now
         # a single early-fused stream, so this is no longer an
@@ -378,8 +403,7 @@ class KDTrainer(Trainer):
 
         for batch in self.train_loader:
             rgb, nir = self._device_inputs(batch, self.train_loader)
-            bboxes = [b.to(self.device) for b in batch["bboxes"]]
-            labels = [l.to(self.device) for l in batch["labels"]]
+            targets, bboxes, labels = self._device_targets(batch)
 
             optimizer.zero_grad(set_to_none=True)
 
@@ -408,7 +432,6 @@ class KDTrainer(Trainer):
                         }
 
                     # --- Detection loss ---
-                    targets = self._loss_targets(batch, bboxes, labels)
                     mask_outputs = self._mask_outputs(s_out)
                     if mask_outputs is None:
                         det_loss, det_dict = self.criterion(s_out["preds"], targets)
@@ -430,7 +453,7 @@ class KDTrainer(Trainer):
                 # NaN / Inf guard: skip batch if loss explodes. Always
                 # counted — see D-G docstring above for why this must not
                 # also be silent.
-                if torch.isnan(loss) or torch.isinf(loss):
+                if not bool(torch.isfinite(loss)):
                     nan_skipped += 1
                     print(f"  [NaN] Skipping batch (loss={loss.item():.2f}), "
                           f"nan_skipped={nan_skipped}")
@@ -484,8 +507,8 @@ class KDTrainer(Trainer):
             total_cls += det_dict["cls_loss"]
             total_box += det_dict["box_loss"]
             total_mask += det_dict.get("mask_loss", 0.0)
-            total_kd += kd_loss.item()
-            total_loss += loss.item()
+            total_kd += kd_loss.detach()
+            total_loss += loss.detach()
             steps_taken += 1
             self.global_step += 1
 
@@ -499,14 +522,14 @@ class KDTrainer(Trainer):
             )
 
         result = {
-            "cls_loss": total_cls / steps_taken,
-            "box_loss": total_box / steps_taken,
-            "kd_loss": total_kd / steps_taken,
-            "total_loss": total_loss / steps_taken,
+            "cls_loss": float(total_cls) / steps_taken,
+            "box_loss": float(total_box) / steps_taken,
+            "kd_loss": float(total_kd) / steps_taken,
+            "total_loss": float(total_loss) / steps_taken,
             "oom_skipped": float(oom_skipped),
             "nan_skipped": float(nan_skipped),
             "steps_taken": float(steps_taken),
         }
         if self.config.task == "segment":
-            result["mask_loss"] = total_mask / steps_taken
+            result["mask_loss"] = float(total_mask) / steps_taken
         return result

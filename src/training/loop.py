@@ -157,6 +157,8 @@ class Trainer:
             assigner_level_ranges=getattr(config, "assigner_level_ranges", None),
             assigner_collect_stats=getattr(config, "assigner_collect_stats", False),
             ignore_classes=config.ignore_classes,
+            # The epoch loop sums the terms on the device and converts them once per epoch.
+            log_as_tensors=True,
         ).to(self.device)
 
         # Mixed precision: fp32 | fp16 | bf16 (src/training/precision.py).
@@ -787,8 +789,7 @@ class Trainer:
 
         for batch in self.train_loader:
             rgb, nir = self._device_inputs(batch, self.train_loader)
-            bboxes = [b.to(self.device) for b in batch["bboxes"]]
-            labels = [l.to(self.device) for l in batch["labels"]]
+            targets, bboxes, labels = self._device_targets(batch)
 
             try:
                 with autocast_ctx(self.device.type, self.config.precision):
@@ -798,7 +799,6 @@ class Trainer:
                         output = self.model(rgb, nir)
                     predictions = output["preds"]
 
-                    targets = self._loss_targets(batch, bboxes, labels)
                     mask_outputs = self._mask_outputs(output)
                     if mask_outputs is None:
                         loss, loss_dict = self.criterion(predictions, targets)
@@ -809,7 +809,7 @@ class Trainer:
                 # counted — see D-G docstring above for why this must not
                 # also be silent. Checked on the unscaled loss so the
                 # reported/counted value is independent of grad_accum_steps.
-                if torch.isnan(loss) or torch.isinf(loss):
+                if not bool(torch.isfinite(loss)):
                     nan_skipped += 1
                     print(f"  [NaN] Skipping batch (loss={loss.item():.2f}), "
                           f"nan_skipped={nan_skipped}")
@@ -862,7 +862,7 @@ class Trainer:
             total_cls += loss_dict["cls_loss"]
             total_box += loss_dict["box_loss"]
             total_mask += loss_dict.get("mask_loss", 0.0)
-            total_loss += loss.item()
+            total_loss += loss.detach()
             micro_batches += 1
             self.global_step += 1
 
@@ -881,27 +881,61 @@ class Trainer:
                 "openspec/changes/fusion-redesign/design.md D-G."
             )
 
+        # The terms were summed on the device (no per-step host synchronisation); this is the
+        # one conversion of the epoch.
         result = {
-            "cls_loss": total_cls / micro_batches,
-            "box_loss": total_box / micro_batches,
-            "total_loss": total_loss / micro_batches,
+            "cls_loss": float(total_cls) / micro_batches,
+            "box_loss": float(total_box) / micro_batches,
+            "total_loss": float(total_loss) / micro_batches,
             "oom_skipped": float(oom_skipped),
             "nan_skipped": float(nan_skipped),
             "steps_taken": float(steps_taken),
         }
         if self.config.task == "segment":
-            result["mask_loss"] = total_mask / micro_batches
+            result["mask_loss"] = float(total_mask) / micro_batches
         for name, values in module_grad_norms.items():
             result[f"grad_norm_{name}"] = sum(values) / len(values)
         return result
 
-    def _loss_targets(self, batch: dict, bboxes: list, labels: list) -> dict:
-        """Loss targets of a batch: boxes and labels, plus the instance masks when it has any."""
-        targets = {"bboxes": bboxes, "labels": labels}
-        if "masks" in batch:
-            targets["masks"] = [m.to(self.device) for m in batch["masks"]]
-            targets["has_mask"] = [h.to(self.device) for h in batch["has_mask"]]
-        return targets
+    def _device_targets(self, batch: dict) -> tuple[dict, list, list]:
+        """A batch's targets on the device: the loss targets, plus per-image boxes and labels.
+
+        A batch from `collate_fn` carries its targets padded (`bboxes_padded`, `labels_padded`,
+        `counts`, and `masks_padded` / `has_mask_padded` for a mask dataset): each moves to the
+        device in ONE non-blocking copy instead of two or four per image, and the loss consumes
+        the padded form as it is. The per-image lists the KD gates and region weights read are
+        then views into the padded tensors (no copy, no synchronisation: the counts are host
+        values). A batch without the padded form (hand-built batches, other loaders) takes the
+        per-image path, whose loss result is the same.
+        """
+        if "bboxes_padded" not in batch:
+            bboxes = [b.to(self.device) for b in batch["bboxes"]]
+            labels = [l.to(self.device) for l in batch["labels"]]
+            targets = {"bboxes": bboxes, "labels": labels}
+            if "masks" in batch:
+                targets["masks"] = [m.to(self.device) for m in batch["masks"]]
+                targets["has_mask"] = [h.to(self.device) for h in batch["has_mask"]]
+            return targets, bboxes, labels
+
+        def move(tensor: torch.Tensor) -> torch.Tensor:
+            return tensor.to(self.device, non_blocking=True)
+
+        padded_boxes = move(batch["bboxes_padded"])
+        padded_labels = move(batch["labels_padded"])
+        counts_host = batch["counts"].tolist()
+        bboxes = [padded_boxes[i, :n] for i, n in enumerate(counts_host)]
+        labels = [padded_labels[i, :n] for i, n in enumerate(counts_host)]
+        targets = {
+            "bboxes_padded": padded_boxes,
+            "labels_padded": padded_labels,
+            "counts": move(batch["counts"]),
+            "bboxes": bboxes,
+            "labels": labels,
+        }
+        if "masks_padded" in batch:
+            targets["masks_padded"] = move(batch["masks_padded"])
+            targets["has_mask_padded"] = move(batch["has_mask_padded"])
+        return targets, bboxes, labels
 
     @staticmethod
     def _mask_outputs(output: dict) -> dict | None:
