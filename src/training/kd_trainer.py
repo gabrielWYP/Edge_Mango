@@ -206,18 +206,21 @@ class KDTrainer(Trainer):
         return teacher
 
     def _teacher_forward(self, *inputs: torch.Tensor) -> dict:
-        """The teacher's eager forward on the inputs `_teacher_inputs` selects (graph-captured on CUDA)."""
-        if self.config.teacher_kind == "student" and self.config.teacher_input == "nir":
-            (nir,) = inputs
-            return self.teacher(nir_as_rgb_tensor(nir, self.config.nir_mean, self.config.nir_std))
+        """The teacher's eager forward on the tensors `_teacher_inputs` selects (graph-captured on CUDA)."""
         return self.teacher(*inputs)
 
     def _teacher_inputs(self, rgb: torch.Tensor, nir: torch.Tensor) -> tuple[torch.Tensor, ...]:
-        """The tensors the teacher reads: nothing else is copied into its graph's buffers."""
+        """The tensors the teacher reads: nothing else is copied into its graph's buffers.
+
+        A NIR-reading teacher gets the NIR as a 3-channel image, built here, outside the graph
+        (it creates small constants from host values, which a capture cannot do).
+        """
         if self.config.teacher_kind == "student":
             if self.config.teacher_input == "rgbnir":
                 return (rgb, nir)
-            return (nir,) if self.config.teacher_input == "nir" else (rgb,)
+            if self.config.teacher_input == "nir":
+                return (nir_as_rgb_tensor(nir, self.config.nir_mean, self.config.nir_std),)
+            return (rgb,)
         return (rgb, nir)
 
     def _run_teacher(self, rgb: torch.Tensor, nir: torch.Tensor) -> dict:

@@ -67,7 +67,9 @@ class _CudaGraphBackend:
         torch.cuda.synchronize()
 
         graph = torch.cuda.CUDAGraph()
-        with torch.cuda.graph(graph):
+        # thread_local: the DataLoader's pin-memory thread allocates pinned buffers while we
+        # capture, and the default "global" mode would invalidate the capture over that.
+        with torch.cuda.graph(graph, capture_error_mode="thread_local"):
             static_out = fn(*static_in)
 
         def replay(inputs: list[torch.Tensor]):

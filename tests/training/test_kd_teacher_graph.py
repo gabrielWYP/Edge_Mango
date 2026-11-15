@@ -116,7 +116,9 @@ def test_replayed_teacher_gives_the_same_epoch_as_the_eager_teacher(tmp_path, te
 
 
 def test_the_teacher_sees_only_the_tensors_it_reads(tmp_path) -> None:
-    rgb, nir = torch.zeros(1), torch.ones(1)
-    assert len(_trainer(tmp_path / "a", "rgb")._teacher_inputs(rgb, nir)) == 1
-    assert _trainer(tmp_path / "b", "nir")._teacher_inputs(rgb, nir)[0] is nir
+    rgb, nir = torch.zeros(1, 3, 8, 8), torch.ones(1, 1, 8, 8)
+    only_rgb = _trainer(tmp_path / "a", "rgb")._teacher_inputs(rgb, nir)
+    assert len(only_rgb) == 1 and only_rgb[0] is rgb
+    nir_as_rgb = _trainer(tmp_path / "b", "nir")._teacher_inputs(rgb, nir)
+    assert len(nir_as_rgb) == 1 and nir_as_rgb[0].shape == (1, 3, 8, 8)  # built outside the graph
     assert len(_trainer(tmp_path / "c", "rgbnir")._teacher_inputs(rgb, nir)) == 2
