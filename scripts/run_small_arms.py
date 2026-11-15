@@ -34,6 +34,10 @@ MSE feature-KD arms (`kd_rgb_seg`, `kd_rgbnir_seg`) are defined and runnable by 
 for the polygon v4 dataset, where its boxes are the tight boxes of the polygons. The preset `thesis` is `seg` plus this
 arm: the mask supervision effect is `master_rgb_seg - master_rgb_det`.
 
+`crosskd_nir_seg` is exploratory: an RGB student distilled with CrossKD from `master_nir_seg`. The preset
+`thesis_explore` (that arm alone, 640 px like `thesis`) is run after `thesis` finishes, with the same
+`--checkpoints-root`: it does not train the teacher, it reads `master_nir_seg` of each fold and seed from there.
+
 Every run is evaluated on val and test, with predictions and metrics_v4.json, under
 `<reports-root>/<arm>/fold<k>_seed<S>/<split>/`, the layout of `scripts/aggregate_kfold.py`.
 Re-run the same command to resume: finished steps are skipped, and an interrupted training continues from
@@ -113,6 +117,9 @@ def _segment_twins(arms: dict[str, Arm]) -> dict[str, Arm]:
 ARMS |= _segment_twins(ARMS)
 # Detect student on polygon-derived boxes: the command of `est_rgb`, under its own output folder (preset `thesis`).
 ARMS[DETECT_MASTER_ARM] = Arm()
+# Exploratory (preset `thesis_explore`): `crosskd_rgb_seg` with the NIR-only segment master as teacher. The student is RGB
+# (3 channels, reads no NIR); `arm_input` of the teacher is "nir", so the KD trainer feeds it the NIR-as-RGB images.
+ARMS["crosskd_nir_seg"] = replace(ARMS["crosskd_rgb_seg"], teacher=segment_arm_name("est_nir"))
 # kd_nir and the crosskd arms are outside the plan: they run only when `--arms` names them.
 PLANNED_ARMS = ["est_rgb", "est_rgbnir", "est_nir", "kd_rgb", "kd_rgbnir"]
 
@@ -157,7 +164,7 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--mask-weight", type=float, default=7.5, help="mask loss gain of the `_seg` arms")
     parser.add_argument("--mask-ratio", type=int, default=4, help="input size over mask size of the `_seg` arms")
     parser.add_argument("--image-size", type=int, default=None,
-                        help=f"input side of every run; default {THESIS_IMAGE_SIZE} with --arms-preset thesis, "
+                        help=f"input side of every run; default {THESIS_IMAGE_SIZE} with --arms-preset thesis or thesis_explore, "
                         "else the config value")
     parser.add_argument("--jobs", type=int, default=1, help="runs at the same time")
     parser.add_argument("--no-resume", action="store_true", help="train interrupted runs from scratch")
@@ -166,7 +173,7 @@ def parse_args(argv=None) -> argparse.Namespace:
     if args.arms_preset and args.arms:
         parser.error("--arms-preset and --arms are alternatives")
     args.arms = list(SEGMENT_PRESETS[args.arms_preset]) if args.arms_preset else args.arms or PLANNED_ARMS
-    if args.image_size is None and args.arms_preset == "thesis":
+    if args.image_size is None and args.arms_preset in ("thesis", "thesis_explore"):
         args.image_size = THESIS_IMAGE_SIZE
     if args.image_size is not None and (args.image_size % STRIDE or args.image_size % args.mask_ratio):
         parser.error(f"--image-size must be a multiple of {STRIDE} and of --mask-ratio, got {args.image_size}")

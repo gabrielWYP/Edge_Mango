@@ -56,7 +56,7 @@ from src.evaluation.v4_metrics import (  # noqa: E402
 
 ZONES = ("centro", "izquierda", "derecha", "superior", "inferior")
 # The box AP per zone of a segment twin is as valid as its detect arm's; absent twins add no rows.
-ARMS = (*with_segment_twins(("est_rgb", "est_rgbnir", "kd_rgb", "kd_rgbnir", "est_nir")), "master_rgb_det")
+ARMS = (*with_segment_twins(("est_rgb", "est_rgbnir", "kd_rgb", "kd_rgbnir", "est_nir")), "master_rgb_det", "crosskd_nir_seg")
 RUN_DIR = re.compile(r"fold(\d+)_seed(\d+)")
 
 

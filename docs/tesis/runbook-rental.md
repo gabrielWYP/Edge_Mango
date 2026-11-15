@@ -109,6 +109,24 @@ total; CrossKD runs also forward a teacher, so they are slower than masters). Ad
 minutes in total per run). Example, only to show the arithmetic: 30 x 80 x 40 s / 3 = 32,000 s = 8.9 h; multiply by the
 hourly price. Measure instead of trusting the example.
 
+### Exploratory arm (after the thesis set)
+
+`crosskd_nir_seg` (RGB student, CrossKD from `master_nir_seg`; plan, section 11, second 2026-11-14 row) is **not** in the
+`thesis` preset. Run it only once the thesis set has finished, as a separate invocation with the same `$RUNS`: it reads the
+`master_nir_seg` checkpoints of each fold from there and trains nothing else (5 runs; 640 px is the default of the preset).
+
+```bash
+python scripts/run_small_arms.py --dataset $DATASET --weights $WEIGHTS --variant nano --epochs 80 \
+    --arms-preset thesis_explore --image-size $IMAGE_SIZE --folds 0 1 2 3 4 --seeds 42 --machine $MACHINE \
+    --pixel-cache-root $PIXEL --checkpoints-root $RUNS --reports-root $RUNS/reports --jobs 3 --dry-run | head -12
+scripts/remote/publish_folds.sh --runs-root $RUNS --dataset $DATASET --arms crosskd_nir_seg \
+    --tag thesis-runs-explore-<YYYYMMDD> --marker-dir $RUNS/.published_explore --every-min 10
+```
+
+Drop `--dry-run` to launch (the dry run shows only `crosskd_nir_seg` lines). The publisher keeps its own markers in
+`$RUNS/.published_explore`, so it does not clash with the one of the thesis set. The comparisons `crosskd_nir` and
+`crosskd_nir_vs_rgbnir` of `export_run_results.py` are exploratory and are reported descriptively.
+
 ## 5. Push progress to git (remote)
 
 ```bash
