@@ -5,6 +5,10 @@ Usage:
     python -m src.training.kd_train --config configs/kd_training.yaml
     python -m src.training.kd_train --config configs/kd_training.yaml --override kd_weight=0.5
     python -m src.training.kd_train --config configs/kd_training.yaml --override modality_ablation=nir_const
+
+On CUDA `torch.backends.cudnn.benchmark` is switched on (fixed input shapes, see
+`src.training.perf.enable_cudnn_benchmark`) and the frozen teacher forward runs as a CUDA graph
+(`src.training.perf.GraphedForward`); both change speed, not the registered protocol.
 """
 
 from __future__ import annotations
@@ -24,6 +28,7 @@ from src.training.threads import cap_main_threads
 from src.training.dataset import YOLODataset, build_dataloader, collate_fn, build_weighted_sampler
 from src.training.fusion_modes import DEFAULT_MODALITY_ABLATION, validate_kd_modality_ablation
 from src.training.kd_trainer import KDTrainer
+from src.training.perf import enable_cudnn_benchmark
 from src.training.run_artifacts import (
     build_versioned_stage_plan,
     collect_stage_results,
@@ -136,6 +141,8 @@ def main():
     torch.manual_seed(config.seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(config.seed)
+    # Fixed input shapes: let cudnn autotune its convolutions (CUDA only, see perf.py).
+    enable_cudnn_benchmark(config.device)
 
     print(f"KD Training Config:")
     print(f"  Teacher: {config.teacher_checkpoint}")

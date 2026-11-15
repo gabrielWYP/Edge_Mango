@@ -5,6 +5,9 @@ Usage:
     python -m src.training.train --config configs/training.yaml
     python -m src.training.train --config configs/training.yaml --override batch_size=4
     python -m src.training.train --config configs/training.yaml --override modality_ablation=nir_const
+
+On CUDA `torch.backends.cudnn.benchmark` is switched on (fixed input shapes, see
+`src.training.perf.enable_cudnn_benchmark`); it changes speed, not the registered protocol.
 """
 
 from __future__ import annotations
@@ -26,6 +29,7 @@ from src.training.dataset import YOLODataset, build_dataloader, collate_fn, buil
 from src.training.fusion_modes import DEFAULT_MODALITY_ABLATION
 from src.training.loop import Trainer
 from src.training.machine import apply_machine_profile, experiment_sha256, load_machine_profile
+from src.training.perf import enable_cudnn_benchmark
 from src.training.run_artifacts import (
     build_versioned_stage_plan,
     collect_stage_results,
@@ -192,6 +196,8 @@ def main():
     torch.manual_seed(config.seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(config.seed)
+    # Fixed input shapes: let cudnn autotune its convolutions (CUDA only, see perf.py).
+    enable_cudnn_benchmark(config.device)
 
     print(f"Config: model_type={config.model_type}, backbone={config.backbone_variant}, image_size={config.image_size}")
     if config.model_type == "student":

@@ -50,6 +50,7 @@ from .kd_crosshead import NIR_GATES, compute_gate, crosshead_loss, nir_dependenc
 from .kd_loss import KDLoss
 from .loop import Trainer
 from .neck_norm import neck_norm_from_checkpoint
+from .perf import GraphedForward
 from .precision import autocast_ctx
 from .strides import STUDENT_STRIDES, select_by_strides
 from src.models.master.master_model import MasterModel
@@ -119,6 +120,12 @@ class KDTrainer(Trainer):
             })
         self.kd_adapters.to(self.device)
         self.teacher.to(self.device)
+        # The teacher is frozen, in eval mode and fed fixed shapes: on CUDA its forward is
+        # replayed as one CUDA graph instead of being relaunched op by op every step. Eager on
+        # CPU, on a new shape and when capture fails (see `perf.GraphedForward`).
+        self._graphed_teacher = GraphedForward(
+            self._teacher_forward, enabled=self.device.type == "cuda"
+        )
 
         # KD loss
         self.kd_criterion = KDLoss(
@@ -198,13 +205,28 @@ class KDTrainer(Trainer):
               f"loaded from {ckpt_path}")
         return teacher
 
+    def _teacher_forward(self, *inputs: torch.Tensor) -> dict:
+        """The teacher's eager forward on the inputs `_teacher_inputs` selects (graph-captured on CUDA)."""
+        if self.config.teacher_kind == "student" and self.config.teacher_input == "nir":
+            (nir,) = inputs
+            return self.teacher(nir_as_rgb_tensor(nir, self.config.nir_mean, self.config.nir_std))
+        return self.teacher(*inputs)
+
+    def _teacher_inputs(self, rgb: torch.Tensor, nir: torch.Tensor) -> tuple[torch.Tensor, ...]:
+        """The tensors the teacher reads: nothing else is copied into its graph's buffers."""
+        if self.config.teacher_kind == "student":
+            if self.config.teacher_input == "rgbnir":
+                return (rgb, nir)
+            return (nir,) if self.config.teacher_input == "nir" else (rgb,)
+        return (rgb, nir)
+
+    def _run_teacher(self, rgb: torch.Tensor, nir: torch.Tensor) -> dict:
+        """Teacher forward on a batch, through the CUDA graph when there is one. Call under no_grad."""
+        return self._graphed_teacher(*self._teacher_inputs(rgb, nir))
+
     def _student_teacher_output(self, rgb: torch.Tensor, nir: torch.Tensor) -> dict:
         """Full output of a student teacher on the modality it reads. Call under no_grad."""
-        if self.config.teacher_input == "rgbnir":
-            return self.teacher(rgb, nir)
-        if self.config.teacher_input == "nir":
-            return self.teacher(nir_as_rgb_tensor(nir, self.config.nir_mean, self.config.nir_std))
-        return self.teacher(rgb)
+        return self._run_teacher(rgb, nir)
 
     def _teacher_features(self, rgb: torch.Tensor, nir: torch.Tensor) -> dict:
         """The teacher's features at the student's levels. Call under no_grad."""
@@ -216,7 +238,7 @@ class KDTrainer(Trainer):
                 "head_cls": t_out["distill_head_cls"],
                 "head_reg": t_out["distill_head_reg"],
             }
-        t_out = self.teacher(rgb, nir)
+        t_out = self._run_teacher(rgb, nir)
         # `distill_backbone` (renamed from `distill_backbone_rgb`,
         # fusion-redesign W7/W4): the teacher's backbone is now
         # a single early-fused stream, so this is no longer an
