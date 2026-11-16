@@ -185,7 +185,8 @@ def photo_metrics(scores, is_pos, threshold: float) -> dict:
     tn = int((~called & ~is_pos).sum())
     precision, recall, f1 = prf(tp, fp, fn)
     specificity = tn / (tn + fp) if (tn + fp) > 0 else math.nan
-    return {"precision": precision, "recall": recall, "f1": f1, "specificity": specificity}
+    return {"precision": precision, "recall": recall, "f1": f1, "specificity": specificity,
+            "discard_rate": 1 - specificity}
 
 
 def photo_operating_point(val_scores, val_pos, test_scores, test_pos, grid=THRESHOLD_GRID) -> tuple[float, dict]:
@@ -229,6 +230,125 @@ def photo_operating_table(photos: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(
         rows, columns=["arm", "fold", "photo_threshold", "photo_precision", "photo_recall", "photo_f1", "photo_specificity"]
     )
+
+
+def pick_threshold_for_recall(scores, is_pos, target: float, grid=THRESHOLD_GRID) -> tuple[float, bool]:
+    """Highest threshold whose photo-level recall reaches `target`; (lowest grid threshold, False) if none does."""
+    grid = sorted(float(t) for t in grid)
+    for t in reversed(grid):
+        if photo_metrics(scores, is_pos, t)["recall"] >= target - 1e-12:
+            return t, True
+    return grid[0], False
+
+
+def pick_threshold_fbeta(scores, is_pos, beta: float = 2.0, grid=THRESHOLD_GRID) -> float:
+    """Threshold maximising F-beta of the photo-level classification (ties to the higher threshold)."""
+    vals = []
+    for t in grid:
+        m = photo_metrics(scores, is_pos, t)
+        p, r = m["precision"], m["recall"]
+        ok = not (math.isnan(p) or math.isnan(r)) and (beta**2 * p + r) > 0
+        vals.append((1 + beta**2) * p * r / (beta**2 * p + r) if ok else 0.0)
+    vals = np.array(vals)
+    return float(np.array(grid, dtype=float)[vals >= vals.max() - 1e-12].max())
+
+
+def all_positive_baseline(n_pos: int, n_neg: int) -> dict:
+    """Trivial classifier that calls every photo damaged: recall 1, specificity 0, precision = prevalence."""
+    precision, recall, f1 = prf(n_pos, n_neg, 0)
+    return {"precision": precision, "recall": recall, "f1": f1, "specificity": 0.0}
+
+
+RULES = {  # prefix -> (label, how the threshold is chosen on val)
+    "r90": ("recall >= 0.90 en val", lambda s, p: pick_threshold_for_recall(s, p, 0.90)),
+    "r95": ("recall >= 0.95 en val", lambda s, p: pick_threshold_for_recall(s, p, 0.95)),
+    "f2": ("F2 máximo en val", lambda s, p: (pick_threshold_fbeta(s, p, 2.0), True)),
+}
+FIXED_THRESHOLD = 0.25  # the eval confidence threshold
+
+
+def _is_positive(d: pd.DataFrame) -> np.ndarray:
+    return (d["hour"].astype(str) != "sano").to_numpy()
+
+
+def photo_rules_table(photos: pd.DataFrame, fixed: float = FIXED_THRESHOLD) -> pd.DataFrame:
+    """Per (arm, fold): photo-level metrics at a fixed threshold and at val-chosen recall/F2 rules, plus baseline.
+
+    Columns are `<prefix>_<metric>`: `fix` (fixed threshold), `r90`, `r95`, `f2` (threshold chosen on val only and
+    applied to test; `_reached` is 1 when the val target was met). A fold lacking val or test is skipped.
+    """
+    prim = photos[photos["primary_metric_photo"] == 1]
+    rows = []
+    for (arm, fold), sub in prim.groupby(["arm", "fold"]):
+        val, test = sub[sub["split"] == "val"], sub[sub["split"] == "test"]
+        if val.empty or test.empty:
+            continue
+        vs, vp = val["max_damage_score"].to_numpy(float), _is_positive(val)
+        ts, tp_ = test["max_damage_score"].to_numpy(float), _is_positive(test)
+        row: dict = {"arm": arm, "fold": fold}
+
+        def put(prefix, thr, m):
+            row.update({f"{prefix}_threshold": thr, f"{prefix}_recall": m["recall"], f"{prefix}_specificity": m["specificity"],
+                        f"{prefix}_discard_rate": 1 - m["specificity"], f"{prefix}_precision": m["precision"],
+                        f"{prefix}_f1": m["f1"]})
+
+        put("fix", fixed, photo_metrics(ts, tp_, fixed))
+        for prefix, (_, choose) in RULES.items():
+            thr, reached = choose(vs, vp)
+            put(prefix, thr, photo_metrics(ts, tp_, thr))
+            row[f"{prefix}_reached"] = int(reached)
+        base = all_positive_baseline(int(tp_.sum()), int((~tp_).sum()))
+        row.update({"base_precision": base["precision"], "base_f1": base["f1"]})
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def box_fixed_table(pr_grid: pd.DataFrame, threshold: float = FIXED_THRESHOLD) -> pd.DataFrame:
+    """Per (arm, fold): test box precision/recall (IoU 0.5) at a fixed threshold."""
+    rows = []
+    for (arm, fold), sub in pr_grid[pr_grid["split"] == "test"].groupby(["arm", "fold"]):
+        p, r, _ = apply_threshold(sub, threshold)
+        rows.append({"arm": arm, "fold": fold, "boxfix_precision": p, "boxfix_recall": r})
+    return pd.DataFrame(rows, columns=["arm", "fold", "boxfix_precision", "boxfix_recall"])
+
+
+def operating_curve(photos: pd.DataFrame, arm: str, grid=THRESHOLD_GRID, split: str = "test") -> pd.DataFrame:
+    """Photo-level recall against healthy discard rate per threshold, mean and sd across folds."""
+    prim = photos[(photos["primary_metric_photo"] == 1) & (photos["arm"] == arm) & (photos["split"] == split)]
+    if prim.empty:
+        return pd.DataFrame(columns=["threshold", "recall", "recall_sd", "discard", "discard_sd", "n"])
+    rows = []
+    for t in grid:
+        recs, dis = [], []
+        for _, sub in prim.groupby("fold"):
+            m = photo_metrics(sub["max_damage_score"].to_numpy(float), _is_positive(sub), t)
+            recs.append(m["recall"])
+            dis.append(1 - m["specificity"])
+        rows.append({"threshold": t, "recall": np.nanmean(recs), "recall_sd": np.nanstd(recs, ddof=1) if len(recs) > 1 else 0.0,
+                     "discard": np.nanmean(dis), "discard_sd": np.nanstd(dis, ddof=1) if len(dis) > 1 else 0.0, "n": len(recs)})
+    return pd.DataFrame(rows)
+
+
+def hour_recall_table(photos: pd.DataFrame, target: float = 0.90) -> pd.DataFrame:
+    """Per (arm, fold): test photo recall at each capture hour, at the threshold that reaches `target` on val.
+
+    Hours absent from the data get no column (never 0). Healthy (`sano`) photos have no hour and are skipped.
+    """
+    prim = photos[photos["primary_metric_photo"] == 1]
+    rows = []
+    for (arm, fold), sub in prim.groupby(["arm", "fold"]):
+        val = sub[sub["split"] == "val"]
+        test_all = photos[(photos["arm"] == arm) & (photos["fold"] == fold) & (photos["split"] == "test")]
+        if val.empty or test_all.empty:
+            continue
+        thr, _ = pick_threshold_for_recall(val["max_damage_score"].to_numpy(float), _is_positive(val), target)
+        row: dict = {"arm": arm, "fold": fold, "threshold": thr}
+        hours = sorted({int(h) for h in test_all["hour"].astype(str) if h.lstrip("-").isdigit()})
+        for h in hours:
+            s = test_all.loc[test_all["hour"].astype(str) == str(h), "max_damage_score"].to_numpy(float)
+            row[f"hour_{h}"] = float((s >= thr).mean())
+        rows.append(row)
+    return pd.DataFrame(rows)
 
 
 def mean_pr_curve(pr_grid: pd.DataFrame, arm: str, split: str = "test") -> pd.DataFrame:
@@ -327,7 +447,13 @@ def build_test_frame(data: dict) -> pd.DataFrame:
     test = runs[runs["split"] == "test"].copy()
     test = test.merge(box_operating_table(data["pr"]), on=["arm", "fold"], how="left")
     test = test.merge(photo_operating_table(data["photos"]), on=["arm", "fold"], how="left")
+    test = test.merge(photo_rules_table(data["photos"]), on=["arm", "fold"], how="left")
+    test = test.merge(box_fixed_table(data["pr"]), on=["arm", "fold"], how="left")
     return test
+
+
+def build_hour_frame(data: dict, target: float = 0.90) -> pd.DataFrame:
+    return hour_recall_table(data["photos"], target)
 
 
 def build_val_frame(data: dict) -> pd.DataFrame:
@@ -350,6 +476,7 @@ T3_METRICS = [
     ("photo_recall", "Exhaustividad (foto)", 3),
     ("photo_specificity", "Especificidad (foto)", 3),
     ("photo_f1", "F1 (foto)", 3),
+    ("base_f1", "Línea base «todo positivo»: F1 (foto)", 3),
     ("v4.face_auroc.auroc", "AUROC de cara (sin umbral)", 3),
     ("v4.sano_fp_per_image.fp_per_image", "FP en sano por imagen (umbral fijo 0.25)", 2),
 ]
@@ -358,24 +485,61 @@ T4_METRICS = [
     ("val_ap50_class", "AP50 val, clase daño, en esa época", 3),
     ("val_latent_ap50", "AP50 latente en val (checkpoint elegido)", 3),
 ]
+T5_METRICS = [
+    ("fix_recall", "Exhaustividad por foto (sensibilidad en fotos dañadas)", 3),
+    ("fix_specificity", "Especificidad por foto (fotos sanas conservadas)", 3),
+    ("fix_precision", "Precisión por foto", 3),
+    ("fix_discard_rate", "Tasa de descarte de sanas (1 - especificidad)", 3),
+    ("base_f1", "Línea base «todo positivo»: F1 (foto)", 3),
+    ("boxfix_precision", "Precisión de cajas (IoU 0.5)", 3),
+    ("boxfix_recall", "Exhaustividad de cajas (IoU 0.5)", 3),
+]
+T6_METRICS = [
+    (f"{pre}_{col}", f"{label}: {name}", d)
+    for pre, (label, _) in RULES.items()
+    for col, name, d in [
+        ("threshold", "umbral elegido en val", 2),
+        ("reached", "objetivo alcanzado en val (1 = sí)", 2),
+        ("recall", "exhaustividad en prueba", 3),
+        ("specificity", "especificidad en prueba", 3),
+        ("discard_rate", "tasa de descarte de sanas en prueba", 3),
+        ("precision", "precisión en prueba", 3),
+    ]
+]
 TABLES = [
     ("T1_ap50_test", "Tabla T1. Detección y segmentación en prueba, IoU 0.5: AP50 latente de cajas y de máscaras. "
      "Media ± sd entre lotes y valor de cada lote de prueba.", "test", T1_METRICS),
     ("T2_ap30_test", "Tabla T2. Detección y segmentación en prueba, IoU 0.3: AP30 latente de cajas y de máscaras. "
      "Media ± sd entre lotes y valor de cada lote de prueba.", "test", T2_METRICS),
     ("T3_clasificacion_test", "Tabla T3. Clasificación en prueba con el punto de operación elegido solo en validación "
-     "(umbral de máximo F1 en val de cada lote, aplicado al test de ese lote), AUROC de cara y falsos positivos en sano.",
+     "(umbral de máximo F1 en val de cada lote, aplicado al test de ese lote), AUROC de cara y falsos positivos en sano. "
+     "La línea base «todo positivo» (exhaustividad 1, especificidad 0) alcanza el F1 de foto de la fila indicada: "
+     "el F1 de foto de los brazos debe leerse frente a ese valor trivial.",
      "test", T3_METRICS),
     ("T4_seleccion_checkpoint", "Tabla T4. Datos de selección del checkpoint (validación): época elegida y AP50 en "
      "validación. No constituyen evidencia de generalización.", "val", T4_METRICS),
+    ("T5_umbral_fijo_025", "Tabla T5. Unidad de decisión = foto (daño si alguna detección alcanza el umbral): umbral fijo 0.25 "
+     "(umbral de evaluación) en prueba. Exhaustividad, especificidad, precisión y tasa de descarte de fotos sanas, "
+     "más precisión y exhaustividad de cajas. Reglas definidas a posteriori; descriptivas.", "test", T5_METRICS),
+    ("T6_exhaustividad_objetivo", "Tabla T6. Puntos de operación orientados a exhaustividad, con umbral elegido solo en validación "
+     "de cada lote (el mayor umbral con exhaustividad por foto en val >= 0.90 o 0.95; o F2 máximo) y aplicado al prueba de ese lote. "
+     "Si ningún umbral alcanza el objetivo se usa el menor de la rejilla y se marca (fila «objetivo alcanzado»). "
+     "Reglas definidas a posteriori; descriptivas, fuera de H1/H2.", "test", T6_METRICS),
 ]
 
 
 def write_tables(data: dict, out: Path, arms_test, arms_val, folds, labels) -> list[Path]:
-    frames = {"test": build_test_frame(data), "val": build_val_frame(data)}
+    frames = {"test": build_test_frame(data), "val": build_val_frame(data), "hour": build_hour_frame(data)}
+    hour_cols = sorted((c for c in frames["hour"].columns if c.startswith("hour_")), key=lambda c: int(c[5:]))
     written = []
-    for name, caption, kind, metrics in TABLES:
-        arms = arms_test if kind == "test" else arms_val
+    tables = list(TABLES)
+    if hour_cols:
+        tables.append(("T7_exhaustividad_por_hora", "Tabla T7. Exhaustividad por foto según la hora de captura (0-12 h) con la regla "
+                       "«exhaustividad >= 0.90 en val», solo maestros. Las horas 8-12 quedan fuera de la ventana latente de la métrica primaria. "
+                       "Regla definida a posteriori; descriptiva.", "hour",
+                       [(c, f"Exhaustividad a las {c[5:]} h", 3) for c in hour_cols]))
+    for name, caption, kind, metrics in tables:
+        arms = {"test": arms_test, "val": arms_val, "hour": [a for a in arms_test if a.startswith("master_")]}[kind]
         df = frames[kind]
         num = summary_numeric(df, metrics, arms, folds, labels).drop(columns="_digits")
         num.insert(1, "arm_label", num["arm"].map(arm_label))
@@ -479,6 +643,46 @@ def plot_pr(pr, arms_present, out, stem) -> list[Path]:
     return _save(fig, out, stem)
 
 
+def plot_operating_curves(photos, arms_present, out, stem) -> list[Path]:
+    """F4: test photo-level recall against healthy discard rate, mean +- sd across folds, with the val-chosen points."""
+    import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+
+    panels = [p for p in _panels(arms_present) + _extra_panel(arms_present) if p[1]]
+    if not panels:
+        return []
+    rules = photo_rules_table(photos)
+    fig, axes = plt.subplots(1, len(panels), figsize=(5.6 * len(panels), 4.8), sharey=True, sharex=True, squeeze=False)
+    for ax, (ptitle, arms) in zip(axes[0], panels):
+        for arm in arms:
+            s, c = style_of(arm), operating_curve(photos, arm).sort_values("discard")
+            if c.empty:
+                continue
+            ax.fill_between(c["discard"], (c["recall"] - c["recall_sd"]).clip(0, 1), (c["recall"] + c["recall_sd"]).clip(0, 1),
+                            color=s["color"], alpha=0.10, linewidth=0)
+            ax.plot(c["discard"], c["recall"], color=s["color"], linestyle=s["linestyle"], linewidth=2, label=s["label"])
+            r = rules[rules["arm"] == arm]
+            for pre, mk in (("r90", "o"), ("r95", "D")):
+                if len(r):
+                    ax.plot(r[f"{pre}_discard_rate"].mean(), r[f"{pre}_recall"].mean(), marker=mk, markersize=9,
+                            markerfacecolor=s["color"], markeredgecolor=INK, markeredgewidth=1.3, linestyle="none")
+        ax.set_title(ptitle, fontsize=10.5, color=INK, loc="left")
+        ax.set_xlabel("Tasa de descarte de fotos sanas (1 - especificidad)", color=INK)
+        ax.set_xlim(0, 1.02)
+        ax.set_ylim(0, 1.02)
+        _style_axes(ax)
+        handles, labels = ax.get_legend_handles_labels()
+        handles += [Line2D([], [], marker="o", color="w", markerfacecolor="#cccccc", markeredgecolor=INK, markersize=9),
+                    Line2D([], [], marker="D", color="w", markerfacecolor="#cccccc", markeredgecolor=INK, markersize=9)]
+        labels += ["Regla val: exhaustividad >= 0.90", "Regla val: exhaustividad >= 0.95"]
+        ax.legend(handles, labels, fontsize=7.5, frameon=False, labelcolor=INK, loc="lower right")
+    axes[0][0].set_ylabel("Exhaustividad por foto (fotos dañadas detectadas)", color=INK)
+    fig.suptitle("Curva de operación por foto en prueba (media ± 1 sd entre lotes); valores de los puntos en la Tabla T6",
+                 fontsize=11.5, color=INK, y=1.02)
+    fig.tight_layout()
+    return _save(fig, out, stem)
+
+
 def plot_strip(test, arms, folds, labels, out, stem) -> list[Path]:
     import matplotlib.pyplot as plt
     from matplotlib.lines import Line2D
@@ -549,6 +753,8 @@ def main(argv=None) -> int:
                            "Pérdida de entrenamiento (media ± 1 sd entre lotes)", args.out, "F1b_curvas_perdida")
     written += plot_pr(data["pr"], discover_arms(data["pr"]["arm"].unique()), args.out, "F2_curvas_pr_test")
     written += plot_strip(build_test_frame(data), test_arms, folds, labels, args.out, "F3_ap50_por_lote")
+    written += plot_operating_curves(data["photos"], discover_arms(data["photos"]["arm"].unique()), args.out,
+                                     "F4_curva_operacion_foto")
     for p in written:
         print(p)
     return 0
