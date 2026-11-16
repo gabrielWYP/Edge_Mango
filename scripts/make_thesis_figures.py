@@ -438,7 +438,7 @@ def plot_curves(hist, arms_present, col, ylabel, title, out, stem, ylim=None) ->
             if c.empty:
                 continue
             ax.fill_between(c["epoch"], c["mean"] - c["sd"].fillna(0), c["mean"] + c["sd"].fillna(0),
-                            color=s["color"], alpha=0.14, linewidth=0)
+                            color=s["color"], alpha=0.10, linewidth=0)
             ax.plot(c["epoch"], c["mean"], color=s["color"], linestyle=s["linestyle"], marker=s["marker"],
                     markevery=10, markersize=6, linewidth=2, label=s["label"])
         ax.set_title(ptitle, fontsize=10.5, color=INK, loc="left")
@@ -462,7 +462,7 @@ def plot_pr(pr, arms_present, out, stem) -> list[Path]:
     fig, axes = plt.subplots(1, len(panels), figsize=(5.6 * len(panels), 4.6), sharey=True, squeeze=False)
     for ax, (ptitle, arms) in zip(axes[0], panels):
         for arm in arms:
-            s, c = style_of(arm), mean_pr_curve(pr, arm, "test").sort_values("recall")
+            s, c = style_of(arm), mean_pr_curve(pr, arm, "test").query("recall > 0").sort_values("recall")
             if c.empty:
                 continue
             ax.plot(c["recall"], c["precision"], color=s["color"], linestyle=s["linestyle"], marker=s["marker"],
@@ -509,8 +509,8 @@ def plot_strip(test, arms, folds, labels, out, stem) -> list[Path]:
     ax.grid(axis="y", visible=False)
     ax.legend(handles=[Line2D([], [], color=INK, linewidth=2, label="Media de los lotes"),
                        Line2D([], [], color=GRAY, marker="o", linestyle="none", markersize=8,
-                              label=f"Un lote de prueba ({len(folds)} puntos por brazo, orden de abajo arriba por lote)")],
-              fontsize=8, frameon=False, labelcolor=INK, loc="lower right")
+                              label="Un punto por lote de prueba")],
+              fontsize=8.5, frameon=False, labelcolor=INK, loc="upper center", bbox_to_anchor=(0.5, -0.14), ncol=2)
     fig.tight_layout()
     return _save(fig, out, stem)
 
@@ -544,7 +544,7 @@ def main(argv=None) -> int:
     hist_arms = discover_arms(data["hist"]["arm"].unique())
     written += plot_curves(data["hist"], hist_arms, SELECTION_COL, "AP50 en validación, clase daño",
                            "Curvas de validación: métrica de selección del checkpoint (media ± 1 sd entre lotes)",
-                           args.out, "F1a_curvas_validacion", ylim=(0, 1))
+                           args.out, "F1a_curvas_validacion", ylim=(0, None))
     written += plot_curves(data["hist"], hist_arms, LOSS_COL, "Pérdida total de entrenamiento",
                            "Pérdida de entrenamiento (media ± 1 sd entre lotes)", args.out, "F1b_curvas_perdida")
     written += plot_pr(data["pr"], discover_arms(data["pr"]["arm"].unique()), args.out, "F2_curvas_pr_test")
