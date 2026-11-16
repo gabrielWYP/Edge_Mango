@@ -50,7 +50,7 @@ ARM_STYLE: dict[str, dict] = {
     "master_twostem_rgbnir_seg": dict(
         color="#E69F00", linestyle="-", marker="D", label="Maestro RGB+NIR, dos troncos (exploratorio)", exploratory=True
     ),
-    "master_rgb_det": dict(color="#6A3D9A", linestyle="--", marker="v", label="Alumno RGB, detección", exploratory=False),
+    "master_rgb_det": dict(color="#6A3D9A", linestyle="-", marker="v", label="Maestro RGB, solo cajas", exploratory=False),
     "crosskd_rgb_seg": dict(
         color="#56B4E9", linestyle="--", marker="P", label="Alumno RGB, CrossKD desde RGB", exploratory=False
     ),

@@ -2,21 +2,21 @@ arm,arm_label,metric,n_folds,mean,sd,Lote 1,Lote 2,Lote 3,Lote 4,Lote 5
 master_rgb_seg,Maestro RGB,Época seleccionada,5,44.400000,11.371016,36.000000,64.000000,42.000000,37.000000,43.000000
 master_nir_seg,Maestro NIR,Época seleccionada,5,46.200000,8.843076,38.000000,48.000000,36.000000,55.000000,54.000000
 master_rgbnir_seg,Maestro RGB+NIR,Época seleccionada,5,37.000000,10.977249,32.000000,41.000000,21.000000,50.000000,41.000000
-master_rgb_det,"Alumno RGB, detección",Época seleccionada,5,73.000000,1.870829,72.000000,73.000000,73.000000,76.000000,71.000000
+master_rgb_det,"Maestro RGB, solo cajas",Época seleccionada,5,73.000000,1.870829,72.000000,73.000000,73.000000,76.000000,71.000000
 crosskd_rgb_seg,"Alumno RGB, CrossKD desde RGB",Época seleccionada,5,51.200000,10.183320,55.000000,49.000000,36.000000,52.000000,64.000000
 crosskd_rgbnir_seg,"Alumno RGB, CrossKD desde RGB+NIR",Época seleccionada,5,57.400000,8.561542,69.000000,49.000000,50.000000,63.000000,56.000000
 crosskd_nir_seg,"Alumno RGB, CrossKD desde NIR (exploratorio)",Época seleccionada,5,45.800000,19.942417,21.000000,46.000000,36.000000,51.000000,75.000000
 master_rgb_seg,Maestro RGB,"AP50 val, clase daño, en esa época",5,0.406832,0.089275,0.538602,0.398221,0.288854,0.420215,0.388267
 master_nir_seg,Maestro NIR,"AP50 val, clase daño, en esa época",5,0.455719,0.073430,0.546337,0.459805,0.346152,0.487894,0.438406
 master_rgbnir_seg,Maestro RGB+NIR,"AP50 val, clase daño, en esa época",5,0.464722,0.067849,0.540682,0.470525,0.367170,0.511149,0.434083
-master_rgb_det,"Alumno RGB, detección","AP50 val, clase daño, en esa época",5,0.346229,0.040682,0.390609,0.373830,0.293414,0.315248,0.358043
+master_rgb_det,"Maestro RGB, solo cajas","AP50 val, clase daño, en esa época",5,0.346229,0.040682,0.390609,0.373830,0.293414,0.315248,0.358043
 crosskd_rgb_seg,"Alumno RGB, CrossKD desde RGB","AP50 val, clase daño, en esa época",5,0.416379,0.082793,0.511098,0.445971,0.287533,0.440548,0.396744
 crosskd_rgbnir_seg,"Alumno RGB, CrossKD desde RGB+NIR","AP50 val, clase daño, en esa época",5,0.399550,0.068567,0.482642,0.406913,0.291630,0.413181,0.403385
 crosskd_nir_seg,"Alumno RGB, CrossKD desde NIR (exploratorio)","AP50 val, clase daño, en esa época",5,0.404337,0.063699,0.492594,0.405001,0.314842,0.419302,0.389943
 master_rgb_seg,Maestro RGB,AP50 latente en val (checkpoint elegido),5,0.375232,0.076188,0.467108,0.370893,0.259876,0.412210,0.366075
 master_nir_seg,Maestro NIR,AP50 latente en val (checkpoint elegido),5,0.417717,0.069737,0.515694,0.397786,0.322772,0.438386,0.413950
 master_rgbnir_seg,Maestro RGB+NIR,AP50 latente en val (checkpoint elegido),5,0.427494,0.066088,0.509997,0.423739,0.337254,0.468170,0.398310
-master_rgb_det,"Alumno RGB, detección",AP50 latente en val (checkpoint elegido),5,0.318785,0.041201,0.335864,0.352434,0.266587,0.283184,0.355854
+master_rgb_det,"Maestro RGB, solo cajas",AP50 latente en val (checkpoint elegido),5,0.318785,0.041201,0.335864,0.352434,0.266587,0.283184,0.355854
 crosskd_rgb_seg,"Alumno RGB, CrossKD desde RGB",AP50 latente en val (checkpoint elegido),5,0.380804,0.074544,0.454190,0.410219,0.256291,0.402553,0.380766
 crosskd_rgbnir_seg,"Alumno RGB, CrossKD desde RGB+NIR",AP50 latente en val (checkpoint elegido),5,0.367639,0.060372,0.428013,0.376183,0.266265,0.378484,0.389249
 crosskd_nir_seg,"Alumno RGB, CrossKD desde NIR (exploratorio)",AP50 latente en val (checkpoint elegido),5,0.364641,0.055941,0.439542,0.367973,0.281795,0.370287,0.363610
