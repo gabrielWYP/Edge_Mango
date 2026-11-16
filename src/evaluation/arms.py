@@ -31,6 +31,10 @@ SEGMENT_PRESETS = {
     # Exploratory, also after `thesis`: `master_rgbnir_seg` with two backbones (RGB, NIR) fused at P3, P4 and P5 instead of
     # the 4-channel stack. Same checkpoints root; it trains no teacher and reads none.
     "thesis_explore_twostem": ("master_twostem_rgbnir_seg",),
+    # Exploratory, after `thesis_explore_twostem`: an RGB student distilled with CrossKD from `master_twostem_rgbnir_seg` of
+    # the same fold and seed (the twin of `crosskd_rgbnir_seg` with the two-backbone teacher). Same checkpoints root; it
+    # trains no teacher.
+    "thesis_explore_twostem_kd": ("crosskd_twostem_seg",),
 }
 # Detect RGB student with exactly the training config of `est_rgb`, trained on the polygon v4 dataset: its labels are the
 # tight boxes of the polygons. Its output folder is the only difference from `est_rgb`. Mask supervision is the

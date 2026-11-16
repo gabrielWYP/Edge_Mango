@@ -187,6 +187,8 @@ class KDTrainer(Trainer):
         checkpoint = torch.load(str(ckpt_path), map_location="cpu", weights_only=False)
         variant = (checkpoint.get("config") or {}).get("student_variant", "wide")
         in_channels = (checkpoint.get("config") or {}).get("student_in_channels", 3)
+        # "mid" (two backbones fused at P3-P5) changes the state_dict schema; absent means "early", as before.
+        fusion = (checkpoint.get("config") or {}).get("student_fusion", "early")
         # A segment teacher carries extra mask layers: build it as it was trained. Only its
         # cls/reg heads and features are distilled (see `_crosshead_kd`), never its masks.
         task = (checkpoint.get("config") or {}).get("task", "detect")
@@ -195,13 +197,14 @@ class KDTrainer(Trainer):
                 f"teacher_input={config.teacher_input!r} does not fit a teacher with {in_channels} input channels."
             )
         teacher = StudentModel(
-            num_classes=config.num_classes, variant=variant, in_channels=in_channels, task=task
+            num_classes=config.num_classes, variant=variant, in_channels=in_channels, task=task,
+            fusion=fusion,
         )
         teacher.load_state_dict(strip_legacy_kd_adapter_keys(checkpoint["model_state_dict"]))
         teacher.eval()
         for param in teacher.parameters():
             param.requires_grad = False
-        print(f"[KDTrainer] Student teacher ({variant}, {task}, reads {config.teacher_input}) "
+        print(f"[KDTrainer] Student teacher ({variant}, {fusion}, {task}, reads {config.teacher_input}) "
               f"loaded from {ckpt_path}")
         return teacher
 

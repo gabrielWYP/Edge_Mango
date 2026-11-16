@@ -409,3 +409,10 @@ def test_forest_rows_skips_comparison_without_inference_instead_of_inventing_num
     a["comps"]["H2"] = _comp("crosskd_rgbnir_seg", "crosskd_rgb_seg", [0.1] * 5, with_inference=False)
     rows = mtf.forest_rows(a, "main")
     assert "H2" not in [r["key"] for r in rows]
+
+
+def test_crosskd_twostem_has_its_own_dashed_exploratory_style():
+    style = mtf.ARM_STYLE["crosskd_twostem_seg"]
+    assert style["linestyle"] == "--" and style["exploratory"] is True
+    assert style["color"] not in {v["color"] for k, v in mtf.ARM_STYLE.items() if k != "crosskd_twostem_seg"}
+    assert "crosskd_twostem_seg" not in mtf.MAIN_ARMS

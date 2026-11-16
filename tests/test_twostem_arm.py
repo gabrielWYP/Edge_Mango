@@ -81,3 +81,57 @@ def test_the_analysis_scripts_find_the_arm_by_name_and_compare_it_to_both_refere
     assert export.DIFFERENCES["twostem_vs_rgbnir"] == (TWOSTEM, BASE)
     assert export.DIFFERENCES["twostem_vs_nir"] == (TWOSTEM, "master_nir_seg")
     assert len(export.EXPORT_ARMS) == len(set(export.EXPORT_ARMS))
+
+
+KD = "crosskd_twostem_seg"
+KD_BASE = "crosskd_rgbnir_seg"
+
+
+def test_the_crosskd_twostem_arm_is_crosskd_rgbnir_with_the_two_stem_teacher() -> None:
+    assert arms.segment_arm_name("crosskd_twostem") == KD
+    arm, base = rs.ARMS[KD], rs.ARMS[KD_BASE]
+    assert arm.teacher == TWOSTEM and base.teacher == BASE
+    assert arm.kd_overrides == base.kd_overrides == ("kd_mode=crosshead",)
+    assert (arm.task, arm.in_channels, arm.fusion, arm.reads_nir) == (base.task, base.in_channels, base.fusion, base.reads_nir)
+    assert rs.arm_input(KD) == rs.arm_input(KD_BASE)
+    assert arms.SEGMENT_PRESETS["thesis_explore_twostem_kd"] == (KD,)
+    assert all(KD not in names for key, names in arms.SEGMENT_PRESETS.items() if key != "thesis_explore_twostem_kd")
+
+
+def test_the_kd_command_equals_crosskd_rgbnir_seg_with_the_two_stem_teacher_checkpoint(tmp_path) -> None:
+    args = _args(tmp_path, "--arms-preset", "thesis_explore_twostem_kd", "--checkpoints-root", "RUNS")
+    base = rs.plan_arm(args, KD_BASE, 2, 42)
+    two = rs.plan_arm(args, KD, 2, 42)
+    assert len(base) == len(two) == 5
+    for (b_key, b_cmd, _), (t_key, t_cmd, _) in zip(base, two, strict=True):
+        assert t_key == b_key.replace(KD_BASE, KD)
+        renamed = [str(x).replace(f"/{KD_BASE}/", f"/{KD}/").replace(f"/{BASE}/", f"/{TWOSTEM}/") for x in b_cmd]
+        assert list(map(str, t_cmd)) == renamed
+    train = next(list(map(str, c)) for k, c, _ in two if k.endswith("/train"))
+    teacher = next(x for x in train if x.startswith("teacher_checkpoint="))
+    assert f"/{TWOSTEM}/fold2" in teacher and "seed42" in teacher
+    assert "kd_mode=crosshead" in train and "student_fusion=mid" not in train
+
+
+def test_the_kd_preset_dry_run_trains_no_teacher_and_defaults_to_640(tmp_path, capsys) -> None:
+    _args(tmp_path)
+    code = rs.main([
+        "--dataset", str(tmp_path), "--arms-preset", "thesis_explore_twostem_kd", "--folds", "0", "1", "2", "3", "4",
+        "--seeds", "42", "--dry-run", "--nir-as-rgb-dir", str(tmp_path / "links"),
+        "--checkpoints-root", "RUNS", "--reports-root", "RUNS/reports",
+    ])
+    assert code == 0
+    lines = [x for x in capsys.readouterr().out.splitlines() if x.startswith("[")]
+    assert lines and all(f"{KD}/fold" in x.split(": ")[0] for x in lines)
+    trains = [x for x in lines if "/train: " in x]
+    assert len(trains) == 5
+    assert all("image_size=640" in x and "kd_mode=crosshead" in x and f"RUNS/{TWOSTEM}/fold" in x for x in trains)
+    assert not any(f"{TWOSTEM}/fold" in x.split(": ")[0] for x in lines)
+
+
+def test_the_kd_arm_is_registered_in_the_analysis_scripts() -> None:
+    assert KD in export.EXPORT_ARMS and KD in zones.ARMS and KD in vop.ARMS
+    assert vop.ARMS[KD][2].startswith(KD)
+    assert vop.ARMS[KD][0] not in {v[0] for k, v in vop.ARMS.items() if k != KD}
+    assert export.DIFFERENCES["crosskd_twostem_vs_rgbnir"] == (KD, KD_BASE)
+    assert export.DIFFERENCES["crosskd_twostem_vs_rgb"] == (KD, "crosskd_rgb_seg")

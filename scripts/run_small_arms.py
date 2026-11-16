@@ -35,6 +35,11 @@ MSE feature-KD arms (`kd_rgb_seg`, `kd_rgbnir_seg`) are defined and runnable by 
 at P3, P4 and P5, instead of the 4-channel stack. The preset `thesis_explore_twostem` (that arm alone, 640 px) is run
 after `thesis`, with the same `--checkpoints-root`.
 
+`crosskd_twostem_seg` (twin of `crosskd_twostem`) is exploratory too: `crosskd_rgbnir_seg` with the teacher
+`master_twostem_rgbnir_seg` of the same fold and seed (same kd overrides, same RGB student). The preset
+`thesis_explore_twostem_kd` (that arm alone, 640 px) reads the teacher checkpoints from the same `--checkpoints-root`,
+after the two-stem master, and trains no teacher.
+
 `master_rgb_det` is a detect student with the exact training of `est_rgb` (same command, other output folder), meant
 for the polygon v4 dataset, where its boxes are the tight boxes of the polygons. The preset `thesis` is `seg` plus this
 arm: the mask supervision effect is `master_rgb_seg - master_rgb_det`.
@@ -103,6 +108,7 @@ ARMS = {
     "kd_rgbnir": Arm(teacher="est_rgbnir"),
     "crosskd_rgb": Arm(teacher="est_rgb", kd_overrides=("kd_mode=crosshead",)),
     "crosskd_rgbnir": Arm(teacher="est_rgbnir", kd_overrides=("kd_mode=crosshead",)),
+    "crosskd_twostem": Arm(teacher="est_twostem_rgbnir", kd_overrides=("kd_mode=crosshead",)),
     "crosskd_rgbnir_high": Arm(teacher="est_rgbnir", kd_overrides=("kd_mode=crosshead", "kd_gate=nir_high")),
     "crosskd_rgbnir_low": Arm(teacher="est_rgbnir", kd_overrides=("kd_mode=crosshead", "kd_gate=nir_low")),
     "crosskd_rgbnir_better": Arm(
@@ -171,7 +177,7 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--mask-weight", type=float, default=7.5, help="mask loss gain of the `_seg` arms")
     parser.add_argument("--mask-ratio", type=int, default=4, help="input size over mask size of the `_seg` arms")
     parser.add_argument("--image-size", type=int, default=None,
-                        help=f"input side of every run; default {THESIS_IMAGE_SIZE} with --arms-preset thesis, thesis_explore or thesis_explore_twostem, "
+                        help=f"input side of every run; default {THESIS_IMAGE_SIZE} with --arms-preset thesis, thesis_explore, thesis_explore_twostem or thesis_explore_twostem_kd, "
                         "else the config value")
     parser.add_argument("--jobs", type=int, default=1, help="runs at the same time")
     parser.add_argument("--no-resume", action="store_true", help="train interrupted runs from scratch")
@@ -180,7 +186,7 @@ def parse_args(argv=None) -> argparse.Namespace:
     if args.arms_preset and args.arms:
         parser.error("--arms-preset and --arms are alternatives")
     args.arms = list(SEGMENT_PRESETS[args.arms_preset]) if args.arms_preset else args.arms or PLANNED_ARMS
-    if args.image_size is None and args.arms_preset in ("thesis", "thesis_explore", "thesis_explore_twostem"):
+    if args.image_size is None and args.arms_preset in ("thesis", "thesis_explore", "thesis_explore_twostem", "thesis_explore_twostem_kd"):
         args.image_size = THESIS_IMAGE_SIZE
     if args.image_size is not None and (args.image_size % STRIDE or args.image_size % args.mask_ratio):
         parser.error(f"--image-size must be a multiple of {STRIDE} and of --mask-ratio, got {args.image_size}")

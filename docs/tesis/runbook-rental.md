@@ -137,6 +137,23 @@ scripts/remote/publish_folds.sh --runs-root $RUNS --dataset $DATASET --arms mast
     --tag thesis-runs-explore-twostem-<YYYYMMDD> --marker-dir $RUNS/.published_explore_twostem --every-min 10
 ```
 
+Then the CrossKD student of that master, `crosskd_twostem_seg` (RGB student; plan, section 11, third 2026-11-16 row). Gate,
+fixed before any result: launch it only if the 5-fold mean of the VAL latent AP50 of `master_twostem_rgbnir_seg` is above
+that of `master_rgbnir_seg` (0.427), decided without reading test, and only if the remaining cloud credit covers 5 more
+runs. If not launched, report it as "not run (val gate not met)". It reads the teacher checkpoints from the same `$RUNS`
+(`$RUNS/master_twostem_rgbnir_seg/fold<k>_seed42`) and trains no teacher.
+
+```bash
+python scripts/run_small_arms.py --dataset $DATASET --weights $WEIGHTS --variant nano --epochs 80 \
+    --arms-preset thesis_explore_twostem_kd --image-size $IMAGE_SIZE --folds 0 1 2 3 4 --seeds 42 --machine $MACHINE \
+    --pixel-cache-root $PIXEL --checkpoints-root $RUNS --reports-root $RUNS/reports --jobs 5
+scripts/remote/publish_folds.sh --runs-root $RUNS --dataset $DATASET --arms crosskd_twostem_seg \
+    --tag thesis-runs-explore-twostem-kd-<YYYYMMDD> --marker-dir $RUNS/.published_explore_twostem_kd --every-min 10
+```
+
+The comparisons `crosskd_twostem_vs_rgbnir` (primary) and `crosskd_twostem_vs_rgb` of `export_run_results.py` are exploratory
+and are reported descriptively.
+
 Drop `--dry-run` to launch (the dry run shows only `crosskd_nir_seg` lines). The publisher keeps its own markers in
 `$RUNS/.published_explore`, so it does not clash with the one of the thesis set. The comparisons `crosskd_nir` and
 `crosskd_nir_vs_rgbnir` of `export_run_results.py` are exploratory and are reported descriptively.
