@@ -1,0 +1,43 @@
+{
+    "timestamp": "2026-11-16T13:09:40.423619Z",
+    "appVersion": "0.1.0",
+    "device": "Xiaomi 2406APNFAG",
+    "soc": "Mediatek MT6897",
+    "androidVersion": "16 (API 36)",
+    "modelName": "crosskd_rgbnir_seg_fold0_int8.tflite",
+    "task": "segment",
+    "precision": "int8",
+    "modelSizeMb": 3.64764404296875,
+    "numParameters": 3354818,
+    "flops": 1.13589248E10,
+    "accelerator": "GPU",
+    "accelerationNote": "",
+    "input": "last camera frame 1440x1920",
+    "warmUp": 10,
+    "runs": 100,
+    "loadMs": 1503.193,
+    "inference": {
+        "count": 100,
+        "meanMs": 45.43997762799263,
+        "stdMs": 2.2816490881786193,
+        "minMs": 39.76738500595093,
+        "maxMs": 54.4526150226593,
+        "p50Ms": 45.61242300271988,
+        "p95Ms": 48.48562650680542,
+        "fps": 22.00705308851131
+    },
+    "endToEnd": {
+        "count": 100,
+        "meanMs": 248.97690927147866,
+        "stdMs": 3.993993456632911,
+        "minMs": 242.45846092700958,
+        "maxMs": 265.0929230451584,
+        "p50Ms": 248.38846093416214,
+        "p95Ms": 258.6838970005512,
+        "fps": 4.016436716666055
+    },
+    "peakRamMb": 504.15234375,
+    "peakRamSource": "VmHWM since just before model load",
+    "ramBeforeLoadMb": 297.28515625,
+    "nativeHeapMb": 101.75370788574219
+}
