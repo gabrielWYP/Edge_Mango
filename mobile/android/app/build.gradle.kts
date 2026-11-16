@@ -38,8 +38,10 @@ android {
     }
 
     packaging {
-        // The TFLite models must stay uncompressed so they can be memory mapped.
-        jniLibs.useLegacyPackaging = false
+        // Extract the native libraries to nativeLibraryDir: LiteRT finds the NPU compiler plugin
+        // (libLiteRtCompilerPlugin_MediaTek.so) by scanning a directory, so it must exist on disk.
+        // The .tflite assets stay uncompressed through androidResources.noCompress below.
+        jniLibs.useLegacyPackaging = true
     }
 
     androidResources {
