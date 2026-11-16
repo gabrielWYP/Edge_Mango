@@ -68,3 +68,11 @@ Detalles de T3 y T4:
 - **Apéndice** (sufijo `_apendice`): todos los brazos encontrados, incluidos `master_rgb_det`, `crosskd_nir_seg` y, cuando exista, `master_twostem_rgbnir_seg`.
 - F3 (puntos por lote), T4 y T7 incluyen siempre todos los brazos; en F3 los exploratorios van sobre fondo gris.
 - **Suavizado.** En F1 cada curva de lote se suaviza primero (media móvil exponencial con corrección de sesgo, w = 0.8, la misma función `src/evaluation/smoothing.py` que usa `scripts/plot_run_curves.py`) y después se calcula la media ± sd entre lotes. No se marca la época seleccionada (T4 la lista) para no recargar las curvas. La pérdida de detección es caja + clase, comparable entre brazos de segmentación y CrossKD (la pérdida total incluye los términos de máscara y de destilación).
+
+## F5: comparaciones en prueba (diagrama de bosque)
+
+| Archivo | Borrador de pie de figura | Entrada |
+|---|---|---|
+| `F5_comparaciones_test` (principal) y `F5_comparaciones_test_apendice` | Figura 6. Diferencia de AP50 latente de cajas en prueba (tratamiento − base) para H1, H2 y las comparaciones secundaria (C1) y exploratoria (C2). Círculos vacíos: diferencia de cada lote (n = 5); punto: media; línea: intervalo de confianza del 95 % con t corregida (Nadeau-Bengio); banda: ROPE ±0.02. A la derecha: P(mejor), probabilidad posterior bayesiana correlacionada de que la diferencia supere el ROPE (`P(right)`), y número de lotes con diferencia positiva. | `reports/thesis-test-analysis/analysis.json`: `comps.<comparación>.metrics.latent_ap50` (`deltas`, `mean`, `inference.corrected_t.ci_low/ci_high`, `inference.bayes.p_right`) |
+
+El apéndice añade el soporte de máscara (Maestro RGB − Maestro RGB, solo cajas, métrica de cajas), las dos comparaciones exploratorias de `crosskd_nir_seg` y, cuando aparezcan en `analysis.json`, las de `master_twostem_rgbnir_seg`. Todos los números provienen de `analysis.json` (nada se recalcula); una comparación sin intervalo o sin `p_right` se omite con un aviso. Los valores coinciden con `TEST_ANALYSIS.md` (sección 3), p. ej. H1: +0.082 [+0.003, +0.160], P = 0.953, 5/5. La inferencia es la de ese documento; la figura no añade resultados nuevos. H1 y H2 son confirmatorias en secuencia fija; C1, C2 y las del apéndice son secundarias o exploratorias.
