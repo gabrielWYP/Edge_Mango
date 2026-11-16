@@ -102,3 +102,5 @@ reports/v4_small/
 
 # Downloaded release weights (models/README.md)
 models/weights/
+# Thesis figures are deliverables: keep their PNGs (300 dpi) next to the SVGs.
+!reports/thesis-figures/*.png
