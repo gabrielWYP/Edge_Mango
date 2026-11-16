@@ -323,6 +323,15 @@ Se sigue el skill [`experiment-statistics`](../../.claude/skills/experiment-stat
 
 ### 8.1 Pre-registro (se completa y se commitea antes de la primera evaluación en test)
 
+> **Nota (2026-11-16).** El bloque siguiente es el pre-registro del experimento con etiquetas de caja y se conserva
+> tal cual. Para el experimento con polígonos (reentrenamiento completo) rigen la fila del 2026-11-13 de la sección 11
+> y sus enmiendas del 2026-11-14 y 2026-11-16: H1 = `master_rgbnir_seg` − `master_rgb_seg`, H2 = `crosskd_rgbnir_seg` −
+> `crosskd_rgb_seg`, secundaria = `crosskd_rgbnir_seg` − `master_rgb_seg`, exploratoria = `crosskd_rgb_seg` −
+> `master_rgb_seg`, comparación `mask_supervision` = `master_rgb_seg` − `master_rgb_det` y el brazo exploratorio
+> `crosskd_nir_seg`; métrica primaria AP50 latente de caja en test; una semilla (42); misma ROPE ±0,02, umbral 0,95 y
+> secuencia fija de la sección 8.3. El análisis de test resultante está en
+> [`reports/thesis-test-analysis/`](../../reports/thesis-test-analysis/TEST_ANALYSIS.md).
+
 ```
 H1:          baseline = est_rgb,  treatment = est_rgbnir
 H2:          baseline = kd_rgb,   treatment = kd_rgbnir
