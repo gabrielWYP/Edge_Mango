@@ -33,7 +33,7 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
-from src.models.student.backbone import CSPDarknetNano
+from src.models.student.backbone import CSPDarknetNano, TwoStemBackbone
 from src.models.student.neck import NanoPANet, PANet
 from src.models.student.head import YOLOStudentHead, NUM_CLASSES, TASKS
 
@@ -64,6 +64,8 @@ STUDENT_VARIANTS = ("wide", "nano")
 NANO_STEM_CHANNELS = [64, 64, 64]
 # 3: RGB, the student of the plan. 4: RGB and NIR stacked at the input, for `est_rgbnir`, the arm of H1 and the teacher of `kd_rgbnir`.
 STUDENT_IN_CHANNELS = (3, 4)
+# "early": one backbone over the stacked channels (the default). "mid": one backbone per modality, fused at P3, P4 and P5.
+STUDENT_FUSIONS = ("early", "mid")
 
 
 class StudentModel(nn.Module):
@@ -78,6 +80,8 @@ class StudentModel(nn.Module):
         in_channels: 3 reads `x` alone. 4 stacks `nir` after `x`, and then needs both at inference.
         task: "detect" (default, boxes only) or "segment" (YOLOv8-seg: the head also returns
             `mask_coefs` and `protos`). "detect" builds exactly the layers it always had.
+        fusion: "early" (default) feeds one backbone the stacked channels. "mid" needs `in_channels=4` and builds a
+            separate RGB and NIR backbone fused at P3, P4 and P5 (`TwoStemBackbone`); neck and head are the same.
     """
 
     def __init__(
@@ -86,6 +90,7 @@ class StudentModel(nn.Module):
         variant: str = "wide",
         in_channels: int = 3,
         task: str = "detect",
+        fusion: str = "early",
     ) -> None:
         super().__init__()
         if task not in TASKS:
@@ -95,11 +100,16 @@ class StudentModel(nn.Module):
             raise ValueError(f"Unknown student variant {variant!r}: {sorted(STUDENT_VARIANTS)}")
         if in_channels not in STUDENT_IN_CHANNELS:
             raise ValueError(f"Unknown student in_channels {in_channels}: {STUDENT_IN_CHANNELS}")
+        if fusion not in STUDENT_FUSIONS:
+            raise ValueError(f"Unknown student fusion {fusion!r}: {STUDENT_FUSIONS}")
+        if fusion == "mid" and in_channels != 4:
+            raise ValueError("student fusion 'mid' fuses RGB and NIR backbones: it needs in_channels=4.")
         self.num_classes = num_classes
         self.variant = variant
         self.in_channels = in_channels
+        self.fusion = fusion
 
-        self.backbone = CSPDarknetNano(in_channels)
+        self.backbone = TwoStemBackbone() if fusion == "mid" else CSPDarknetNano(in_channels)
         if variant == "nano":
             self.neck = NanoPANet()
             self.head = YOLOStudentHead(
@@ -137,10 +147,13 @@ class StudentModel(nn.Module):
         if self.in_channels == 4:
             if nir is None:
                 raise ValueError("A student with in_channels=4 needs the NIR tensor.")
-            x = torch.cat([x, nir], dim=1)
-
-        # Backbone: extract multi-scale features
-        stages, (s3, s4) = self.backbone(x)
+            if self.fusion == "mid":
+                # Channels 0-2 are RGB and channel 3 is NIR, as in the stack of "early": each goes to its own backbone.
+                stages, (s3, s4) = self.backbone(x, nir)
+            else:
+                stages, (s3, s4) = self.backbone(torch.cat([x, nir], dim=1))
+        else:
+            stages, (s3, s4) = self.backbone(x)
 
         # Neck: bidirectional feature fusion (FPN + PAN)
         fpn = self.neck(stages)

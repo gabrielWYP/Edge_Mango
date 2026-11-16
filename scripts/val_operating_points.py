@@ -74,6 +74,8 @@ ARMS["master_rgb_det"] = (ARMS["est_rgb"][0], ":", "master_rgb_det (RGB, cajas d
 # Exploratory arm after the thesis set: RGB student, CrossKD from the NIR-only segment master. Segment only (no detect
 # twin), so it has a colour of its own.
 ARMS["crosskd_nir_seg"] = ("#00a3b4", "-.", "crosskd_nir_seg (RGB, maestro NIR, exploratorio)")
+# Exploratory arm: RGB and NIR backbones fused at P3, P4 and P5. Segment only, with a colour of its own.
+ARMS["master_twostem_rgbnir_seg"] = ("#ff7a00", "-.", "master_twostem_rgbnir_seg (RGB+NIR, fusion intermedia, exploratorio)")
 RUN_DIR = re.compile(r"fold(\d+)_seed(\d+)")
 
 
