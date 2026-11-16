@@ -21,12 +21,11 @@ Fold k corresponde al lote de prueba indicado en `folds.csv` (columnas de las ta
 
 ## Figuras (PNG a 300 dpi y SVG)
 
-Paneles comunes a F1, F1b y F2: (a) maestros RGB, NIR y RGB+NIR (+ dos troncos cuando exista); (b) maestro RGB frente a los alumnos RGB (detección, CrossKD desde RGB, desde RGB+NIR y desde NIR). Un color y un marcador fijos por brazo; maestros con línea continua, alumnos con línea discontinua.
+Paneles de F2 y F4: (a) maestros RGB, NIR y RGB+NIR (+ dos troncos cuando exista); (b) maestro RGB frente a los alumnos RGB. F1 usa un solo conjunto de ejes con una leyenda común. Un color y un marcador fijos por brazo; maestros con línea continua, alumnos con línea discontinua.
 
 | Archivo | Borrador de pie de figura | Columnas de entrada |
 |---|---|---|
-| `F1a_curvas_validacion` | Figura 1. AP50 de la clase daño en validación por época (media de los 5 lotes y banda de ±1 sd). Es la métrica de selección del checkpoint (`selection_metric=damage_ap50`); el historial exportado no contiene el AP50 latente por época, por lo que esta es la métrica de validación más cercana. | `training_history.csv`: `arm`, `fold`, `epoch`, `ap50_class_1` |
-| `F1b_curvas_perdida` | Figura 2. Pérdida total de entrenamiento por época (media de los 5 lotes y banda de ±1 sd). En los alumnos CrossKD la pérdida total incluye el término de destilación, por lo que no es comparable en valor absoluto entre paneles. | `training_history.csv`: `arm`, `fold`, `epoch`, `total_loss` |
+| `F1_curvas_entrenamiento` | Figura 1. Pérdida de detección (caja + clase) en entrenamiento y AP50 de la clase daño en validación por época, curvas suavizadas por lote con media móvil exponencial (w = 0.8) y media ± 1 sd entre lotes. El AP50 de la clase daño es la métrica de selección del checkpoint (`selection_metric=damage_ap50`); el historial exportado no contiene el AP50 latente por época ni un AP30 por época, por lo que no hay tercer panel de AP30. | `training_history.csv`: `arm`, `fold`, `epoch`, `box_loss`, `cls_loss`, `ap50_class_1` |
 | `F2_curvas_pr_test` | Figura 3. Curvas precisión-exhaustividad de las cajas latentes (IoU 0.5) en prueba, promediadas entre lotes en cada umbral de confianza. | `pr_grid.csv` (split `test`): `arm`, `fold`, `threshold`, `tp`, `fp`, `fn` |
 | `F3_ap50_por_lote` | Figura 4. AP50 latente de cajas en prueba por lote (un punto por lote) y media de los lotes, por brazo. | `runs.csv` (split `test`): `v4.latent_ap50.ap` |
 
@@ -62,3 +61,10 @@ Detalles de T3 y T4:
 | `T7_exhaustividad_por_hora` | Tabla 7. Exhaustividad por foto según la hora de captura con la regla «exhaustividad >= 0.90 en val», solo maestros (caso latente temprano). `photos.csv` sí contiene la hora, de 0 a 12 h; 8-12 h quedan fuera de la ventana de la métrica primaria. | `photos.csv`: `hour`, `max_damage_score` |
 
 **Líneas base triviales.** El clasificador «todo positivo» (exhaustividad 1, especificidad 0) obtiene un F1 de foto de ~0.888 por la prevalencia (~80 % de fotos latentes); se reporta en T3 y T5 (fila «Línea base»). El F1 de foto de los brazos en T3 debe leerse frente a ese valor casi trivial. Con el umbral fijo 0.25 todos los brazos marcan prácticamente todas las fotos (T5): ese umbral no discrimina a nivel de foto.
+
+## Versión principal y apéndice
+
+- **Principal** (nombres sin sufijo): los brazos pre-registrados y la referencia, como máximo 5 series: `master_rgb_seg` y `master_rgbnir_seg` (H1), `crosskd_rgb_seg` y `crosskd_rgbnir_seg` (H2) y `master_nir_seg` (referencia descriptiva). Aplica a F1, F2, F4 y a las tablas T1, T2, T3, T5 y T6.
+- **Apéndice** (sufijo `_apendice`): todos los brazos encontrados, incluidos `master_rgb_det`, `crosskd_nir_seg` y, cuando exista, `master_twostem_rgbnir_seg`.
+- F3 (puntos por lote), T4 y T7 incluyen siempre todos los brazos; en F3 los exploratorios van sobre fondo gris.
+- **Suavizado.** En F1 cada curva de lote se suaviza primero (media móvil exponencial con corrección de sesgo, w = 0.8, la misma función `src/evaluation/smoothing.py` que usa `scripts/plot_run_curves.py`) y después se calcula la media ± sd entre lotes. No se marca la época seleccionada (T4 la lista) para no recargar las curvas. La pérdida de detección es caja + clase, comparable entre brazos de segmentación y CrossKD (la pérdida total incluye los términos de máscara y de destilación).
