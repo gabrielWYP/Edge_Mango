@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launcher foreground: a ripening mango whose latent damage spot is framed by a detection box. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Scaled down so the leaf tip stays inside the 66 dp safe zone of circular masks. -->
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:scaleX="0.86"
+        android:scaleY="0.86"
+        android:translateY="2">
+
+        <!-- Stem -->
+        <path
+            android:pathData="M50,35 L53,27"
+            android:strokeWidth="2.4"
+            android:strokeColor="#5D4037"
+            android:strokeLineCap="round" />
+
+        <!-- Leaf -->
+        <path
+            android:fillColor="#43A047"
+            android:pathData="M53,29 C56,21 64,17 73,18 C70,27 62,31 53,29 Z" />
+        <path
+            android:pathData="M55,28 C60,25 65,22 70,20"
+            android:strokeWidth="0.9"
+            android:strokeColor="#2E7D32"
+            android:strokeLineCap="round" />
+
+        <!-- Mango body -->
+        <path android:pathData="M40,35 C52,27 72,31 78,47 C84,63 78,81 62,85 C46,89 32,81 30,65 C28,53 32,41 40,35 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="34"
+                    android:startY="36"
+                    android:endX="76"
+                    android:endY="84">
+                    <item android:offset="0" android:color="#FFE082" />
+                    <item android:offset="0.45" android:color="#FFB300" />
+                    <item android:offset="1" android:color="#F4511E" />
+                </gradient>
+            </aapt:attr>
+        </path>
+
+        <!-- Highlight -->
+        <path
+            android:fillColor="#66FFFFFF"
+            android:pathData="M39,44 C42,39 47,37 51,37 C46,40 42,45 40,52 C38,50 38,47 39,44 Z" />
+
+        <!-- Damage spots -->
+        <path
+            android:fillColor="#7A4320"
+            android:pathData="M63,57 C68,57 71,60 71,64 C71,68 67,70 63,70 C58,70 55,67 55,63 C55,59 59,57 63,57 Z" />
+        <path
+            android:fillColor="#4E2A12"
+            android:pathData="M63,60 C65.5,60 67,61.8 67,63.8 C67,65.9 65.3,67 63,67 C60.6,67 59,65.6 59,63.6 C59,61.5 60.8,60 63,60 Z" />
+        <path
+            android:fillColor="#7A4320"
+            android:pathData="M54,72 a2,2 0,1 0,4 0 a2,2 0,1 0,-4 0 Z" />
+
+        <!-- Segmentation mask tint over the damage -->
+        <path
+            android:fillColor="#3300E5FF"
+            android:pathData="M63,55 C69,55 73,59 73,64 C73,69 68,72 63,72 C57,72 53,68 53,63 C53,58 57,55 63,55 Z" />
+
+        <!-- Detection box: corner brackets -->
+        <path
+            android:pathData="M50,57 L50,51 L56,51 M70,51 L76,51 L76,57 M76,70 L76,76 L70,76 M56,76 L50,76 L50,70"
+            android:strokeWidth="2.6"
+            android:strokeColor="#00E5FF"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+
+        <!-- Detection label tab -->
+        <path
+            android:fillColor="#00E5FF"
+            android:pathData="M50,44.5 L63,44.5 Q64.5,44.5 64.5,46 L64.5,49.5 L50,49.5 Z" />
+        <path
+            android:pathData="M52.5,47 L61.5,47"
+            android:strokeWidth="1.4"
+            android:strokeColor="#0B1F14"
+            android:strokeLineCap="round" />
+    </group>
+</vector>
