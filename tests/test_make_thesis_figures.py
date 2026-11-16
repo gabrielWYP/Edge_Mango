@@ -311,3 +311,49 @@ def test_hour_recall_uses_val_threshold_and_reports_present_hours_only():
     t = mtf.hour_recall_table(_photos(), target=0.95)
     assert set(t.columns) >= {"arm", "fold", "hour_0", "hour_2", "hour_4", "hour_6"}
     assert "hour_8" not in t.columns  # hour absent from the data: not reported, never 0
+
+
+# ---------------------------------------------------------------- smoothing, detection loss, main/appendix split
+from src.evaluation.smoothing import ema_smooth  # noqa: E402
+
+
+def test_ema_smooth_bias_corrected_and_identity_without_smoothing():
+    assert ema_smooth([1.0, 2.0, 3.0], 0.0) == [1.0, 2.0, 3.0]
+    out = ema_smooth([5.0, 5.0, 5.0, 5.0], 0.8)
+    assert out == pytest.approx([5.0] * 4)  # bias correction: a constant stays constant
+    assert ema_smooth([1.0, 3.0], 0.8)[0] == pytest.approx(1.0)
+
+
+def test_smoothed_history_smooths_each_fold_independently():
+    hist = pd.DataFrame(
+        {"arm": ["a"] * 6, "fold": [0, 0, 0, 1, 1, 1], "epoch": [3, 1, 2, 1, 2, 3], "m": [9.0, 1.0, 3.0, 5.0, 5.0, 5.0]}
+    )
+    out = mtf.smoothed_history(hist, ["m"], w=0.8)
+    f0 = out[out["fold"] == 0].sort_values("epoch")["m_smooth"].tolist()
+    assert f0 == pytest.approx(ema_smooth([1.0, 3.0, 9.0], 0.8))  # sorted by epoch before smoothing
+    assert out[out["fold"] == 1]["m_smooth"].tolist() == pytest.approx([5.0] * 3)
+    assert "m" in out.columns  # the raw values are kept
+
+
+def test_add_detection_loss_is_box_plus_cls_and_falls_back_to_total():
+    h = pd.DataFrame({"box_loss": [1.0], "cls_loss": [0.5], "total_loss": [9.0]})
+    out, col, fallback = mtf.add_detection_loss(h)
+    assert out[col].tolist() == [1.5] and fallback is False
+    out, col, fallback = mtf.add_detection_loss(h.drop(columns="cls_loss"))
+    assert col == "total_loss" and fallback is True
+
+
+def test_select_arms_main_keeps_preregistered_arms_in_fixed_order():
+    arms = ["master_rgb_seg", "master_nir_seg", "master_rgbnir_seg", "master_rgb_det", "crosskd_rgb_seg",
+            "crosskd_rgbnir_seg", "crosskd_nir_seg", "master_twostem_rgbnir_seg"]
+    assert mtf.select_arms(arms, "main") == ["master_rgb_seg", "master_nir_seg", "master_rgbnir_seg",
+                                             "crosskd_rgb_seg", "crosskd_rgbnir_seg"]
+    assert mtf.select_arms(arms, "appendix") == arms
+    assert mtf.select_arms(["master_rgb_det"], "main") == []
+
+
+def test_training_panels_skip_ap30_when_history_has_no_such_column():
+    h = pd.DataFrame({"ap50_class_1": [0.1]})
+    assert [p[1] for p in mtf.training_panels(h)] == ["det_loss", "ap50_class_1"]
+    h["ap30_class_1"] = 0.2
+    assert [p[1] for p in mtf.training_panels(h)][-1] == "ap30_class_1"
