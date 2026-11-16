@@ -70,6 +70,10 @@ DIFFERENCES.update({
     # other segment comparisons (box and mask); descriptive, not confirmatory.
     "crosskd_nir": ("crosskd_nir_seg", "master_rgb_seg"),
     "crosskd_nir_vs_rgbnir": ("crosskd_nir_seg", "crosskd_rgbnir_seg"),
+    # Exploratory (plan section 11, second 2026-11-16 row): intermediate fusion of separate RGB and NIR backbones against
+    # the 4-channel early fusion (primary) and against the NIR-only master (secondary); descriptive, outside H1 and H2.
+    "twostem_vs_rgbnir": ("master_twostem_rgbnir_seg", "master_rgbnir_seg"),
+    "twostem_vs_nir": ("master_twostem_rgbnir_seg", "master_nir_seg"),
 })
 AP_METRICS = ("latent_ap50", "latent_ap30")
 MASK_AP_METRICS = ("latent_mask_ap50", "latent_mask_ap30")  # only in the metrics_v4.json of segment runs

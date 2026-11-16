@@ -30,6 +30,11 @@ with `--arms-preset`, masters first: `seg` is master_rgb_seg master_rgbnir_seg m
 crosskd_rgbnir_seg, `seg-full` adds crosskd_rgbnir_high_seg, crosskd_rgbnir_low_seg and crosskd_rgbnir_better_seg. The
 MSE feature-KD arms (`kd_rgb_seg`, `kd_rgbnir_seg`) are defined and runnable by name, in no preset.
 
+`master_twostem_rgbnir_seg` (twin of the detect-style `est_twostem_rgbnir`) is exploratory: the training of
+`master_rgbnir_seg` (same input, labels and config) with `student_fusion=mid`, a separate RGB and NIR backbone fused
+at P3, P4 and P5, instead of the 4-channel stack. The preset `thesis_explore_twostem` (that arm alone, 640 px) is run
+after `thesis`, with the same `--checkpoints-root`.
+
 `master_rgb_det` is a detect student with the exact training of `est_rgb` (same command, other output folder), meant
 for the polygon v4 dataset, where its boxes are the tight boxes of the polygons. The preset `thesis` is `seg` plus this
 arm: the mask supervision effect is `master_rgb_seg - master_rgb_det`.
@@ -85,12 +90,14 @@ class Arm:
     in_channels: int = 3
     kd_overrides: tuple[str, ...] = ()  # key=value appended to the KD training command
     task: str = "detect"  # "segment": the arm trains and is evaluated as a YOLOv8-seg student
+    fusion: str = "early"  # "mid": separate RGB and NIR backbones fused at P3, P4 and P5 (needs in_channels=4)
 
 
 ARMS = {
     "est_rgb": Arm(),
     "est_nir": Arm(reads_nir=True),
     "est_rgbnir": Arm(in_channels=4),
+    "est_twostem_rgbnir": Arm(in_channels=4, fusion="mid"),
     "kd_nir": Arm(teacher="est_nir"),
     "kd_rgb": Arm(teacher="est_rgb"),
     "kd_rgbnir": Arm(teacher="est_rgbnir"),
@@ -164,7 +171,7 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--mask-weight", type=float, default=7.5, help="mask loss gain of the `_seg` arms")
     parser.add_argument("--mask-ratio", type=int, default=4, help="input size over mask size of the `_seg` arms")
     parser.add_argument("--image-size", type=int, default=None,
-                        help=f"input side of every run; default {THESIS_IMAGE_SIZE} with --arms-preset thesis or thesis_explore, "
+                        help=f"input side of every run; default {THESIS_IMAGE_SIZE} with --arms-preset thesis, thesis_explore or thesis_explore_twostem, "
                         "else the config value")
     parser.add_argument("--jobs", type=int, default=1, help="runs at the same time")
     parser.add_argument("--no-resume", action="store_true", help="train interrupted runs from scratch")
@@ -173,7 +180,7 @@ def parse_args(argv=None) -> argparse.Namespace:
     if args.arms_preset and args.arms:
         parser.error("--arms-preset and --arms are alternatives")
     args.arms = list(SEGMENT_PRESETS[args.arms_preset]) if args.arms_preset else args.arms or PLANNED_ARMS
-    if args.image_size is None and args.arms_preset in ("thesis", "thesis_explore"):
+    if args.image_size is None and args.arms_preset in ("thesis", "thesis_explore", "thesis_explore_twostem"):
         args.image_size = THESIS_IMAGE_SIZE
     if args.image_size is not None and (args.image_size % STRIDE or args.image_size % args.mask_ratio):
         parser.error(f"--image-size must be a multiple of {STRIDE} and of --mask-ratio, got {args.image_size}")
@@ -210,6 +217,9 @@ def plan_arm(args, arm_name: str, fold: int, seed: int) -> list[tuple[str, list[
     ]
     if arm.in_channels != 3:
         data.append(f"student_in_channels={arm.in_channels}")
+    if arm.fusion != "early":
+        # The trainer records it in the checkpoint config, from where evaluate_checkpoint rebuilds the model.
+        data.append(f"student_fusion={arm.fusion}")
     if arm.task == "segment":
         # `load_masks` follows: the trainers and evaluate_checkpoint build the dataset from the task.
         data += ["task=segment", f"mask_ratio={args.mask_ratio}", f"mask_weight={args.mask_weight}"]
