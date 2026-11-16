@@ -1,0 +1,15 @@
+arm,arm_label,metric,n_folds,mean,sd,Lote 1,Lote 2,Lote 3,Lote 4,Lote 5
+master_rgb_seg,Maestro RGB,AP30 latente (cajas),5,0.444570,0.086679,0.378992,0.548892,0.471598,0.334302,0.489066
+master_nir_seg,Maestro NIR,AP30 latente (cajas),5,0.559770,0.093778,0.476689,0.693267,0.560577,0.466554,0.601763
+master_rgbnir_seg,Maestro RGB+NIR,AP30 latente (cajas),5,0.535447,0.087384,0.480229,0.669643,0.511969,0.446888,0.568505
+master_rgb_det,"Alumno RGB, detección",AP30 latente (cajas),5,0.473211,0.089806,0.389054,0.605290,0.499510,0.389803,0.482399
+crosskd_rgb_seg,"Alumno RGB, CrossKD desde RGB",AP30 latente (cajas),5,0.476258,0.065501,0.497077,0.527808,0.505251,0.361964,0.489190
+crosskd_rgbnir_seg,"Alumno RGB, CrossKD desde RGB+NIR",AP30 latente (cajas),5,0.501207,0.096793,0.499735,0.621475,0.548005,0.358792,0.478028
+crosskd_nir_seg,"Alumno RGB, CrossKD desde NIR (exploratorio)",AP30 latente (cajas),5,0.472176,0.121163,0.383184,0.658771,0.507356,0.351325,0.460243
+master_rgb_seg,Maestro RGB,AP30 latente (máscaras),5,0.439899,0.088775,0.369838,0.540885,0.472742,0.326452,0.489580
+master_nir_seg,Maestro NIR,AP30 latente (máscaras),5,0.555769,0.097727,0.465970,0.696282,0.550633,0.464682,0.601279
+master_rgbnir_seg,Maestro RGB+NIR,AP30 latente (máscaras),5,0.530732,0.089205,0.473635,0.670135,0.493320,0.450278,0.566293
+master_rgb_det,"Alumno RGB, detección",AP30 latente (máscaras),0,,,,,,,
+crosskd_rgb_seg,"Alumno RGB, CrossKD desde RGB",AP30 latente (máscaras),5,0.466664,0.071887,0.472981,0.531496,0.504835,0.344939,0.479070
+crosskd_rgbnir_seg,"Alumno RGB, CrossKD desde RGB+NIR",AP30 latente (máscaras),5,0.492203,0.097880,0.480998,0.617069,0.540629,0.351478,0.470843
+crosskd_nir_seg,"Alumno RGB, CrossKD desde NIR (exploratorio)",AP30 latente (máscaras),5,0.467878,0.118056,0.375259,0.648401,0.507415,0.354670,0.453646
