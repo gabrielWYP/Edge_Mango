@@ -47,3 +47,18 @@ Detalles de T3 y T4:
 - Falsos positivos en sano por imagen: valor exportado con el umbral fijo 0.25 de la evaluación (no se ajusta; la exportación no permite recalcularlo con otro umbral).
 - Época seleccionada: primer máximo de `ap50_class_1`, como en el entrenador (que solo guarda con `>`).
 - `master_rgb_det` no produce máscaras: sus filas de AP de máscara figuran como `n/d` (n = 0).
+
+## Puntos de operación orientados a exhaustividad (T5, T6, T7, F4)
+
+**Motivo.** El costo es asimétrico: un mango dañado que no se detecta baja la calidad del lote de exportación (costoso), mientras que un mango sano marcado como dañado todavía puede venderse en el mercado local (barato). Por eso el máximo F1 no es el punto de operación adecuado para la aplicación. La unidad de decisión es la **foto/mango**: se marca como dañada si alguna detección alcanza el umbral (`max_damage_score` de `photos.csv`, fotos latentes frente a `sano`). Las métricas de cajas quedan como secundarias.
+
+**Estatus.** Estas reglas se definieron **a posteriori** (después del análisis de prueba), son **descriptivas** y quedan fuera de H1/H2. **Los umbrales siempre salen de validación** de cada lote y se aplican al test de ese lote; con el umbral fijo 0.25 no se elige nada.
+
+| Archivo | Borrador de pie | Columnas de entrada |
+|---|---|---|
+| `T5_umbral_fijo_025` | Tabla 5. Umbral fijo 0.25 en prueba: exhaustividad, especificidad, precisión y tasa de descarte de fotos sanas por foto; precisión y exhaustividad de cajas (IoU 0.5). | `photos.csv`: `primary_metric_photo`, `hour`, `max_damage_score`; `pr_grid.csv` (test, umbral 0.25) |
+| `T6_exhaustividad_objetivo` | Tabla 6. Reglas con umbral elegido en validación: mayor umbral con exhaustividad por foto en val >= 0.90 o >= 0.95 (si ninguno la alcanza, el menor de la rejilla, marcado), y F2 máximo; resultados en prueba. | `photos.csv` (val y test) |
+| `F4_curva_operacion_foto` | Figura 5. Exhaustividad por foto frente a tasa de descarte de fotos sanas en prueba (media ± 1 sd entre lotes); círculos y rombos: reglas 0.90 y 0.95 elegidas en val (valores en T6). | `photos.csv` (test) |
+| `T7_exhaustividad_por_hora` | Tabla 7. Exhaustividad por foto según la hora de captura con la regla «exhaustividad >= 0.90 en val», solo maestros (caso latente temprano). `photos.csv` sí contiene la hora, de 0 a 12 h; 8-12 h quedan fuera de la ventana de la métrica primaria. | `photos.csv`: `hour`, `max_damage_score` |
+
+**Líneas base triviales.** El clasificador «todo positivo» (exhaustividad 1, especificidad 0) obtiene un F1 de foto de ~0.888 por la prevalencia (~80 % de fotos latentes); se reporta en T3 y T5 (fila «Línea base»). El F1 de foto de los brazos en T3 debe leerse frente a ese valor casi trivial. Con el umbral fijo 0.25 todos los brazos marcan prácticamente todas las fotos (T5): ese umbral no discrimina a nivel de foto.
