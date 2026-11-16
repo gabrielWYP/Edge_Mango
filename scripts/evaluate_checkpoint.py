@@ -486,11 +486,17 @@ def _load_model(
         )
         check_norm_compatible(model, state_dict, source=f"Checkpoint at {checkpoint_path}")
     else:
+        # Recorded by the trainer; an old checkpoint has no such key and is "early". The two-backbone
+        # student reads RGB and NIR, so the config follows it and the eval loop feeds both.
+        fusion = (checkpoint.get("config") or {}).get("student_fusion", "early") if is_checkpoint_dict else "early"
+        if fusion == "mid":
+            config.student_in_channels = 4
         model = StudentModel(
             num_classes=config.num_classes,
             variant=config.student_variant,
             in_channels=config.student_in_channels,
             task=config.task,
+            fusion=fusion,
         )
         # Pre-fix KD checkpoints stored the training-only adapters inside
         # `model_state_dict`; they are not part of the student.

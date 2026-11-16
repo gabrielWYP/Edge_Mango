@@ -178,3 +178,35 @@ class CSPDarknetNano(nn.Module):
         s4 = self.sppf(self.stage4(s3))  # (N, 256, 20, 20)
 
         return [s1, s2, s3, s4], (s3, s4)
+
+
+class TwoStemBackbone(nn.Module):
+    """
+    Two CSPDarknet-Nano backbones, one per modality, fused at P3, P4 and P5.
+
+    `rgb` reads (N, 3, H, W), `nir` reads (N, 1, H, W); each has its own weights. At the three levels the
+    neck consumes (S2, S3, S4: strides 8, 16, 32) the two feature maps are concatenated and brought back to the
+    channel count of the level by a 1x1 Conv-BN-SiLU (`fuse`). There is no attention: the fusion is a plain
+    learned mix, and every parameter of both backbones sits on the path to the output. The first stage
+    (S1) is not fused: the neck does not read it, so it returns the RGB one to keep the list shape.
+
+    Forward returns the same `(stages, (S3, S4))` as `CSPDarknetNano`, so neck and head are unchanged.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.rgb = CSPDarknetNano(3)
+        self.nir = CSPDarknetNano(1)
+        self.fuse = nn.ModuleList(
+            Conv_BN_SiLU(2 * c, c, 1, 1) for c in CSPDarknetNano.STAGE_CHANNELS[1:]
+        )
+
+    def forward(self, x: Tensor, nir: Tensor) -> tuple[list[Tensor], tuple[Tensor, Tensor]]:
+        rgb_stages, _ = self.rgb(x)
+        nir_stages, _ = self.nir(nir)
+        s1 = rgb_stages[0]
+        s2, s3, s4 = (
+            fuse(torch.cat([r, n], 1))
+            for fuse, r, n in zip(self.fuse, rgb_stages[1:], nir_stages[1:])
+        )
+        return [s1, s2, s3, s4], (s3, s4)

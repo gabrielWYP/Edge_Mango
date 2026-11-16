@@ -303,6 +303,7 @@ def main():
             variant=config.student_variant,
             in_channels=config.student_in_channels,
             task=config.task,
+            fusion=config.student_fusion,
         )
         if config.student_pretrained_path:
             report = load_yolov8n_weights(model, config.student_pretrained_path)

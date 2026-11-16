@@ -246,6 +246,9 @@ class TrainingConfig:
     # every existing config and checkpoint keeps the student it has today.
     student_variant: str = "wide"
     student_in_channels: int = 3
+    # "early": one backbone over the stacked channels. "mid": a separate RGB and NIR backbone fused at P3, P4
+    # and P5; it needs student_in_channels=4 (`StudentModel(fusion=...)`).
+    student_fusion: str = "early"
     student_pretrained_path: str = ""
     pixel_cache_dir: str = ""
     # Instance segmentation (YOLOv8-seg head on the student). Off by default, so every
@@ -439,6 +442,10 @@ class TrainingConfig:
             raise ValueError(
                 f"Invalid student_in_channels {self.student_in_channels}: 3 is RGB, 4 is RGB and NIR."
             )
+        if self.student_fusion not in ("early", "mid"):
+            raise ValueError(f"Invalid student_fusion '{self.student_fusion}'. Must be 'early' or 'mid'.")
+        if self.student_fusion == "mid" and self.student_in_channels != 4:
+            raise ValueError("student_fusion='mid' needs student_in_channels=4 (RGB and NIR).")
         if self.task not in TASK_NAMES:
             raise ValueError(f"Invalid task '{self.task}'. Must be one of: {TASK_NAMES}")
         if self.task == "segment" and self.model_type != "student":

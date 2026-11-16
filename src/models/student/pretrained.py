@@ -18,6 +18,8 @@ _BACKBONE = {
     "stage3.0": 5, "stage3.1": 6, "stage4.0": 7, "stage4.1": 8, "sppf": 9,
 }
 _FIRST_FILTER = "backbone.stem.0.conv.weight"
+_NIR_FIRST_FILTER = "backbone.nir.stem.0.conv.weight"
+_FUSION_PREFIX = "backbone.fuse."
 _NANO_NECK = {
     "td_c2f_4": 12, "td_c2f_3": 15, "bu_conv_3": 16, "bu_c2f_4": 18, "bu_conv_4": 19, "bu_c2f_5": 21,
 }
@@ -26,6 +28,8 @@ _NANO_NECK = {
 def official_key(key: str, variant: str) -> str | None:
     """Name of a student tensor in the official checkpoint, or None when it has no counterpart."""
     section, _, rest = key.partition(".")
+    if section == "backbone" and rest.startswith(("rgb.", "nir.")):
+        rest = rest.partition(".")[2]  # the two backbones of `fusion="mid"` share the official names
     if section == "backbone":
         for prefix, index in _BACKBONE.items():
             if rest.startswith(prefix + "."):
@@ -59,11 +63,13 @@ def load_yolov8n_weights(model: torch.nn.Module, path: str | Path) -> dict:
         source = official.get(official_key(key, model.variant))
         if key == _FIRST_FILTER and source is not None and value.shape[1] == source.shape[1] + 1:
             source = torch.cat([source, source.mean(dim=1, keepdim=True)], dim=1)
+        if key == _NIR_FIRST_FILTER and source is not None and value.shape[1] == 1:
+            source = source.sum(dim=1, keepdim=True)
         if source is not None and source.shape == value.shape:
             loaded[key] = source.to(value.dtype)
         else:
             skipped.append(key)
-    wrong = [key for key in skipped if key.startswith("backbone.")]
+    wrong = [key for key in skipped if key.startswith("backbone.") and not key.startswith(_FUSION_PREFIX)]
     if wrong:
         raise ValueError(f"{path}: the backbone does not match, first at {wrong[0]}")
     model.load_state_dict(loaded, strict=False)
