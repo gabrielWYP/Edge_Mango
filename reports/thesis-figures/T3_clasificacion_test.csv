@@ -62,6 +62,13 @@ master_rgb_det,"Maestro RGB, solo cajas",F1 (foto),5,0.884811,0.006763,0.872727,
 crosskd_rgb_seg,"Alumno RGB, CrossKD desde RGB",F1 (foto),5,0.887338,0.001681,0.888143,0.884615,0.888143,0.888889,0.886898
 crosskd_rgbnir_seg,"Alumno RGB, CrossKD desde RGB+NIR",F1 (foto),5,0.888340,0.001214,0.887402,0.887133,0.888143,0.888889,0.890135
 crosskd_nir_seg,"Alumno RGB, CrossKD desde NIR (exploratorio)",F1 (foto),5,0.886700,0.001752,0.887402,0.887387,0.886898,0.883669,0.888143
+master_rgb_seg,Maestro RGB,Línea base «todo positivo»: F1 (foto),5,0.888241,0.000576,0.888641,0.887387,0.888143,0.888889,0.888143
+master_nir_seg,Maestro NIR,Línea base «todo positivo»: F1 (foto),5,0.888241,0.000576,0.888641,0.887387,0.888143,0.888889,0.888143
+master_rgbnir_seg,Maestro RGB+NIR,Línea base «todo positivo»: F1 (foto),5,0.888241,0.000576,0.888641,0.887387,0.888143,0.888889,0.888143
+master_rgb_det,"Maestro RGB, solo cajas",Línea base «todo positivo»: F1 (foto),5,0.888241,0.000576,0.888641,0.887387,0.888143,0.888889,0.888143
+crosskd_rgb_seg,"Alumno RGB, CrossKD desde RGB",Línea base «todo positivo»: F1 (foto),5,0.888241,0.000576,0.888641,0.887387,0.888143,0.888889,0.888143
+crosskd_rgbnir_seg,"Alumno RGB, CrossKD desde RGB+NIR",Línea base «todo positivo»: F1 (foto),5,0.888241,0.000576,0.888641,0.887387,0.888143,0.888889,0.888143
+crosskd_nir_seg,"Alumno RGB, CrossKD desde NIR (exploratorio)",Línea base «todo positivo»: F1 (foto),5,0.888241,0.000576,0.888641,0.887387,0.888143,0.888889,0.888143
 master_rgb_seg,Maestro RGB,AUROC de cara (sin umbral),5,0.599140,0.045512,0.571128,0.622513,0.602317,0.540950,0.658791
 master_nir_seg,Maestro NIR,AUROC de cara (sin umbral),5,0.641979,0.059581,0.668170,0.714797,0.577254,0.583400,0.666272
 master_rgbnir_seg,Maestro RGB+NIR,AUROC de cara (sin umbral),5,0.627150,0.040017,0.602431,0.671523,0.589698,0.602400,0.669698

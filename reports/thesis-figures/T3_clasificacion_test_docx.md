@@ -63,6 +63,13 @@
 | Alumno RGB, CrossKD desde RGB | F1 (foto) | 5 | 0.887 ± 0.002 | 0.888 | 0.885 | 0.888 | 0.889 | 0.887 |
 | Alumno RGB, CrossKD desde RGB+NIR | F1 (foto) | 5 | 0.888 ± 0.001 | 0.887 | 0.887 | 0.888 | 0.889 | 0.890 |
 | Alumno RGB, CrossKD desde NIR (exploratorio) | F1 (foto) | 5 | 0.887 ± 0.002 | 0.887 | 0.887 | 0.887 | 0.884 | 0.888 |
+| Maestro RGB | Línea base «todo positivo»: F1 (foto) | 5 | 0.888 ± 0.001 | 0.889 | 0.887 | 0.888 | 0.889 | 0.888 |
+| Maestro NIR | Línea base «todo positivo»: F1 (foto) | 5 | 0.888 ± 0.001 | 0.889 | 0.887 | 0.888 | 0.889 | 0.888 |
+| Maestro RGB+NIR | Línea base «todo positivo»: F1 (foto) | 5 | 0.888 ± 0.001 | 0.889 | 0.887 | 0.888 | 0.889 | 0.888 |
+| Maestro RGB, solo cajas | Línea base «todo positivo»: F1 (foto) | 5 | 0.888 ± 0.001 | 0.889 | 0.887 | 0.888 | 0.889 | 0.888 |
+| Alumno RGB, CrossKD desde RGB | Línea base «todo positivo»: F1 (foto) | 5 | 0.888 ± 0.001 | 0.889 | 0.887 | 0.888 | 0.889 | 0.888 |
+| Alumno RGB, CrossKD desde RGB+NIR | Línea base «todo positivo»: F1 (foto) | 5 | 0.888 ± 0.001 | 0.889 | 0.887 | 0.888 | 0.889 | 0.888 |
+| Alumno RGB, CrossKD desde NIR (exploratorio) | Línea base «todo positivo»: F1 (foto) | 5 | 0.888 ± 0.001 | 0.889 | 0.887 | 0.888 | 0.889 | 0.888 |
 | Maestro RGB | AUROC de cara (sin umbral) | 5 | 0.599 ± 0.046 | 0.571 | 0.623 | 0.602 | 0.541 | 0.659 |
 | Maestro NIR | AUROC de cara (sin umbral) | 5 | 0.642 ± 0.060 | 0.668 | 0.715 | 0.577 | 0.583 | 0.666 |
 | Maestro RGB+NIR | AUROC de cara (sin umbral) | 5 | 0.627 ± 0.040 | 0.602 | 0.672 | 0.590 | 0.602 | 0.670 |

@@ -232,3 +232,82 @@ def test_build_summary_table_spanish_headers_and_missing_fold_marked():
     row = tbl.iloc[0]
     assert row["Lote 4"] == "n/d" and row["n folds"] == "4"
     assert row["Media ± sd"] == "0.500 ± 0.258"
+
+
+# ---------------------------------------------------------------- recall-oriented operating points
+def test_photo_metrics_reports_discard_rate():
+    out = mtf.photo_metrics([0.9, 0.1, 0.8, 0.2], [True, True, False, False], 0.5)
+    assert out["discard_rate"] == pytest.approx(1 - out["specificity"])
+    assert out["discard_rate"] == pytest.approx(0.5)
+
+
+def test_pick_threshold_for_recall_takes_highest_threshold_reaching_target():
+    scores = np.array([0.9, 0.8, 0.7, 0.6, 0.3])
+    pos = np.array([True] * 5)
+    thr, reached = mtf.pick_threshold_for_recall(scores, pos, 0.8, grid=[0.1, 0.5, 0.65, 0.95])
+    assert reached and thr == 0.5  # recall: 1.0 at 0.1, 0.8 at 0.5, 0.6 at 0.65
+
+
+def test_pick_threshold_for_recall_unreachable_uses_lowest_and_flags():
+    scores = np.array([0.0, 0.0, 0.9])  # photos with score 0 can never be recalled at thr > 0
+    pos = np.array([True, True, True])
+    thr, reached = mtf.pick_threshold_for_recall(scores, pos, 0.95, grid=[0.05, 0.5])
+    assert thr == 0.05 and reached is False
+
+
+def test_pick_threshold_fbeta_favours_recall_over_f1():
+    scores = np.array([0.9, 0.5, 0.4, 0.8, 0.45])
+    pos = np.array([True, True, True, False, False])
+    t_f1, _ = mtf.photo_operating_point(scores, pos, scores, pos, grid=[0.3, 0.6, 0.85])
+    t_f2 = mtf.pick_threshold_fbeta(scores, pos, beta=2.0, grid=[0.3, 0.6, 0.85])
+    assert t_f2 <= t_f1
+
+
+def test_all_positive_baseline():
+    b = mtf.all_positive_baseline(n_pos=8, n_neg=2)
+    assert b["recall"] == 1.0 and b["specificity"] == 0.0
+    assert b["precision"] == pytest.approx(0.8)
+    assert b["f1"] == pytest.approx(2 * 0.8 / 1.8)
+
+
+def _photos(arm="a", fold=0):
+    rows = []
+    for split, shift in (("val", 0.0), ("test", -0.5)):
+        for i, (h, s) in enumerate([("0", 0.9), ("2", 0.8), ("4", 0.6), ("6", 0.4), ("sano", 0.7), ("sano", 0.2), ("sano", 0.1)]):
+            rows.append(dict(arm=arm, fold=fold, split=split, hour=h, primary_metric_photo=1,
+                             max_damage_score=max(s + (shift if split == "test" else 0.0), 0.0)))
+    return pd.DataFrame(rows)
+
+
+def test_photo_rules_table_picks_on_val_and_applies_to_test():
+    t = mtf.photo_rules_table(_photos())
+    r = t.iloc[0]
+    assert r["r95_threshold"] <= 0.4  # val recall 1.0 needs thr <= 0.4 (all four damaged photos)
+    assert r["r95_reached"] == 1
+    # test scores are lower by 0.5: recall at that val threshold must reflect test, not val
+    assert r["r95_recall"] < 1.0
+    assert r["r95_discard_rate"] == pytest.approx(1 - r["r95_specificity"])
+    assert r["fix_recall"] == pytest.approx(0.5)  # test positives at >= 0.25: 0.4 and 0.3 of 4
+    assert r["base_f1"] == pytest.approx(2 * (4 / 7) / (1 + 4 / 7))
+
+
+def test_photo_rules_table_skips_fold_without_test():
+    p = _photos()
+    p = p[p["split"] == "val"]
+    assert mtf.photo_rules_table(p).empty
+
+
+def test_operating_curve_mean_sd_across_folds():
+    p = pd.concat([_photos(fold=0), _photos(fold=1)])
+    c = mtf.operating_curve(p, "a", grid=[0.05, 0.5])
+    assert list(c["threshold"]) == [0.05, 0.5]
+    assert c["n"].tolist() == [2, 2]
+    assert c.loc[0, "recall_sd"] == pytest.approx(0.0)  # identical folds
+    assert c.loc[0, "recall"] >= c.loc[1, "recall"]  # lower threshold -> more recall
+    assert mtf.operating_curve(p, "ghost", grid=[0.5]).empty
+
+
+def test_hour_recall_uses_val_threshold_and_reports_present_hours_only():
+    t = mtf.hour_recall_table(_photos(), target=0.95)
+    assert set(t.columns) >= {"arm", "fold", "hour_0", "hour_2", "hour_4", "hour_6"}
+    assert "hour_8" not in t.columns  # hour absent from the data: not reported, never 0
