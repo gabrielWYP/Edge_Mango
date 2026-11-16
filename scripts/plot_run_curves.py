@@ -22,6 +22,7 @@ from tensorboard.backend.event_processing.event_accumulator import EventAccumula
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src.evaluation.arms import segment_twin_names  # noqa: E402
+from src.evaluation.smoothing import ema_smooth  # noqa: E402
 
 ROOT, OUT = sys.argv[1], sys.argv[2]  # runs root with <arm>/fold<k>/seed42, output PNG
 SMOOTH = float(sys.argv[3]) if len(sys.argv) > 3 else 0.8
@@ -57,13 +58,7 @@ def read_curve(path):
             out.setdefault((row["arm"], int(row["fold"])), {})[int(row["epoch"])] = float(row["ap30"])
     return out
 
-def smooth(values, w):
-    """Exponential moving average with bias correction, so the first epochs are not pulled towards 0."""
-    out, acc = [], 0.0
-    for t, v in enumerate(values, 1):
-        acc = w * acc + (1 - w) * v
-        out.append(acc / (1 - w ** t) if w else v)
-    return out
+smooth = ema_smooth  # shared implementation, see src/evaluation/smoothing.py
 
 def scalars(run):
     out = {}

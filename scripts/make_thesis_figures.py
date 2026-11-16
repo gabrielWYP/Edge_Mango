@@ -29,6 +29,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from src.evaluation.smoothing import ema_smooth  # noqa: E402
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_EXPORT_DIR = REPO_ROOT / "reports" / "thesis-test-analysis" / "export"
 DEFAULT_OUT = REPO_ROOT / "reports" / "thesis-figures"
@@ -71,6 +74,11 @@ PANELS = [
         ["master_rgb_seg", "master_rgb_det", "crosskd_rgb_seg", "crosskd_rgbnir_seg", "crosskd_nir_seg"],
     ),
 ]
+# Main text: the pre-registered arms (H1: master_rgb_seg vs master_rgbnir_seg; H2: crosskd_rgb_seg vs crosskd_rgbnir_seg)
+# and the descriptive NIR reference. The appendix shows every arm found in the data.
+MAIN_ARMS = ["master_rgb_seg", "master_nir_seg", "master_rgbnir_seg", "crosskd_rgb_seg", "crosskd_rgbnir_seg"]
+SMOOTH_W = 0.8  # same exponential smoothing as scripts/plot_run_curves.py
+AP30_COL = "ap30_class_1"  # per-epoch val AP30 of the damage class, absent from the current history
 SELECTION_COL = "ap50_class_1"  # damage-class AP50 on val, the `selection_metric=damage_ap50` of the trainer
 LOSS_COL = "total_loss"
 LATENT_AP50, LATENT_MASK_AP50 = "v4.latent_ap50.ap", "v4.latent_mask_ap50.ap"
@@ -95,6 +103,45 @@ def style_of(arm: str) -> dict:
 
 def arm_label(arm: str) -> str:
     return style_of(arm)["label"]
+
+
+def select_arms(arms, scope: str) -> list[str]:
+    """`main`: the pre-registered arms plus the NIR reference, in fixed order; `appendix`: every arm."""
+    arms = list(arms)
+    return [a for a in MAIN_ARMS if a in arms] if scope == "main" else arms
+
+
+SCOPES = [("main", ""), ("appendix", "_apendice")]  # (scope, file suffix)
+SPLIT_TABLES = ("T1", "T2", "T3", "T5", "T6")  # tables written once per scope
+
+
+# ---------------------------------------------------------------- smoothing and detection loss
+def smoothed_history(hist: pd.DataFrame, cols, w: float = SMOOTH_W) -> pd.DataFrame:
+    """Adds `<col>_smooth`: the bias-corrected EMA of each (arm, fold) curve, taken in epoch order and per fold."""
+    parts = []
+    for _, sub in hist.groupby(["arm", "fold"], sort=False):
+        sub = sub.sort_values("epoch").copy()
+        for c in cols:
+            sub[f"{c}_smooth"] = ema_smooth(sub[c].tolist(), w)
+        parts.append(sub)
+    return pd.concat(parts, ignore_index=True) if parts else hist.assign(**{f"{c}_smooth": [] for c in cols})
+
+
+def add_detection_loss(hist: pd.DataFrame) -> tuple[pd.DataFrame, str, bool]:
+    """Adds `det_loss` = box + cls loss (comparable across segment and CrossKD arms); falls back to total_loss."""
+    if {"box_loss", "cls_loss"} <= set(hist.columns):
+        return hist.assign(det_loss=hist["box_loss"] + hist["cls_loss"]), "det_loss", False
+    return hist, LOSS_COL, True
+
+
+def training_panels(hist: pd.DataFrame, loss_col: str = "det_loss") -> list[tuple[str, str, str]]:
+    """(title, column, y label) of the panels: train loss, val AP50 and, only if the history has it, val AP30."""
+    panels = [("Pérdida de detección (entrenamiento)" if loss_col == "det_loss" else "Pérdida total (entrenamiento)",
+               loss_col, "Caja + clase" if loss_col == "det_loss" else "Pérdida total"),
+              ("AP50 clase daño (validación)", SELECTION_COL, "AP50")]
+    if AP30_COL in hist.columns:
+        panels.append(("AP30 clase daño (validación)", AP30_COL, "AP30"))
+    return panels
 
 
 # ---------------------------------------------------------------- fold aggregation
@@ -538,8 +585,18 @@ def write_tables(data: dict, out: Path, arms_test, arms_val, folds, labels) -> l
                        "«exhaustividad >= 0.90 en val», solo maestros. Las horas 8-12 quedan fuera de la ventana latente de la métrica primaria. "
                        "Regla definida a posteriori; descriptiva.", "hour",
                        [(c, f"Exhaustividad a las {c[5:]} h", 3) for c in hour_cols]))
+    expanded = []
     for name, caption, kind, metrics in tables:
+        if name.split("_")[0] in SPLIT_TABLES:
+            expanded += [(name + suffix, caption, kind, metrics, scope) for scope, suffix in SCOPES]
+        else:
+            expanded.append((name, caption, kind, metrics, "appendix"))
+    for name, caption, kind, metrics, scope in expanded:
         arms = {"test": arms_test, "val": arms_val, "hour": [a for a in arms_test if a.startswith("master_")]}[kind]
+        arms = select_arms(arms, scope)
+        if name.split("_")[0] in SPLIT_TABLES:
+            caption += (" Brazos principales (pre-registrados y referencia NIR)." if scope == "main"
+                        else " Apéndice: todos los brazos, incluidos los exploratorios.")
         df = frames[kind]
         num = summary_numeric(df, metrics, arms, folds, labels).drop(columns="_digits")
         num.insert(1, "arm_label", num["arm"].map(arm_label))
@@ -589,30 +646,44 @@ def _extra_panel(arms_present):
     return [("c) Brazos adicionales", extra)] if extra else []
 
 
-def plot_curves(hist, arms_present, col, ylabel, title, out, stem, ylim=None) -> list[Path]:
+def plot_training_curves(hist, arms, out, stem) -> list[Path]:
+    """F1: one row (train detection loss | val AP50 [| val AP30]), one shared legend on top.
+
+    Each fold's curve is smoothed first (EMA, w = 0.8); the band is the sd across the smoothed folds.
+    """
     import matplotlib.pyplot as plt
 
-    panels = [p for p in _panels(arms_present) + _extra_panel(arms_present) if p[1]]
-    if not panels:
+    arms = [a for a in arms if a in set(hist["arm"])]
+    if not arms:
         return []
-    fig, axes = plt.subplots(1, len(panels), figsize=(5.6 * len(panels), 4.4), sharey=True, squeeze=False)
-    for ax, (ptitle, arms) in zip(axes[0], panels):
+    hist, loss_col, fallback = add_detection_loss(hist)
+    panels = training_panels(hist, loss_col)
+    hist = smoothed_history(hist, [c for _, c, _ in panels])
+    fig, axes = plt.subplots(1, len(panels), figsize=(4.9 * len(panels), 4.0), squeeze=False)
+    handles = {}
+    for ax, (ptitle, col, ylabel) in zip(axes[0], panels):
         for arm in arms:
-            s, c = style_of(arm), curve_mean_sd(hist, arm, col)
+            st, c = style_of(arm), curve_mean_sd(hist, arm, f"{col}_smooth")
             if c.empty:
                 continue
-            ax.fill_between(c["epoch"], c["mean"] - c["sd"].fillna(0), c["mean"] + c["sd"].fillna(0),
-                            color=s["color"], alpha=0.10, linewidth=0)
-            ax.plot(c["epoch"], c["mean"], color=s["color"], linestyle=s["linestyle"], marker=s["marker"],
-                    markevery=10, markersize=6, linewidth=2, label=s["label"])
+            sd = c["sd"].fillna(0)
+            ax.fill_between(c["epoch"], c["mean"] - sd, c["mean"] + sd, color=st["color"], alpha=0.12, linewidth=0)
+            (line,) = ax.plot(c["epoch"], c["mean"], color=st["color"], linestyle=st["linestyle"], marker=st["marker"],
+                              markevery=10, markersize=6, linewidth=2)
+            handles[arm] = line
         ax.set_title(ptitle, fontsize=10.5, color=INK, loc="left")
         ax.set_xlabel("Época", color=INK)
+        ax.set_ylabel(ylabel, color=INK)
         _style_axes(ax)
-        if ylim:
-            ax.set_ylim(*ylim)
-        ax.legend(fontsize=8, frameon=False, labelcolor=INK, loc="best")
-    axes[0][0].set_ylabel(ylabel, color=INK)
-    fig.suptitle(title, fontsize=11.5, color=INK, y=1.02)
+        if col != loss_col:
+            ax.set_ylim(bottom=0)
+    ncol = min(len(handles), 3)
+    fig.legend([handles[a] for a in arms if a in handles], [arm_label(a) for a in arms if a in handles], loc="lower center",
+               ncol=ncol, fontsize=8.5, frameon=False, labelcolor=INK, bbox_to_anchor=(0.5, 1.0))
+    note = "Curvas suavizadas por lote con media móvil exponencial (w = 0.8); media ± 1 sd entre lotes."
+    if fallback:
+        note += " Pérdida total: faltan los componentes caja y clase."
+    fig.text(0.5, -0.02, note, ha="center", fontsize=8, color=GRAY)
     fig.tight_layout()
     return _save(fig, out, stem)
 
@@ -693,6 +764,8 @@ def plot_strip(test, arms, folds, labels, out, stem) -> list[Path]:
         d = row._asdict()
         s = style_of(d["arm"])
         y = len(arms) - 1 - i
+        if s["exploratory"]:
+            ax.axhspan(y - 0.5, y + 0.5, color="#efefef", zorder=0, linewidth=0)
         for k, f in enumerate(folds):
             v = d[f"fold{f}"]
             if math.isnan(v):
@@ -711,7 +784,10 @@ def plot_strip(test, arms, folds, labels, out, stem) -> list[Path]:
     ax.set_title("AP50 latente en prueba por lote y brazo", fontsize=11.5, color=INK, loc="left")
     _style_axes(ax)
     ax.grid(axis="y", visible=False)
+    from matplotlib.patches import Patch
+
     ax.legend(handles=[Line2D([], [], color=INK, linewidth=2, label="Media de los lotes"),
+                       Patch(facecolor="#efefef", label="Brazo exploratorio (descriptivo)"),
                        Line2D([], [], color=GRAY, marker="o", linestyle="none", markersize=8,
                               label="Un punto por lote de prueba")],
               fontsize=8.5, frameon=False, labelcolor=INK, loc="upper center", bbox_to_anchor=(0.5, -0.14), ncol=2)
@@ -746,15 +822,14 @@ def main(argv=None) -> int:
 
     written = write_tables(data, args.out, test_arms, all_arms, folds, labels)
     hist_arms = discover_arms(data["hist"]["arm"].unique())
-    written += plot_curves(data["hist"], hist_arms, SELECTION_COL, "AP50 en validación, clase daño",
-                           "Curvas de validación: métrica de selección del checkpoint (media ± 1 sd entre lotes)",
-                           args.out, "F1a_curvas_validacion", ylim=(0, None))
-    written += plot_curves(data["hist"], hist_arms, LOSS_COL, "Pérdida total de entrenamiento",
-                           "Pérdida de entrenamiento (media ± 1 sd entre lotes)", args.out, "F1b_curvas_perdida")
-    written += plot_pr(data["pr"], discover_arms(data["pr"]["arm"].unique()), args.out, "F2_curvas_pr_test")
+    pr_arms = discover_arms(data["pr"]["arm"].unique())
+    photo_arms = discover_arms(data["photos"]["arm"].unique())
+    for scope, suffix in SCOPES:
+        written += plot_training_curves(data["hist"], select_arms(hist_arms, scope), args.out, f"F1_curvas_entrenamiento{suffix}")
+        written += plot_pr(data["pr"], select_arms(pr_arms, scope), args.out, f"F2_curvas_pr_test{suffix}")
+        written += plot_operating_curves(data["photos"], select_arms(photo_arms, scope), args.out,
+                                         f"F4_curva_operacion_foto{suffix}")
     written += plot_strip(build_test_frame(data), test_arms, folds, labels, args.out, "F3_ap50_por_lote")
-    written += plot_operating_curves(data["photos"], discover_arms(data["photos"]["arm"].unique()), args.out,
-                                     "F4_curva_operacion_foto")
     for p in written:
         print(p)
     return 0
