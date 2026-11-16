@@ -357,3 +357,55 @@ def test_training_panels_skip_ap30_when_history_has_no_such_column():
     assert [p[1] for p in mtf.training_panels(h)] == ["det_loss", "ap50_class_1"]
     h["ap30_class_1"] = 0.2
     assert [p[1] for p in mtf.training_panels(h)][-1] == "ap30_class_1"
+
+
+# ---------------------------------------------------------------- F5 forest plot rows
+def _comp(treat, base, deltas, p_right=0.9, with_inference=True):
+    mean = sum(deltas) / len(deltas)
+    m = {"deltas": deltas, "mean": mean}
+    if with_inference:
+        m["inference"] = {"corrected_t": {"ci_low": mean - 0.05, "ci_high": mean + 0.05, "n": len(deltas)},
+                          "bayes": {"p_right": p_right, "rope": 0.02}}
+    return {"treatment": treat, "baseline": base, "role": "x", "metrics": {"latent_ap50": m}}
+
+
+def _analysis():
+    return {"comps": {
+        "H1": _comp("master_rgbnir_seg", "master_rgb_seg", [0.1, 0.2, -0.05, 0.1, 0.1], 0.95),
+        "H2": _comp("crosskd_rgbnir_seg", "crosskd_rgb_seg", [0.0, 0.1, 0.1, 0.1, 0.1]),
+        "secondary": _comp("crosskd_rgbnir_seg", "master_rgb_seg", [0.1] * 5),
+        "exploratory": _comp("crosskd_rgb_seg", "master_rgb_seg", [0.0] * 5),
+        "mask_supervision": _comp("master_rgb_seg", "master_rgb_det", [0.0, 0.0, 0.0, 0.0, 0.0]),
+        "crosskd_nir": _comp("crosskd_nir_seg", "master_rgb_seg", [0.0] * 5),
+        "twostem_vs_rgbnir": _comp("master_twostem_rgbnir_seg", "master_rgbnir_seg", [0.0] * 5),
+    }}
+
+
+def test_forest_rows_main_has_four_rows_in_order_with_numbers_from_analysis():
+    rows = mtf.forest_rows(_analysis(), "main")
+    assert [r["key"] for r in rows] == ["H1", "H2", "secondary", "exploratory"]
+    h1 = rows[0]
+    assert h1["label"] == "H1: Maestro RGB+NIR − Maestro RGB"
+    assert h1["p_right"] == 0.95 and h1["k"] == 4 and h1["n"] == 5
+    assert h1["deltas"] == [0.1, 0.2, -0.05, 0.1, 0.1]
+    assert h1["ci_low"] == pytest.approx(h1["mean"] - 0.05)
+    assert rows[1]["label"] == "H2: CrossKD desde RGB+NIR − CrossKD desde RGB"
+    assert rows[3]["exploratory"] is True and rows[0]["exploratory"] is False
+
+
+def test_forest_rows_appendix_adds_mask_nir_and_twostem_only_when_present():
+    full = mtf.forest_rows(_analysis(), "appendix")
+    keys = [r["key"] for r in full]
+    assert keys[:4] == ["H1", "H2", "secondary", "exploratory"]
+    assert {"mask_supervision", "crosskd_nir", "twostem_vs_rgbnir"} <= set(keys)
+    assert [r for r in full if r["key"] == "mask_supervision"][0]["label"].endswith("Maestro RGB − Maestro RGB, solo cajas")
+    a = _analysis()
+    del a["comps"]["twostem_vs_rgbnir"]
+    assert "twostem_vs_rgbnir" not in [r["key"] for r in mtf.forest_rows(a, "appendix")]
+
+
+def test_forest_rows_skips_comparison_without_inference_instead_of_inventing_numbers():
+    a = _analysis()
+    a["comps"]["H2"] = _comp("crosskd_rgbnir_seg", "crosskd_rgb_seg", [0.1] * 5, with_inference=False)
+    rows = mtf.forest_rows(a, "main")
+    assert "H2" not in [r["key"] for r in rows]

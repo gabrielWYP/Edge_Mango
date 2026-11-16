@@ -21,6 +21,7 @@ uses fixed thresholds (0.25 and 0.5) instead; here the threshold is selected on 
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import sys
 import zlib
@@ -35,6 +36,7 @@ from src.evaluation.smoothing import ema_smooth  # noqa: E402
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_EXPORT_DIR = REPO_ROOT / "reports" / "thesis-test-analysis" / "export"
 DEFAULT_OUT = REPO_ROOT / "reports" / "thesis-figures"
+DEFAULT_ANALYSIS = REPO_ROOT / "reports" / "thesis-test-analysis" / "analysis.json"
 
 THRESHOLD_GRID = [round(x, 2) for x in np.arange(0.01, 1.0, 0.01)]  # same grid as pr_grid.csv (minus 0.001)
 INK = "#222222"
@@ -795,11 +797,95 @@ def plot_strip(test, arms, folds, labels, out, stem) -> list[Path]:
     return _save(fig, out, stem)
 
 
+# ---------------------------------------------------------------- F5: forest plot of the test comparisons
+FOREST_MAIN = ["H1", "H2", "secondary", "exploratory"]
+FOREST_APPENDIX_FIRST = ["mask_supervision", "crosskd_nir", "crosskd_nir_vs_rgbnir"]
+FOREST_TAGS = {"H1": "H1", "H2": "H2", "secondary": "C1 (secundaria)", "exploratory": "C2 (exploratoria)",
+               "mask_supervision": "Soporte de máscara (cajas)", "crosskd_nir": "E1 (exploratoria)",
+               "crosskd_nir_vs_rgbnir": "E2 (exploratoria)"}
+
+
+def short_label(arm: str) -> str:
+    """Display name of an arm for comparison rows: `ARM_STYLE` label without the group prefix or the exploratory tag."""
+    return arm_label(arm).replace("Alumno RGB, ", "").replace(" (exploratorio)", "")
+
+
+def forest_rows(analysis: dict, scope: str, metric: str = "latent_ap50") -> list[dict]:
+    """Rows of the forest plot straight from `analysis.json` (nothing recomputed or invented).
+
+    `main`: H1, H2, C1, C2. `appendix`: those plus mask supervision, the crosskd_nir comparisons and any other
+    comparison present in the analysis (for example `master_twostem_rgbnir_seg` against rgbnir or nir). A comparison
+    that lacks the metric, the corrected-t interval or the Bayesian P(right) is skipped with a warning.
+    """
+    comps = analysis.get("comps", {})
+    keys = [k for k in FOREST_MAIN if k in comps]
+    if scope == "appendix":
+        keys += [k for k in FOREST_APPENDIX_FIRST if k in comps]
+        keys += [k for k in comps if k not in keys]
+    rows = []
+    for key in keys:
+        c = comps[key]
+        m = c.get("metrics", {}).get(metric)
+        try:
+            inf = m["inference"]
+            ci, bayes = inf["corrected_t"], inf["bayes"]
+            row = {"key": key, "deltas": [float(d) for d in m["deltas"]], "mean": float(m["mean"]),
+                   "ci_low": float(ci["ci_low"]), "ci_high": float(ci["ci_high"]), "p_right": float(bayes["p_right"]),
+                   "rope": float(bayes["rope"])}
+        except (TypeError, KeyError):
+            print(f"WARNING comparison {key}: {metric} or its inference is missing in analysis.json; row skipped", file=sys.stderr)
+            continue
+        tag = FOREST_TAGS.get(key, "Exploratoria")
+        row.update(label=f"{tag.split(' ')[0] if key in ('H1', 'H2') else tag}: "
+                         f"{short_label(c['treatment'])} − {short_label(c['baseline'])}",
+                   k=sum(d > 0 for d in row["deltas"]), n=len(row["deltas"]), exploratory=key not in ("H1", "H2", "secondary"),
+                   treatment=c["treatment"], baseline=c["baseline"])
+        rows.append(row)
+    return rows
+
+
+def plot_forest(rows, out, stem) -> list[Path]:
+    """F5: per-lot deltas (hollow), mean with corrected-t 95% CI, ROPE band and P(mejor) with the sign count."""
+    import matplotlib.pyplot as plt
+
+    if not rows:
+        return []
+    blue = "#1f3a68"
+    rope = rows[0]["rope"]
+    fig, ax = plt.subplots(figsize=(9.4, 0.78 * len(rows) + 1.6))
+    ax.axvspan(-rope, rope, color="#dde4ee", zorder=0, linewidth=0)
+    ax.axvline(0, color="#999999", linewidth=1, zorder=1)
+    for i, r in enumerate(rows):
+        y = len(rows) - 1 - i
+        ax.plot(r["deltas"], [y] * len(r["deltas"]), "o", markerfacecolor="white", markeredgecolor=blue, markersize=8,
+                markeredgewidth=1.4, linestyle="none", zorder=3)
+        ax.plot([r["ci_low"], r["ci_high"]], [y, y], color=blue, linewidth=2, zorder=2)
+        ax.plot(r["mean"], y, "o", color=blue, markersize=9, zorder=4)
+        ax.annotate(f"P(mejor) = {r['p_right']:.3f} · {r['k']}/{r['n']} lotes", (1.01, y), xycoords=("axes fraction", "data"),
+                    xytext=(0, 5), textcoords="offset points", va="center", fontsize=9, color=INK)
+        ax.annotate(f"{r['mean']:+.3f} [{r['ci_low']:+.3f}, {r['ci_high']:+.3f}]", (1.01, y), xycoords=("axes fraction", "data"),
+                    xytext=(0, -8), textcoords="offset points", va="center", fontsize=8, color=GRAY)
+    ax.set_yticks(range(len(rows)))
+    ax.set_yticklabels([r["label"] for r in reversed(rows)], fontsize=9, color=INK)
+    ax.set_ylim(-0.7, len(rows) - 0.3)
+    lo = min(min(r["deltas"] + [r["ci_low"]]) for r in rows)
+    hi = max(max(r["deltas"] + [r["ci_high"]]) for r in rows)
+    pad = 0.03
+    ax.set_xlim(min(lo, -rope) - pad, max(hi, rope) + pad)
+    ax.text(0, len(rows) - 0.35, f"ROPE ±{rope:.2f}", ha="center", va="bottom", fontsize=8.5, color=GRAY)
+    ax.set_xlabel("Diferencia de AP50 latente en prueba (tratamiento − base)", color=INK)
+    _style_axes(ax)
+    ax.grid(axis="y", visible=False)
+    fig.tight_layout()
+    return _save(fig, out, stem)
+
+
 # ---------------------------------------------------------------- main
 def parse_args(argv=None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--export-dir", type=Path, default=DEFAULT_EXPORT_DIR)
     p.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    p.add_argument("--analysis", type=Path, default=DEFAULT_ANALYSIS, help="analysis.json of the test analysis (F5)")
     return p.parse_args(argv)
 
 
@@ -830,6 +916,12 @@ def main(argv=None) -> int:
         written += plot_operating_curves(data["photos"], select_arms(photo_arms, scope), args.out,
                                          f"F4_curva_operacion_foto{suffix}")
     written += plot_strip(build_test_frame(data), test_arms, folds, labels, args.out, "F3_ap50_por_lote")
+    if args.analysis.exists():
+        analysis = json.loads(args.analysis.read_text(encoding="utf-8"))
+        for scope, suffix in SCOPES:
+            written += plot_forest(forest_rows(analysis, scope), args.out, f"F5_comparaciones_test{suffix}")
+    else:
+        print(f"WARNING {args.analysis} not found: F5 skipped", file=sys.stderr)
     for p in written:
         print(p)
     return 0
