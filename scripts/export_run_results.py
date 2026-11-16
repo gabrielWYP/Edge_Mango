@@ -74,6 +74,10 @@ DIFFERENCES.update({
     # the 4-channel early fusion (primary) and against the NIR-only master (secondary); descriptive, outside H1 and H2.
     "twostem_vs_rgbnir": ("master_twostem_rgbnir_seg", "master_rgbnir_seg"),
     "twostem_vs_nir": ("master_twostem_rgbnir_seg", "master_nir_seg"),
+    # Exploratory (plan section 11, third 2026-11-16 row): the RGB student distilled from the two-stem master, against the one
+    # distilled from the early-fusion master (primary) and from the RGB master; descriptive, outside H1, H2 and Holm.
+    "crosskd_twostem_vs_rgbnir": ("crosskd_twostem_seg", "crosskd_rgbnir_seg"),
+    "crosskd_twostem_vs_rgb": ("crosskd_twostem_seg", "crosskd_rgb_seg"),
 })
 AP_METRICS = ("latent_ap50", "latent_ap30")
 MASK_AP_METRICS = ("latent_mask_ap50", "latent_mask_ap30")  # only in the metrics_v4.json of segment runs

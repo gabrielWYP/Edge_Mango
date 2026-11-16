@@ -65,6 +65,10 @@ ARM_STYLE: dict[str, dict] = {
     "crosskd_nir_seg": dict(
         color="#8C6D1F", linestyle="--", marker="*", label="Alumno RGB, CrossKD desde NIR (exploratorio)", exploratory=True
     ),
+    "crosskd_twostem_seg": dict(
+        color="#5B5BD6", linestyle="--", marker="h", label="Alumno RGB, CrossKD desde RGB+NIR dos troncos (exploratorio)",
+        exploratory=True,
+    ),
 }
 EXTRA_COLORS = ["#117733", "#882255", "#332288", "#AA4499", "#44AA99", "#999933"]  # arms unknown to ARM_STYLE
 
