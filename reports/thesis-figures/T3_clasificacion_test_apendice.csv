@@ -2,6 +2,7 @@ arm,arm_label,metric,n_folds,mean,sd,Lote 1,Lote 2,Lote 3,Lote 4,Lote 5
 master_rgb_seg,Maestro RGB,Umbral elegido en val (cajas),5,0.442000,0.046583,0.480000,0.420000,0.370000,0.470000,0.470000
 master_nir_seg,Maestro NIR,Umbral elegido en val (cajas),5,0.444000,0.027019,0.470000,0.460000,0.400000,0.450000,0.440000
 master_rgbnir_seg,Maestro RGB+NIR,Umbral elegido en val (cajas),5,0.468000,0.034205,0.520000,0.430000,0.450000,0.460000,0.480000
+master_twostem_rgbnir_seg,"Maestro RGB+NIR, dos troncos (exploratorio)",Umbral elegido en val (cajas),5,0.460000,0.052915,0.550000,0.450000,0.410000,0.440000,0.450000
 master_rgb_det,"Maestro RGB, solo cajas",Umbral elegido en val (cajas),5,0.420000,0.020000,0.440000,0.410000,0.390000,0.430000,0.430000
 crosskd_rgb_seg,"Alumno RGB, CrossKD desde RGB",Umbral elegido en val (cajas),5,0.448000,0.022804,0.480000,0.440000,0.420000,0.460000,0.440000
 crosskd_rgbnir_seg,"Alumno RGB, CrossKD desde RGB+NIR",Umbral elegido en val (cajas),5,0.446000,0.050299,0.520000,0.410000,0.390000,0.460000,0.450000
@@ -9,6 +10,7 @@ crosskd_nir_seg,"Alumno RGB, CrossKD desde NIR (exploratorio)",Umbral elegido en
 master_rgb_seg,Maestro RGB,"Precisión (cajas latentes, IoU 0.5)",5,0.368033,0.055450,0.382812,0.341732,0.311828,0.347418,0.456376
 master_nir_seg,Maestro NIR,"Precisión (cajas latentes, IoU 0.5)",5,0.496852,0.039201,0.526502,0.515487,0.429787,0.495146,0.517341
 master_rgbnir_seg,Maestro RGB+NIR,"Precisión (cajas latentes, IoU 0.5)",5,0.454124,0.035481,0.515021,0.446809,0.423729,0.436170,0.448889
+master_twostem_rgbnir_seg,"Maestro RGB+NIR, dos troncos (exploratorio)","Precisión (cajas latentes, IoU 0.5)",5,0.474299,0.060515,0.548913,0.513228,0.482558,0.419718,0.407080
 master_rgb_det,"Maestro RGB, solo cajas","Precisión (cajas latentes, IoU 0.5)",5,0.343258,0.022482,0.310680,0.348974,0.333858,0.351852,0.370927
 crosskd_rgb_seg,"Alumno RGB, CrossKD desde RGB","Precisión (cajas latentes, IoU 0.5)",5,0.384463,0.026330,0.404558,0.405405,0.397895,0.345679,0.368778
 crosskd_rgbnir_seg,"Alumno RGB, CrossKD desde RGB+NIR","Precisión (cajas latentes, IoU 0.5)",5,0.402357,0.059154,0.477366,0.444015,0.379832,0.326165,0.384409
@@ -16,6 +18,7 @@ crosskd_nir_seg,"Alumno RGB, CrossKD desde NIR (exploratorio)","Precisión (caja
 master_rgb_seg,Maestro RGB,"Exhaustividad (cajas latentes, IoU 0.5)",5,0.367056,0.160512,0.245614,0.550761,0.511335,0.185000,0.342569
 master_nir_seg,Maestro NIR,"Exhaustividad (cajas latentes, IoU 0.5)",5,0.461400,0.091124,0.373434,0.591371,0.508816,0.382500,0.450882
 master_rgbnir_seg,Maestro RGB+NIR,"Exhaustividad (cajas latentes, IoU 0.5)",5,0.426899,0.145367,0.300752,0.639594,0.377834,0.307500,0.508816
+master_twostem_rgbnir_seg,"Maestro RGB+NIR, dos troncos (exploratorio)","Exhaustividad (cajas latentes, IoU 0.5)",5,0.399926,0.093834,0.253133,0.492386,0.418136,0.372500,0.463476
 master_rgb_det,"Maestro RGB, solo cajas","Exhaustividad (cajas latentes, IoU 0.5)",5,0.423333,0.138847,0.320802,0.604061,0.534005,0.285000,0.372796
 crosskd_rgb_seg,"Alumno RGB, CrossKD desde RGB","Exhaustividad (cajas latentes, IoU 0.5)",5,0.389493,0.114458,0.355890,0.494924,0.476071,0.210000,0.410579
 crosskd_rgbnir_seg,"Alumno RGB, CrossKD desde RGB+NIR","Exhaustividad (cajas latentes, IoU 0.5)",5,0.406291,0.162405,0.290727,0.583756,0.569270,0.227500,0.360202
@@ -23,6 +26,7 @@ crosskd_nir_seg,"Alumno RGB, CrossKD desde NIR (exploratorio)","Exhaustividad (c
 master_rgb_seg,Maestro RGB,"F1 (cajas latentes, IoU 0.5)",5,0.348242,0.075181,0.299237,0.421769,0.387405,0.241436,0.391367
 master_nir_seg,Maestro NIR,"F1 (cajas latentes, IoU 0.5)",5,0.473435,0.047952,0.436950,0.550827,0.465975,0.431594,0.481830
 master_rgbnir_seg,Maestro RGB+NIR,"F1 (cajas latentes, IoU 0.5)",5,0.428598,0.070162,0.379747,0.526096,0.399467,0.360704,0.476978
+master_twostem_rgbnir_seg,"Maestro RGB+NIR, dos troncos (exploratorio)","F1 (cajas latentes, IoU 0.5)",5,0.425054,0.058535,0.346484,0.502591,0.448043,0.394702,0.433451
 master_rgb_det,"Maestro RGB, solo cajas","F1 (cajas latentes, IoU 0.5)",5,0.371134,0.056771,0.315660,0.442379,0.410853,0.314917,0.371859
 crosskd_rgb_seg,"Alumno RGB, CrossKD desde RGB","F1 (cajas latentes, IoU 0.5)",5,0.381540,0.073037,0.378667,0.445714,0.433486,0.261275,0.388558
 crosskd_rgbnir_seg,"Alumno RGB, CrossKD desde RGB+NIR","F1 (cajas latentes, IoU 0.5)",5,0.392271,0.091362,0.361371,0.504386,0.455645,0.268041,0.371912
@@ -30,6 +34,7 @@ crosskd_nir_seg,"Alumno RGB, CrossKD desde NIR (exploratorio)","F1 (cajas latent
 master_rgb_seg,Maestro RGB,Umbral elegido en val (foto),5,0.320000,0.010000,0.330000,0.310000,0.310000,0.320000,0.330000
 master_nir_seg,Maestro NIR,Umbral elegido en val (foto),5,0.328000,0.050695,0.400000,0.310000,0.330000,0.340000,0.260000
 master_rgbnir_seg,Maestro RGB+NIR,Umbral elegido en val (foto),5,0.346000,0.032094,0.300000,0.350000,0.380000,0.330000,0.370000
+master_twostem_rgbnir_seg,"Maestro RGB+NIR, dos troncos (exploratorio)",Umbral elegido en val (foto),5,0.304000,0.056833,0.380000,0.340000,0.250000,0.300000,0.250000
 master_rgb_det,"Maestro RGB, solo cajas",Umbral elegido en val (foto),5,0.318000,0.031145,0.360000,0.290000,0.290000,0.340000,0.310000
 crosskd_rgb_seg,"Alumno RGB, CrossKD desde RGB",Umbral elegido en val (foto),5,0.306000,0.039115,0.330000,0.310000,0.340000,0.240000,0.310000
 crosskd_rgbnir_seg,"Alumno RGB, CrossKD desde RGB+NIR",Umbral elegido en val (foto),5,0.290000,0.010000,0.300000,0.290000,0.300000,0.280000,0.280000
@@ -37,6 +42,7 @@ crosskd_nir_seg,"Alumno RGB, CrossKD desde NIR (exploratorio)",Umbral elegido en
 master_rgb_seg,Maestro RGB,Precisión (foto),5,0.799848,0.002519,0.803279,0.797160,0.798793,0.801619,0.798387
 master_nir_seg,Maestro NIR,Precisión (foto),5,0.805268,0.012174,0.826190,0.797571,0.805846,0.798755,0.797980
 master_rgbnir_seg,Maestro RGB+NIR,Precisión (foto),5,0.801159,0.003059,0.799599,0.797571,0.804979,0.800000,0.803644
+master_twostem_rgbnir_seg,"Maestro RGB+NIR, dos troncos (exploratorio)",Precisión (foto),5,0.800269,0.002061,0.800403,0.803758,0.798793,0.799599,0.798793
 master_rgb_det,"Maestro RGB, solo cajas",Precisión (foto),5,0.798618,0.000742,0.798337,0.797571,0.798793,0.799599,0.798793
 crosskd_rgb_seg,"Alumno RGB, CrossKD desde RGB",Precisión (foto),5,0.799432,0.001635,0.802020,0.797959,0.798793,0.800000,0.798387
 crosskd_rgbnir_seg,"Alumno RGB, CrossKD desde RGB+NIR",Precisión (foto),5,0.799758,0.001358,0.799197,0.798780,0.798793,0.800000,0.802020
@@ -44,6 +50,7 @@ crosskd_nir_seg,"Alumno RGB, CrossKD desde NIR (exploratorio)",Precisión (foto)
 master_rgb_seg,Maestro RGB,Exhaustividad (foto),5,0.993480,0.007211,0.982456,0.997462,1.000000,0.990000,0.997481
 master_nir_seg,Maestro NIR,Exhaustividad (foto),5,0.959886,0.052769,0.869674,1.000000,0.972292,0.962500,0.994962
 master_rgbnir_seg,Maestro RGB+NIR,Exhaustividad (foto),5,0.993466,0.010006,1.000000,1.000000,0.977330,0.990000,1.000000
+master_twostem_rgbnir_seg,"Maestro RGB+NIR, dos troncos (exploratorio)",Exhaustividad (foto),5,0.993929,0.009603,0.994987,0.977157,1.000000,0.997500,1.000000
 master_rgb_det,"Maestro RGB, solo cajas",Exhaustividad (foto),5,0.991981,0.016568,0.962406,1.000000,1.000000,0.997500,1.000000
 crosskd_rgb_seg,"Alumno RGB, CrossKD desde RGB",Exhaustividad (foto),5,0.996971,0.003300,0.994987,0.992386,1.000000,1.000000,0.997481
 crosskd_rgbnir_seg,"Alumno RGB, CrossKD desde RGB+NIR",Exhaustividad (foto),5,0.998991,0.001381,0.997494,0.997462,1.000000,1.000000,1.000000
@@ -51,6 +58,7 @@ crosskd_nir_seg,"Alumno RGB, CrossKD desde NIR (exploratorio)",Exhaustividad (fo
 master_rgb_seg,Maestro RGB,Especificidad (foto),5,0.012000,0.017889,0.040000,0.000000,0.000000,0.020000,0.000000
 master_nir_seg,Maestro NIR,Especificidad (foto),5,0.074000,0.113270,0.270000,0.000000,0.070000,0.030000,0.000000
 master_rgbnir_seg,Maestro RGB+NIR,Especificidad (foto),5,0.020000,0.025495,0.000000,0.000000,0.060000,0.010000,0.030000
+master_twostem_rgbnir_seg,"Maestro RGB+NIR, dos troncos (exploratorio)",Especificidad (foto),5,0.014000,0.026077,0.010000,0.060000,0.000000,0.000000,0.000000
 master_rgb_det,"Maestro RGB, solo cajas",Especificidad (foto),5,0.006000,0.013416,0.030000,0.000000,0.000000,0.000000,0.000000
 crosskd_rgb_seg,"Alumno RGB, CrossKD desde RGB",Especificidad (foto),5,0.006000,0.008944,0.020000,0.010000,0.000000,0.000000,0.000000
 crosskd_rgbnir_seg,"Alumno RGB, CrossKD desde RGB+NIR",Especificidad (foto),5,0.006000,0.008944,0.000000,0.010000,0.000000,0.000000,0.020000
@@ -58,6 +66,7 @@ crosskd_nir_seg,"Alumno RGB, CrossKD desde NIR (exploratorio)",Especificidad (fo
 master_rgb_seg,Maestro RGB,F1 (foto),5,0.886192,0.001561,0.883878,0.886133,0.888143,0.885906,0.886898
 master_nir_seg,Maestro NIR,F1 (foto),5,0.874941,0.016381,0.847375,0.887387,0.881279,0.873016,0.885650
 master_rgbnir_seg,Maestro RGB+NIR,F1 (foto),5,0.886980,0.003230,0.888641,0.887387,0.882821,0.884916,0.891134
+master_twostem_rgbnir_seg,"Maestro RGB+NIR, dos troncos (exploratorio)",F1 (foto),5,0.886621,0.002607,0.887151,0.882016,0.888143,0.887653,0.888143
 master_rgb_det,"Maestro RGB, solo cajas",F1 (foto),5,0.884811,0.006763,0.872727,0.887387,0.888143,0.887653,0.888143
 crosskd_rgb_seg,"Alumno RGB, CrossKD desde RGB",F1 (foto),5,0.887338,0.001681,0.888143,0.884615,0.888143,0.888889,0.886898
 crosskd_rgbnir_seg,"Alumno RGB, CrossKD desde RGB+NIR",F1 (foto),5,0.888340,0.001214,0.887402,0.887133,0.888143,0.888889,0.890135
@@ -65,6 +74,7 @@ crosskd_nir_seg,"Alumno RGB, CrossKD desde NIR (exploratorio)",F1 (foto),5,0.886
 master_rgb_seg,Maestro RGB,Línea base «todo positivo»: F1 (foto),5,0.888241,0.000576,0.888641,0.887387,0.888143,0.888889,0.888143
 master_nir_seg,Maestro NIR,Línea base «todo positivo»: F1 (foto),5,0.888241,0.000576,0.888641,0.887387,0.888143,0.888889,0.888143
 master_rgbnir_seg,Maestro RGB+NIR,Línea base «todo positivo»: F1 (foto),5,0.888241,0.000576,0.888641,0.887387,0.888143,0.888889,0.888143
+master_twostem_rgbnir_seg,"Maestro RGB+NIR, dos troncos (exploratorio)",Línea base «todo positivo»: F1 (foto),5,0.888241,0.000576,0.888641,0.887387,0.888143,0.888889,0.888143
 master_rgb_det,"Maestro RGB, solo cajas",Línea base «todo positivo»: F1 (foto),5,0.888241,0.000576,0.888641,0.887387,0.888143,0.888889,0.888143
 crosskd_rgb_seg,"Alumno RGB, CrossKD desde RGB",Línea base «todo positivo»: F1 (foto),5,0.888241,0.000576,0.888641,0.887387,0.888143,0.888889,0.888143
 crosskd_rgbnir_seg,"Alumno RGB, CrossKD desde RGB+NIR",Línea base «todo positivo»: F1 (foto),5,0.888241,0.000576,0.888641,0.887387,0.888143,0.888889,0.888143
@@ -72,6 +82,7 @@ crosskd_nir_seg,"Alumno RGB, CrossKD desde NIR (exploratorio)",Línea base «tod
 master_rgb_seg,Maestro RGB,AUROC de cara (sin umbral),5,0.599140,0.045512,0.571128,0.622513,0.602317,0.540950,0.658791
 master_nir_seg,Maestro NIR,AUROC de cara (sin umbral),5,0.641979,0.059581,0.668170,0.714797,0.577254,0.583400,0.666272
 master_rgbnir_seg,Maestro RGB+NIR,AUROC de cara (sin umbral),5,0.627150,0.040017,0.602431,0.671523,0.589698,0.602400,0.669698
+master_twostem_rgbnir_seg,"Maestro RGB+NIR, dos troncos (exploratorio)",AUROC de cara (sin umbral),5,0.623198,0.045803,0.674236,0.663553,0.589395,0.568350,0.620453
 master_rgb_det,"Maestro RGB, solo cajas",AUROC de cara (sin umbral),5,0.604531,0.036458,0.564261,0.659112,0.582569,0.598250,0.618463
 crosskd_rgb_seg,"Alumno RGB, CrossKD desde RGB",AUROC de cara (sin umbral),5,0.612584,0.042337,0.660627,0.614898,0.579370,0.561550,0.646474
 crosskd_rgbnir_seg,"Alumno RGB, CrossKD desde RGB+NIR",AUROC de cara (sin umbral),5,0.626408,0.039447,0.614862,0.676371,0.646297,0.569875,0.624635
@@ -79,6 +90,7 @@ crosskd_nir_seg,"Alumno RGB, CrossKD desde NIR (exploratorio)",AUROC de cara (si
 master_rgb_seg,Maestro RGB,FP en sano por imagen (umbral fijo 0.25),5,5.758000,1.050224,4.390000,4.960000,6.780000,6.650000,6.010000
 master_nir_seg,Maestro NIR,FP en sano por imagen (umbral fijo 0.25),5,4.668000,1.538122,7.030000,5.210000,4.090000,4.030000,2.980000
 master_rgbnir_seg,Maestro RGB+NIR,FP en sano por imagen (umbral fijo 0.25),5,6.600000,1.262636,6.450000,8.640000,6.470000,5.160000,6.280000
+master_twostem_rgbnir_seg,"Maestro RGB+NIR, dos troncos (exploratorio)",FP en sano por imagen (umbral fijo 0.25),5,5.400000,2.040551,8.970000,4.680000,4.710000,4.860000,3.780000
 master_rgb_det,"Maestro RGB, solo cajas",FP en sano por imagen (umbral fijo 0.25),5,6.942000,0.384409,7.540000,6.830000,6.480000,6.990000,6.870000
 crosskd_rgb_seg,"Alumno RGB, CrossKD desde RGB",FP en sano por imagen (umbral fijo 0.25),5,4.598000,0.827810,3.990000,4.570000,5.960000,4.590000,3.880000
 crosskd_rgbnir_seg,"Alumno RGB, CrossKD desde RGB+NIR",FP en sano por imagen (umbral fijo 0.25),5,4.336000,0.564827,4.110000,3.670000,5.220000,4.340000,4.340000

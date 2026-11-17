@@ -2,6 +2,7 @@ arm,arm_label,metric,n_folds,mean,sd,Lote 1,Lote 2,Lote 3,Lote 4,Lote 5
 master_rgb_seg,Maestro RGB,AP50 latente (cajas),5,0.306332,0.071854,0.238936,0.398020,0.327235,0.227858,0.339613
 master_nir_seg,Maestro NIR,AP50 latente (cajas),5,0.434313,0.080123,0.352717,0.557666,0.447741,0.374302,0.439142
 master_rgbnir_seg,Maestro RGB+NIR,AP50 latente (cajas),5,0.387916,0.083353,0.314523,0.524724,0.356259,0.339011,0.405063
+master_twostem_rgbnir_seg,"Maestro RGB+NIR, dos troncos (exploratorio)",AP50 latente (cajas),5,0.376639,0.057634,0.309894,0.466003,0.390051,0.355707,0.361543
 master_rgb_det,"Maestro RGB, solo cajas",AP50 latente (cajas),5,0.306935,0.097746,0.217396,0.461399,0.335195,0.235845,0.284838
 crosskd_rgb_seg,"Alumno RGB, CrossKD desde RGB",AP50 latente (cajas),5,0.317602,0.063427,0.303398,0.388071,0.352531,0.219344,0.324665
 crosskd_rgbnir_seg,"Alumno RGB, CrossKD desde RGB+NIR",AP50 latente (cajas),5,0.354065,0.097465,0.336066,0.489746,0.399975,0.228820,0.315717
@@ -9,6 +10,7 @@ crosskd_nir_seg,"Alumno RGB, CrossKD desde NIR (exploratorio)",AP50 latente (caj
 master_rgb_seg,Maestro RGB,AP50 latente (máscaras),5,0.294889,0.077823,0.222521,0.408623,0.325692,0.223449,0.294160
 master_nir_seg,Maestro NIR,AP50 latente (máscaras),5,0.428957,0.096872,0.329135,0.580440,0.443308,0.362479,0.429423
 master_rgbnir_seg,Maestro RGB+NIR,AP50 latente (máscaras),5,0.391469,0.089660,0.318796,0.543444,0.361305,0.338086,0.395715
+master_twostem_rgbnir_seg,"Maestro RGB+NIR, dos troncos (exploratorio)",AP50 latente (máscaras),5,0.382602,0.065106,0.319407,0.489818,0.390687,0.351894,0.361203
 master_rgb_det,"Maestro RGB, solo cajas",AP50 latente (máscaras),0,,,,,,,
 crosskd_rgb_seg,"Alumno RGB, CrossKD desde RGB",AP50 latente (máscaras),5,0.308135,0.066713,0.280973,0.395068,0.343645,0.217442,0.303549
 crosskd_rgbnir_seg,"Alumno RGB, CrossKD desde RGB+NIR",AP50 latente (máscaras),5,0.334489,0.101534,0.307859,0.470451,0.404936,0.223161,0.266041

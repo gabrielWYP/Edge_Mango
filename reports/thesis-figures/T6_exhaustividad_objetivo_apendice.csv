@@ -2,6 +2,7 @@ arm,arm_label,metric,n_folds,mean,sd,Lote 1,Lote 2,Lote 3,Lote 4,Lote 5
 master_rgb_seg,Maestro RGB,recall >= 0.90 en val: umbral elegido en val,5,0.402000,0.036332,0.440000,0.420000,0.350000,0.420000,0.380000
 master_nir_seg,Maestro NIR,recall >= 0.90 en val: umbral elegido en val,5,0.392000,0.035637,0.430000,0.400000,0.360000,0.420000,0.350000
 master_rgbnir_seg,Maestro RGB+NIR,recall >= 0.90 en val: umbral elegido en val,5,0.424000,0.020736,0.440000,0.400000,0.410000,0.420000,0.450000
+master_twostem_rgbnir_seg,"Maestro RGB+NIR, dos troncos (exploratorio)",recall >= 0.90 en val: umbral elegido en val,5,0.406000,0.047223,0.480000,0.400000,0.350000,0.410000,0.390000
 master_rgb_det,"Maestro RGB, solo cajas",recall >= 0.90 en val: umbral elegido en val,5,0.388000,0.017889,0.410000,0.370000,0.370000,0.400000,0.390000
 crosskd_rgb_seg,"Alumno RGB, CrossKD desde RGB",recall >= 0.90 en val: umbral elegido en val,5,0.416000,0.021909,0.450000,0.410000,0.390000,0.420000,0.410000
 crosskd_rgbnir_seg,"Alumno RGB, CrossKD desde RGB+NIR",recall >= 0.90 en val: umbral elegido en val,5,0.404000,0.030496,0.440000,0.390000,0.360000,0.420000,0.410000
@@ -9,6 +10,7 @@ crosskd_nir_seg,"Alumno RGB, CrossKD desde NIR (exploratorio)",recall >= 0.90 en
 master_rgb_seg,Maestro RGB,recall >= 0.90 en val: objetivo alcanzado en val (1 = sí),5,1.000000,0.000000,1.000000,1.000000,1.000000,1.000000,1.000000
 master_nir_seg,Maestro NIR,recall >= 0.90 en val: objetivo alcanzado en val (1 = sí),5,1.000000,0.000000,1.000000,1.000000,1.000000,1.000000,1.000000
 master_rgbnir_seg,Maestro RGB+NIR,recall >= 0.90 en val: objetivo alcanzado en val (1 = sí),5,1.000000,0.000000,1.000000,1.000000,1.000000,1.000000,1.000000
+master_twostem_rgbnir_seg,"Maestro RGB+NIR, dos troncos (exploratorio)",recall >= 0.90 en val: objetivo alcanzado en val (1 = sí),5,1.000000,0.000000,1.000000,1.000000,1.000000,1.000000,1.000000
 master_rgb_det,"Maestro RGB, solo cajas",recall >= 0.90 en val: objetivo alcanzado en val (1 = sí),5,1.000000,0.000000,1.000000,1.000000,1.000000,1.000000,1.000000
 crosskd_rgb_seg,"Alumno RGB, CrossKD desde RGB",recall >= 0.90 en val: objetivo alcanzado en val (1 = sí),5,1.000000,0.000000,1.000000,1.000000,1.000000,1.000000,1.000000
 crosskd_rgbnir_seg,"Alumno RGB, CrossKD desde RGB+NIR",recall >= 0.90 en val: objetivo alcanzado en val (1 = sí),5,1.000000,0.000000,1.000000,1.000000,1.000000,1.000000,1.000000
@@ -16,6 +18,7 @@ crosskd_nir_seg,"Alumno RGB, CrossKD desde NIR (exploratorio)",recall >= 0.90 en
 master_rgb_seg,Maestro RGB,recall >= 0.90 en val: exhaustividad en prueba,5,0.863533,0.133127,0.666667,0.934010,0.964736,0.785000,0.967254
 master_nir_seg,Maestro NIR,recall >= 0.90 en val: exhaustividad en prueba,5,0.875591,0.100857,0.781955,0.954315,0.952141,0.750000,0.939547
 master_rgbnir_seg,Maestro RGB+NIR,recall >= 0.90 en val: exhaustividad en prueba,5,0.883608,0.083570,0.859649,0.984772,0.904282,0.757500,0.911839
+master_twostem_rgbnir_seg,"Maestro RGB+NIR, dos troncos (exploratorio)",recall >= 0.90 en val: exhaustividad en prueba,5,0.859212,0.059629,0.766917,0.870558,0.881612,0.847500,0.929471
 master_rgb_det,"Maestro RGB, solo cajas",recall >= 0.90 en val: exhaustividad en prueba,5,0.907675,0.064936,0.834586,0.982234,0.954660,0.847500,0.919395
 crosskd_rgb_seg,"Alumno RGB, CrossKD desde RGB",recall >= 0.90 en val: exhaustividad en prueba,5,0.861893,0.079571,0.786967,0.908629,0.937028,0.765000,0.911839
 crosskd_rgbnir_seg,"Alumno RGB, CrossKD desde RGB+NIR",recall >= 0.90 en val: exhaustividad en prueba,5,0.878978,0.070783,0.857143,0.949239,0.952141,0.787500,0.848866
@@ -23,6 +26,7 @@ crosskd_nir_seg,"Alumno RGB, CrossKD desde NIR (exploratorio)",recall >= 0.90 en
 master_rgb_seg,Maestro RGB,recall >= 0.90 en val: especificidad en prueba,5,0.210000,0.160779,0.460000,0.150000,0.050000,0.270000,0.120000
 master_nir_seg,Maestro NIR,recall >= 0.90 en val: especificidad en prueba,5,0.236000,0.166523,0.480000,0.120000,0.110000,0.340000,0.130000
 master_rgbnir_seg,Maestro RGB+NIR,recall >= 0.90 en val: especificidad en prueba,5,0.218000,0.129499,0.330000,0.050000,0.140000,0.360000,0.210000
+master_twostem_rgbnir_seg,"Maestro RGB+NIR, dos troncos (exploratorio)",recall >= 0.90 en val: especificidad en prueba,5,0.250000,0.117260,0.450000,0.260000,0.170000,0.190000,0.180000
 master_rgb_det,"Maestro RGB, solo cajas",recall >= 0.90 en val: especificidad en prueba,5,0.162000,0.099599,0.220000,0.040000,0.080000,0.280000,0.190000
 crosskd_rgb_seg,"Alumno RGB, CrossKD desde RGB",recall >= 0.90 en val: especificidad en prueba,5,0.250000,0.146287,0.470000,0.180000,0.100000,0.320000,0.180000
 crosskd_rgbnir_seg,"Alumno RGB, CrossKD desde RGB+NIR",recall >= 0.90 en val: especificidad en prueba,5,0.228000,0.116919,0.320000,0.100000,0.110000,0.350000,0.260000
@@ -30,6 +34,7 @@ crosskd_nir_seg,"Alumno RGB, CrossKD desde NIR (exploratorio)",recall >= 0.90 en
 master_rgb_seg,Maestro RGB,recall >= 0.90 en val: tasa de descarte de sanas en prueba,5,0.790000,0.160779,0.540000,0.850000,0.950000,0.730000,0.880000
 master_nir_seg,Maestro NIR,recall >= 0.90 en val: tasa de descarte de sanas en prueba,5,0.764000,0.166523,0.520000,0.880000,0.890000,0.660000,0.870000
 master_rgbnir_seg,Maestro RGB+NIR,recall >= 0.90 en val: tasa de descarte de sanas en prueba,5,0.782000,0.129499,0.670000,0.950000,0.860000,0.640000,0.790000
+master_twostem_rgbnir_seg,"Maestro RGB+NIR, dos troncos (exploratorio)",recall >= 0.90 en val: tasa de descarte de sanas en prueba,5,0.750000,0.117260,0.550000,0.740000,0.830000,0.810000,0.820000
 master_rgb_det,"Maestro RGB, solo cajas",recall >= 0.90 en val: tasa de descarte de sanas en prueba,5,0.838000,0.099599,0.780000,0.960000,0.920000,0.720000,0.810000
 crosskd_rgb_seg,"Alumno RGB, CrossKD desde RGB",recall >= 0.90 en val: tasa de descarte de sanas en prueba,5,0.750000,0.146287,0.530000,0.820000,0.900000,0.680000,0.820000
 crosskd_rgbnir_seg,"Alumno RGB, CrossKD desde RGB+NIR",recall >= 0.90 en val: tasa de descarte de sanas en prueba,5,0.772000,0.116919,0.680000,0.900000,0.890000,0.650000,0.740000
@@ -37,6 +42,7 @@ crosskd_nir_seg,"Alumno RGB, CrossKD desde NIR (exploratorio)",recall >= 0.90 en
 master_rgb_seg,Maestro RGB,recall >= 0.90 en val: precisión en prueba,5,0.813959,0.010837,0.831250,0.812362,0.801255,0.811370,0.813559
 master_nir_seg,Maestro NIR,recall >= 0.90 en val: precisión en prueba,5,0.821490,0.020354,0.857143,0.810345,0.809422,0.819672,0.810870
 master_rgbnir_seg,Maestro RGB+NIR,recall >= 0.90 en val: precisión en prueba,5,0.818623,0.013712,0.836585,0.803313,0.806742,0.825613,0.820862
+master_twostem_rgbnir_seg,"Maestro RGB+NIR, dos troncos (exploratorio)",recall >= 0.90 en val: precisión en prueba,5,0.820765,0.016378,0.847645,0.822542,0.808314,0.807143,0.818182
 master_rgb_det,"Maestro RGB, solo cajas",recall >= 0.90 en val: precisión en prueba,5,0.811867,0.009716,0.810219,0.801242,0.804671,0.824818,0.818386
 crosskd_rgb_seg,"Alumno RGB, CrossKD desde RGB",recall >= 0.90 en val: precisión en prueba,5,0.821583,0.019614,0.855586,0.813636,0.805195,0.818182,0.815315
 crosskd_rgbnir_seg,"Alumno RGB, CrossKD desde RGB+NIR",recall >= 0.90 en val: precisión en prueba,5,0.819700,0.012111,0.834146,0.806034,0.809422,0.828947,0.819951
@@ -44,6 +50,7 @@ crosskd_nir_seg,"Alumno RGB, CrossKD desde NIR (exploratorio)",recall >= 0.90 en
 master_rgb_seg,Maestro RGB,recall >= 0.95 en val: umbral elegido en val,5,0.376000,0.026077,0.380000,0.400000,0.340000,0.400000,0.360000
 master_nir_seg,Maestro NIR,recall >= 0.95 en val: umbral elegido en val,5,0.364000,0.033615,0.410000,0.360000,0.350000,0.380000,0.320000
 master_rgbnir_seg,Maestro RGB+NIR,recall >= 0.95 en val: umbral elegido en val,5,0.400000,0.015811,0.410000,0.380000,0.400000,0.390000,0.420000
+master_twostem_rgbnir_seg,"Maestro RGB+NIR, dos troncos (exploratorio)",recall >= 0.95 en val: umbral elegido en val,5,0.374000,0.048270,0.450000,0.370000,0.320000,0.380000,0.350000
 master_rgb_det,"Maestro RGB, solo cajas",recall >= 0.95 en val: umbral elegido en val,5,0.368000,0.017889,0.390000,0.350000,0.350000,0.380000,0.370000
 crosskd_rgb_seg,"Alumno RGB, CrossKD desde RGB",recall >= 0.95 en val: umbral elegido en val,5,0.390000,0.020000,0.420000,0.380000,0.380000,0.400000,0.370000
 crosskd_rgbnir_seg,"Alumno RGB, CrossKD desde RGB+NIR",recall >= 0.95 en val: umbral elegido en val,5,0.368000,0.019235,0.390000,0.360000,0.340000,0.380000,0.370000
@@ -51,6 +58,7 @@ crosskd_nir_seg,"Alumno RGB, CrossKD desde NIR (exploratorio)",recall >= 0.95 en
 master_rgb_seg,Maestro RGB,recall >= 0.95 en val: objetivo alcanzado en val (1 = sí),5,1.000000,0.000000,1.000000,1.000000,1.000000,1.000000,1.000000
 master_nir_seg,Maestro NIR,recall >= 0.95 en val: objetivo alcanzado en val (1 = sí),5,1.000000,0.000000,1.000000,1.000000,1.000000,1.000000,1.000000
 master_rgbnir_seg,Maestro RGB+NIR,recall >= 0.95 en val: objetivo alcanzado en val (1 = sí),5,1.000000,0.000000,1.000000,1.000000,1.000000,1.000000,1.000000
+master_twostem_rgbnir_seg,"Maestro RGB+NIR, dos troncos (exploratorio)",recall >= 0.95 en val: objetivo alcanzado en val (1 = sí),5,1.000000,0.000000,1.000000,1.000000,1.000000,1.000000,1.000000
 master_rgb_det,"Maestro RGB, solo cajas",recall >= 0.95 en val: objetivo alcanzado en val (1 = sí),5,1.000000,0.000000,1.000000,1.000000,1.000000,1.000000,1.000000
 crosskd_rgb_seg,"Alumno RGB, CrossKD desde RGB",recall >= 0.95 en val: objetivo alcanzado en val (1 = sí),5,1.000000,0.000000,1.000000,1.000000,1.000000,1.000000,1.000000
 crosskd_rgbnir_seg,"Alumno RGB, CrossKD desde RGB+NIR",recall >= 0.95 en val: objetivo alcanzado en val (1 = sí),5,1.000000,0.000000,1.000000,1.000000,1.000000,1.000000,1.000000
@@ -58,6 +66,7 @@ crosskd_nir_seg,"Alumno RGB, CrossKD desde NIR (exploratorio)",recall >= 0.95 en
 master_rgb_seg,Maestro RGB,recall >= 0.95 en val: exhaustividad en prueba,5,0.935780,0.058598,0.887218,0.959391,0.984887,0.860000,0.987406
 master_nir_seg,Maestro NIR,recall >= 0.95 en val: exhaustividad en prueba,5,0.932291,0.061138,0.847118,0.987310,0.957179,0.890000,0.979849
 master_rgbnir_seg,Maestro RGB+NIR,recall >= 0.95 en val: exhaustividad en prueba,5,0.934795,0.052832,0.929825,0.994924,0.934509,0.852500,0.962217
+master_twostem_rgbnir_seg,"Maestro RGB+NIR, dos troncos (exploratorio)",recall >= 0.95 en val: exhaustividad en prueba,5,0.941689,0.036161,0.879699,0.949239,0.964736,0.945000,0.969773
 master_rgb_det,"Maestro RGB, solo cajas",recall >= 0.95 en val: exhaustividad en prueba,5,0.954828,0.037905,0.897243,0.994924,0.982368,0.952500,0.947103
 crosskd_rgb_seg,"Alumno RGB, CrossKD desde RGB",recall >= 0.95 en val: exhaustividad en prueba,5,0.920178,0.055333,0.872180,0.949239,0.954660,0.850000,0.974811
 crosskd_rgbnir_seg,"Alumno RGB, CrossKD desde RGB+NIR",recall >= 0.95 en val: exhaustividad en prueba,5,0.949279,0.029470,0.929825,0.979695,0.982368,0.920000,0.934509
@@ -65,6 +74,7 @@ crosskd_nir_seg,"Alumno RGB, CrossKD desde NIR (exploratorio)",recall >= 0.95 en
 master_rgb_seg,Maestro RGB,recall >= 0.95 en val: especificidad en prueba,5,0.100000,0.070356,0.200000,0.100000,0.020000,0.130000,0.050000
 master_nir_seg,Maestro NIR,recall >= 0.95 en val: especificidad en prueba,5,0.144000,0.136675,0.350000,0.030000,0.100000,0.210000,0.030000
 master_rgbnir_seg,Maestro RGB+NIR,recall >= 0.95 en val: especificidad en prueba,5,0.118000,0.069785,0.150000,0.010000,0.120000,0.200000,0.110000
+master_twostem_rgbnir_seg,"Maestro RGB+NIR, dos troncos (exploratorio)",recall >= 0.95 en val: especificidad en prueba,5,0.124000,0.116319,0.320000,0.140000,0.050000,0.070000,0.040000
 master_rgb_det,"Maestro RGB, solo cajas",recall >= 0.95 en val: especificidad en prueba,5,0.092000,0.058907,0.140000,0.020000,0.040000,0.150000,0.110000
 crosskd_rgb_seg,"Alumno RGB, CrossKD desde RGB",recall >= 0.95 en val: especificidad en prueba,5,0.144000,0.094763,0.290000,0.080000,0.070000,0.190000,0.090000
 crosskd_rgbnir_seg,"Alumno RGB, CrossKD desde RGB+NIR",recall >= 0.95 en val: especificidad en prueba,5,0.098000,0.050200,0.110000,0.050000,0.050000,0.170000,0.110000
@@ -72,6 +82,7 @@ crosskd_nir_seg,"Alumno RGB, CrossKD desde NIR (exploratorio)",recall >= 0.95 en
 master_rgb_seg,Maestro RGB,recall >= 0.95 en val: tasa de descarte de sanas en prueba,5,0.900000,0.070356,0.800000,0.900000,0.980000,0.870000,0.950000
 master_nir_seg,Maestro NIR,recall >= 0.95 en val: tasa de descarte de sanas en prueba,5,0.856000,0.136675,0.650000,0.970000,0.900000,0.790000,0.970000
 master_rgbnir_seg,Maestro RGB+NIR,recall >= 0.95 en val: tasa de descarte de sanas en prueba,5,0.882000,0.069785,0.850000,0.990000,0.880000,0.800000,0.890000
+master_twostem_rgbnir_seg,"Maestro RGB+NIR, dos troncos (exploratorio)",recall >= 0.95 en val: tasa de descarte de sanas en prueba,5,0.876000,0.116319,0.680000,0.860000,0.950000,0.930000,0.960000
 master_rgb_det,"Maestro RGB, solo cajas",recall >= 0.95 en val: tasa de descarte de sanas en prueba,5,0.908000,0.058907,0.860000,0.980000,0.960000,0.850000,0.890000
 crosskd_rgb_seg,"Alumno RGB, CrossKD desde RGB",recall >= 0.95 en val: tasa de descarte de sanas en prueba,5,0.856000,0.094763,0.710000,0.920000,0.930000,0.810000,0.910000
 crosskd_rgbnir_seg,"Alumno RGB, CrossKD desde RGB+NIR",recall >= 0.95 en val: tasa de descarte de sanas en prueba,5,0.902000,0.050200,0.890000,0.950000,0.950000,0.830000,0.890000
@@ -79,6 +90,7 @@ crosskd_nir_seg,"Alumno RGB, CrossKD desde NIR (exploratorio)",recall >= 0.95 en
 master_rgb_seg,Maestro RGB,recall >= 0.95 en val: precisión en prueba,5,0.805205,0.007020,0.815668,0.807692,0.799591,0.798144,0.804928
 master_nir_seg,Maestro NIR,recall >= 0.95 en val: precisión en prueba,5,0.813287,0.016021,0.838710,0.800412,0.808511,0.818391,0.800412
 master_rgbnir_seg,Maestro RGB+NIR,recall >= 0.95 en val: precisión en prueba,5,0.808253,0.005851,0.813596,0.798371,0.808279,0.809976,0.811040
+master_twostem_rgbnir_seg,"Maestro RGB+NIR, dos troncos (exploratorio)",recall >= 0.95 en val: precisión en prueba,5,0.810994,0.015779,0.837709,0.813043,0.801255,0.802548,0.800416
 master_rgb_det,"Maestro RGB, solo cajas",recall >= 0.95 en val: precisión en prueba,5,0.806995,0.006798,0.806306,0.800000,0.802469,0.817597,0.808602
 crosskd_rgb_seg,"Alumno RGB, CrossKD desde RGB",recall >= 0.95 en val: precisión en prueba,5,0.810663,0.011517,0.830549,0.802575,0.802966,0.807601,0.809623
 crosskd_rgbnir_seg,"Alumno RGB, CrossKD desde RGB+NIR",recall >= 0.95 en val: precisión en prueba,5,0.807125,0.005228,0.806522,0.802495,0.804124,0.815965,0.806522
@@ -86,6 +98,7 @@ crosskd_nir_seg,"Alumno RGB, CrossKD desde NIR (exploratorio)",recall >= 0.95 en
 master_rgb_seg,Maestro RGB,F2 máximo en val: umbral elegido en val,5,0.320000,0.010000,0.330000,0.310000,0.310000,0.320000,0.330000
 master_nir_seg,Maestro NIR,F2 máximo en val: umbral elegido en val,5,0.288000,0.025884,0.320000,0.310000,0.280000,0.270000,0.260000
 master_rgbnir_seg,Maestro RGB+NIR,F2 máximo en val: umbral elegido en val,5,0.346000,0.032094,0.300000,0.350000,0.380000,0.330000,0.370000
+master_twostem_rgbnir_seg,"Maestro RGB+NIR, dos troncos (exploratorio)",F2 máximo en val: umbral elegido en val,5,0.294000,0.053198,0.380000,0.290000,0.250000,0.300000,0.250000
 master_rgb_det,"Maestro RGB, solo cajas",F2 máximo en val: umbral elegido en val,5,0.314000,0.025100,0.340000,0.290000,0.290000,0.340000,0.310000
 crosskd_rgb_seg,"Alumno RGB, CrossKD desde RGB",F2 máximo en val: umbral elegido en val,5,0.302000,0.039623,0.330000,0.310000,0.340000,0.240000,0.290000
 crosskd_rgbnir_seg,"Alumno RGB, CrossKD desde RGB+NIR",F2 máximo en val: umbral elegido en val,5,0.290000,0.010000,0.300000,0.290000,0.300000,0.280000,0.280000
@@ -93,6 +106,7 @@ crosskd_nir_seg,"Alumno RGB, CrossKD desde NIR (exploratorio)",F2 máximo en val
 master_rgb_seg,Maestro RGB,F2 máximo en val: objetivo alcanzado en val (1 = sí),5,1.000000,0.000000,1.000000,1.000000,1.000000,1.000000,1.000000
 master_nir_seg,Maestro NIR,F2 máximo en val: objetivo alcanzado en val (1 = sí),5,1.000000,0.000000,1.000000,1.000000,1.000000,1.000000,1.000000
 master_rgbnir_seg,Maestro RGB+NIR,F2 máximo en val: objetivo alcanzado en val (1 = sí),5,1.000000,0.000000,1.000000,1.000000,1.000000,1.000000,1.000000
+master_twostem_rgbnir_seg,"Maestro RGB+NIR, dos troncos (exploratorio)",F2 máximo en val: objetivo alcanzado en val (1 = sí),5,1.000000,0.000000,1.000000,1.000000,1.000000,1.000000,1.000000
 master_rgb_det,"Maestro RGB, solo cajas",F2 máximo en val: objetivo alcanzado en val (1 = sí),5,1.000000,0.000000,1.000000,1.000000,1.000000,1.000000,1.000000
 crosskd_rgb_seg,"Alumno RGB, CrossKD desde RGB",F2 máximo en val: objetivo alcanzado en val (1 = sí),5,1.000000,0.000000,1.000000,1.000000,1.000000,1.000000,1.000000
 crosskd_rgbnir_seg,"Alumno RGB, CrossKD desde RGB+NIR",F2 máximo en val: objetivo alcanzado en val (1 = sí),5,1.000000,0.000000,1.000000,1.000000,1.000000,1.000000,1.000000
@@ -100,6 +114,7 @@ crosskd_nir_seg,"Alumno RGB, CrossKD desde NIR (exploratorio)",F2 máximo en val
 master_rgb_seg,Maestro RGB,F2 máximo en val: exhaustividad en prueba,5,0.993480,0.007211,0.982456,0.997462,1.000000,0.990000,0.997481
 master_nir_seg,Maestro NIR,F2 máximo en val: exhaustividad en prueba,5,0.997490,0.002513,0.994987,1.000000,1.000000,0.997500,0.994962
 master_rgbnir_seg,Maestro RGB+NIR,F2 máximo en val: exhaustividad en prueba,5,0.993466,0.010006,1.000000,1.000000,0.977330,0.990000,1.000000
+master_twostem_rgbnir_seg,"Maestro RGB+NIR, dos troncos (exploratorio)",F2 máximo en val: exhaustividad en prueba,5,0.998497,0.002241,0.994987,1.000000,1.000000,0.997500,1.000000
 master_rgb_det,"Maestro RGB, solo cajas",F2 máximo en val: exhaustividad en prueba,5,0.995991,0.007643,0.982456,1.000000,1.000000,0.997500,1.000000
 crosskd_rgb_seg,"Alumno RGB, CrossKD desde RGB",F2 máximo en val: exhaustividad en prueba,5,0.997475,0.003578,0.994987,0.992386,1.000000,1.000000,1.000000
 crosskd_rgbnir_seg,"Alumno RGB, CrossKD desde RGB+NIR",F2 máximo en val: exhaustividad en prueba,5,0.998991,0.001381,0.997494,0.997462,1.000000,1.000000,1.000000
@@ -107,6 +122,7 @@ crosskd_nir_seg,"Alumno RGB, CrossKD desde NIR (exploratorio)",F2 máximo en val
 master_rgb_seg,Maestro RGB,F2 máximo en val: especificidad en prueba,5,0.012000,0.017889,0.040000,0.000000,0.000000,0.020000,0.000000
 master_nir_seg,Maestro NIR,F2 máximo en val: especificidad en prueba,5,0.004000,0.008944,0.000000,0.000000,0.020000,0.000000,0.000000
 master_rgbnir_seg,Maestro RGB+NIR,F2 máximo en val: especificidad en prueba,5,0.020000,0.025495,0.000000,0.000000,0.060000,0.010000,0.030000
+master_twostem_rgbnir_seg,"Maestro RGB+NIR, dos troncos (exploratorio)",F2 máximo en val: especificidad en prueba,5,0.002000,0.004472,0.010000,0.000000,0.000000,0.000000,0.000000
 master_rgb_det,"Maestro RGB, solo cajas",F2 máximo en val: especificidad en prueba,5,0.004000,0.008944,0.020000,0.000000,0.000000,0.000000,0.000000
 crosskd_rgb_seg,"Alumno RGB, CrossKD desde RGB",F2 máximo en val: especificidad en prueba,5,0.006000,0.008944,0.020000,0.010000,0.000000,0.000000,0.000000
 crosskd_rgbnir_seg,"Alumno RGB, CrossKD desde RGB+NIR",F2 máximo en val: especificidad en prueba,5,0.006000,0.008944,0.000000,0.010000,0.000000,0.000000,0.020000
@@ -114,6 +130,7 @@ crosskd_nir_seg,"Alumno RGB, CrossKD desde NIR (exploratorio)",F2 máximo en val
 master_rgb_seg,Maestro RGB,F2 máximo en val: tasa de descarte de sanas en prueba,5,0.988000,0.017889,0.960000,1.000000,1.000000,0.980000,1.000000
 master_nir_seg,Maestro NIR,F2 máximo en val: tasa de descarte de sanas en prueba,5,0.996000,0.008944,1.000000,1.000000,0.980000,1.000000,1.000000
 master_rgbnir_seg,Maestro RGB+NIR,F2 máximo en val: tasa de descarte de sanas en prueba,5,0.980000,0.025495,1.000000,1.000000,0.940000,0.990000,0.970000
+master_twostem_rgbnir_seg,"Maestro RGB+NIR, dos troncos (exploratorio)",F2 máximo en val: tasa de descarte de sanas en prueba,5,0.998000,0.004472,0.990000,1.000000,1.000000,1.000000,1.000000
 master_rgb_det,"Maestro RGB, solo cajas",F2 máximo en val: tasa de descarte de sanas en prueba,5,0.996000,0.008944,0.980000,1.000000,1.000000,1.000000,1.000000
 crosskd_rgb_seg,"Alumno RGB, CrossKD desde RGB",F2 máximo en val: tasa de descarte de sanas en prueba,5,0.994000,0.008944,0.980000,0.990000,1.000000,1.000000,1.000000
 crosskd_rgbnir_seg,"Alumno RGB, CrossKD desde RGB+NIR",F2 máximo en val: tasa de descarte de sanas en prueba,5,0.994000,0.008944,1.000000,0.990000,1.000000,1.000000,0.980000
@@ -121,6 +138,7 @@ crosskd_nir_seg,"Alumno RGB, CrossKD desde NIR (exploratorio)",F2 máximo en val
 master_rgb_seg,Maestro RGB,F2 máximo en val: precisión en prueba,5,0.799848,0.002519,0.803279,0.797160,0.798793,0.801619,0.798387
 master_nir_seg,Maestro NIR,F2 máximo en val: precisión en prueba,5,0.799193,0.001762,0.798793,0.797571,0.802020,0.799599,0.797980
 master_rgbnir_seg,Maestro RGB+NIR,F2 máximo en val: precisión en prueba,5,0.801159,0.003059,0.799599,0.797571,0.804979,0.800000,0.803644
+master_twostem_rgbnir_seg,"Maestro RGB+NIR, dos troncos (exploratorio)",F2 máximo en val: precisión en prueba,5,0.799032,0.001055,0.800403,0.797571,0.798793,0.799599,0.798793
 master_rgb_det,"Maestro RGB, solo cajas",F2 máximo en val: precisión en prueba,5,0.798951,0.000932,0.800000,0.797571,0.798793,0.799599,0.798793
 crosskd_rgb_seg,"Alumno RGB, CrossKD desde RGB",F2 máximo en val: precisión en prueba,5,0.799513,0.001579,0.802020,0.797959,0.798793,0.800000,0.798793
 crosskd_rgbnir_seg,"Alumno RGB, CrossKD desde RGB+NIR",F2 máximo en val: precisión en prueba,5,0.799758,0.001358,0.799197,0.798780,0.798793,0.800000,0.802020

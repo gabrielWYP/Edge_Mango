@@ -7,14 +7,14 @@ python scripts/make_thesis_figures.py            # --export-dir y --out opcional
 python -m pytest -q tests/test_make_thesis_figures.py
 ```
 
-Los brazos se descubren de los datos: cuando `master_twostem_rgbnir_seg` aparezca en la exportación, el mismo comando lo incluye con el color y el marcador ya reservados. Un fold ausente se informa como `n/d` (nunca como 0) y la columna `n folds` indica cuántos lotes entran en la media.
+Los brazos se descubren de los datos: `master_twostem_rgbnir_seg` ya está en la exportación (fold 2 repetido una vez por la regla de corrida fallida; se analiza el segundo intento) y el mismo comando lo incluye con el color y el marcador ya reservados. Un fold ausente se informa como `n/d` (nunca como 0) y la columna `n folds` indica cuántos lotes entran en la media.
 
 ## Notas que acompañan a todo el material
 
 - **n = 5 lotes.** Media y sd (ddof = 1) se calculan entre los 5 folds de lote; la dispersión entre lotes es grande y la inferencia no se rehace aquí.
 - **La validación son datos de selección del checkpoint**, no evidencia de generalización. Solo la prueba (test) se reporta como resultado.
 - **Los umbrales de clasificación salen de validación.** En T3 el umbral de cada fold es el de máximo F1 en el val de ese fold (empates: el umbral mayor) y se aplica al test del mismo fold. Nada se ajusta con test. `scripts/val_operating_points.py` usa umbrales fijos (0.25 y 0.5); aquí se elige en val.
-- **Los brazos exploratorios son descriptivos** (`crosskd_nir_seg`, `master_twostem_rgbnir_seg`): no forman parte del conjunto pre-registrado.
+- **Los brazos exploratorios son descriptivos** (`crosskd_nir_seg`, `master_twostem_rgbnir_seg`): no forman parte del conjunto pre-registrado. `crosskd_twostem_seg` no se corrió (compuerta de validación no cumplida: 0,424 ≤ 0,427) y no aparece en ninguna figura ni tabla.
 - La inferencia (H1, H2, comparaciones secundarias y exploratorias) está en `reports/thesis-test-analysis/TEST_ANALYSIS.md`; este material no la repite.
 
 Fold k corresponde al lote de prueba indicado en `folds.csv` (columnas de las tablas: «Lote 1» a «Lote 5»).
@@ -65,7 +65,7 @@ Detalles de T3 y T4:
 ## Versión principal y apéndice
 
 - **Principal** (nombres sin sufijo): los brazos pre-registrados y la referencia, como máximo 5 series: `master_rgb_seg` y `master_rgbnir_seg` (H1), `crosskd_rgb_seg` y `crosskd_rgbnir_seg` (H2) y `master_nir_seg` (referencia descriptiva). Aplica a F1, F2, F4 y a las tablas T1, T2, T3, T5 y T6.
-- **Apéndice** (sufijo `_apendice`): todos los brazos encontrados, incluidos `master_rgb_det`, `crosskd_nir_seg` y, cuando exista, `master_twostem_rgbnir_seg`.
+- **Apéndice** (sufijo `_apendice`): todos los brazos encontrados, incluidos `master_rgb_det`, `crosskd_nir_seg` y `master_twostem_rgbnir_seg` (color `#E69F00`).
 - F3 (puntos por lote), T4 y T7 incluyen siempre todos los brazos; en F3 los exploratorios van sobre fondo gris.
 - **Suavizado.** En F1 cada curva de lote se suaviza primero (media móvil exponencial con corrección de sesgo, w = 0.8, la misma función `src/evaluation/smoothing.py` que usa `scripts/plot_run_curves.py`) y después se calcula la media ± sd entre lotes. No se marca la época seleccionada (T4 la lista) para no recargar las curvas. La pérdida de detección es caja + clase, comparable entre brazos de segmentación y CrossKD (la pérdida total incluye los términos de máscara y de destilación).
 
@@ -75,4 +75,10 @@ Detalles de T3 y T4:
 |---|---|---|
 | `F5_comparaciones_test` (principal) y `F5_comparaciones_test_apendice` | Figura 6. Diferencia de AP50 latente de cajas en prueba (tratamiento − base) para H1, H2 y las comparaciones secundaria (C1) y exploratoria (C2). Círculos vacíos: diferencia de cada lote (n = 5); punto: media; línea: intervalo de confianza del 95 % con t corregida (Nadeau-Bengio); banda: ROPE ±0.02. A la derecha: P(mejor), probabilidad posterior bayesiana correlacionada de que la diferencia supere el ROPE (`P(right)`), y número de lotes con diferencia positiva. | `reports/thesis-test-analysis/analysis.json`: `comps.<comparación>.metrics.latent_ap50` (`deltas`, `mean`, `inference.corrected_t.ci_low/ci_high`, `inference.bayes.p_right`) |
 
-El apéndice añade el soporte de máscara (Maestro RGB − Maestro RGB, solo cajas, métrica de cajas), las dos comparaciones exploratorias de `crosskd_nir_seg` y, cuando aparezcan en `analysis.json`, las de `master_twostem_rgbnir_seg`. Todos los números provienen de `analysis.json` (nada se recalcula); una comparación sin intervalo o sin `p_right` se omite con un aviso. Los valores coinciden con `TEST_ANALYSIS.md` (sección 3), p. ej. H1: +0.082 [+0.003, +0.160], P = 0.953, 5/5. La inferencia es la de ese documento; la figura no añade resultados nuevos. H1 y H2 son confirmatorias en secuencia fija; C1, C2 y las del apéndice son secundarias o exploratorias.
+El apéndice añade el soporte de máscara (Maestro RGB − Maestro RGB, solo cajas, métrica de cajas), las dos comparaciones exploratorias de `crosskd_nir_seg` y las dos de `master_twostem_rgbnir_seg` (X1: contra `master_rgbnir_seg`, exploratoria primaria; X2: contra `master_nir_seg`), ambas exploratorias (2026-11-16), fuera de H1, H2 y de la familia de Holm. Todos los números provienen de `analysis.json` (nada se recalcula); una comparación sin intervalo o sin `p_right` se omite con un aviso. Los valores coinciden con `TEST_ANALYSIS.md` (sección 3), p. ej. H1: +0.082 [+0.003, +0.160], P = 0.953, 5/5. La inferencia es la de ese documento; la figura no añade resultados nuevos. H1 y H2 son confirmatorias en secuencia fija; C1, C2 y las del apéndice son secundarias o exploratorias.
+
+## F6: AP latente en validación por época, solo el maestro de dos troncos (apéndice)
+
+| Archivo | Borrador de pie de figura | Entrada |
+|---|---|---|
+| `F6_ap30_por_epoca_dos_troncos_apendice` | Figura A6. AP50 y AP30 latentes en validación del maestro RGB+NIR de dos troncos (exploratorio) cada 5 épocas (5 a 80), media ± 1 sd entre los 5 lotes. Cada curva de lote se suaviza con media móvil exponencial de peso w = 0.8^5 por punto de 5 épocas, la misma constante de tiempo que w = 0.8 por época de F1. Esta figura existe solo para este brazo: los checkpoints de los brazos principales no se conservaron, así que no se pueden evaluar por época. La validación es dato de selección del checkpoint, no evidencia de generalización. | `reports/thesis-test-analysis/export/epoch_curve_val_master_twostem_rgbnir_seg.csv`: `fold`, `epoch`, `latent_ap50`, `latent_ap30` |

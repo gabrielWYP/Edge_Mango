@@ -2,28 +2,35 @@ arm,arm_label,metric,n_folds,mean,sd,Lote 1,Lote 2,Lote 3,Lote 4,Lote 5
 master_rgb_seg,Maestro RGB,Exhaustividad a las 0 h,5,0.837778,0.172229,0.560000,0.929293,0.960000,0.780000,0.959596
 master_nir_seg,Maestro NIR,Exhaustividad a las 0 h,5,0.839697,0.134484,0.620000,0.929293,0.930000,0.800000,0.919192
 master_rgbnir_seg,Maestro RGB+NIR,Exhaustividad a las 0 h,5,0.865798,0.090575,0.760000,0.989899,0.870000,0.800000,0.909091
+master_twostem_rgbnir_seg,"Maestro RGB+NIR, dos troncos (exploratorio)",Exhaustividad a las 0 h,5,0.831576,0.106141,0.650000,0.858586,0.850000,0.870000,0.929293
 master_rgb_det,"Maestro RGB, solo cajas",Exhaustividad a las 0 h,5,0.901818,0.079072,0.780000,0.979798,0.950000,0.870000,0.929293
 master_rgb_seg,Maestro RGB,Exhaustividad a las 2 h,5,0.871417,0.128791,0.680000,0.927083,0.970000,0.800000,0.980000
 master_nir_seg,Maestro NIR,Exhaustividad a las 2 h,5,0.865500,0.094280,0.820000,0.937500,0.920000,0.720000,0.930000
 master_rgbnir_seg,Maestro RGB+NIR,Exhaustividad a las 2 h,5,0.891750,0.081680,0.890000,0.968750,0.950000,0.760000,0.890000
+master_twostem_rgbnir_seg,"Maestro RGB+NIR, dos troncos (exploratorio)",Exhaustividad a las 2 h,5,0.861000,0.073348,0.760000,0.875000,0.900000,0.820000,0.950000
 master_rgb_det,"Maestro RGB, solo cajas",Exhaustividad a las 2 h,5,0.903833,0.066697,0.820000,0.979167,0.960000,0.860000,0.900000
 master_rgb_seg,Maestro RGB,Exhaustividad a las 4 h,5,0.871191,0.121591,0.696970,0.959596,0.940000,0.790000,0.969388
 master_nir_seg,Maestro NIR,Exhaustividad a las 4 h,5,0.897433,0.106803,0.818182,0.959596,0.990000,0.750000,0.969388
 master_rgbnir_seg,Maestro RGB+NIR,Exhaustividad a las 4 h,5,0.887432,0.088104,0.848485,0.989899,0.900000,0.760000,0.938776
+master_twostem_rgbnir_seg,"Maestro RGB+NIR, dos troncos (exploratorio)",Exhaustividad a las 4 h,5,0.873108,0.053978,0.787879,0.909091,0.870000,0.870000,0.928571
 master_rgb_det,"Maestro RGB, solo cajas",Exhaustividad a las 4 h,5,0.895269,0.081987,0.818182,0.979798,0.960000,0.800000,0.918367
 master_rgb_seg,Maestro RGB,Exhaustividad a las 6 h,5,0.873938,0.116671,0.730000,0.920000,0.989691,0.770000,0.960000
 master_nir_seg,Maestro NIR,Exhaustividad a las 6 h,5,0.899814,0.105203,0.870000,0.990000,0.969072,0.730000,0.940000
 master_rgbnir_seg,Maestro RGB+NIR,Exhaustividad a las 6 h,5,0.889381,0.106473,0.940000,0.990000,0.896907,0.710000,0.910000
+master_twostem_rgbnir_seg,"Maestro RGB+NIR, dos troncos (exploratorio)",Exhaustividad a las 6 h,5,0.871443,0.036995,0.870000,0.840000,0.907216,0.830000,0.910000
 master_rgb_det,"Maestro RGB, solo cajas",Exhaustividad a las 6 h,5,0.929691,0.047276,0.920000,0.990000,0.948454,0.860000,0.930000
 master_rgb_seg,Maestro RGB,Exhaustividad a las 8 h,5,0.864088,0.144970,0.714286,0.959184,0.980000,0.696970,0.970000
 master_nir_seg,Maestro NIR,Exhaustividad a las 8 h,5,0.884700,0.116406,0.846939,0.979592,0.950000,0.696970,0.950000
 master_rgbnir_seg,Maestro RGB+NIR,Exhaustividad a las 8 h,5,0.907107,0.096755,0.928571,0.979592,0.950000,0.737374,0.940000
+master_twostem_rgbnir_seg,"Maestro RGB+NIR, dos troncos (exploratorio)",Exhaustividad a las 8 h,5,0.878493,0.050627,0.836735,0.867347,0.890000,0.838384,0.960000
 master_rgb_det,"Maestro RGB, solo cajas",Exhaustividad a las 8 h,5,0.909269,0.058343,0.928571,0.979592,0.910000,0.818182,0.910000
 master_rgb_seg,Maestro RGB,Exhaustividad a las 10 h,5,0.883495,0.106068,0.747475,0.950000,0.970000,0.790000,0.960000
 master_nir_seg,Maestro NIR,Exhaustividad a las 10 h,5,0.895737,0.100982,0.868687,0.960000,0.970000,0.730000,0.950000
 master_rgbnir_seg,Maestro RGB+NIR,Exhaustividad a las 10 h,5,0.899758,0.097275,0.878788,1.000000,0.970000,0.750000,0.900000
+master_twostem_rgbnir_seg,"Maestro RGB+NIR, dos troncos (exploratorio)",Exhaustividad a las 10 h,5,0.899758,0.044860,0.878788,0.900000,0.920000,0.840000,0.960000
 master_rgb_det,"Maestro RGB, solo cajas",Exhaustividad a las 10 h,5,0.939818,0.038260,0.909091,0.980000,0.980000,0.900000,0.930000
 master_rgb_seg,Maestro RGB,Exhaustividad a las 12 h,5,0.877240,0.119344,0.768421,0.930000,0.980000,0.730000,0.977778
 master_nir_seg,Maestro NIR,Exhaustividad a las 12 h,5,0.889637,0.094331,0.852632,0.960000,0.940000,0.740000,0.955556
 master_rgbnir_seg,Maestro RGB+NIR,Exhaustividad a las 12 h,5,0.896035,0.108039,0.936842,0.990000,0.910000,0.710000,0.933333
+master_twostem_rgbnir_seg,"Maestro RGB+NIR, dos troncos (exploratorio)",Exhaustividad a las 12 h,5,0.870772,0.048335,0.810526,0.840000,0.900000,0.870000,0.933333
 master_rgb_det,"Maestro RGB, solo cajas",Exhaustividad a las 12 h,5,0.931953,0.061706,0.884211,0.990000,0.980000,0.850000,0.955556

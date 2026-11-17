@@ -804,7 +804,7 @@ def plot_strip(test, arms, folds, labels, out, stem) -> list[Path]:
 # ---------------------------------------------------------------- F5: forest plot of the test comparisons
 FOREST_MAIN = ["H1", "H2", "secondary", "exploratory"]
 FOREST_APPENDIX_FIRST = ["mask_supervision", "crosskd_nir", "crosskd_nir_vs_rgbnir"]
-FOREST_TAGS = {"H1": "H1", "H2": "H2", "secondary": "C1 (secundaria)", "exploratory": "C2 (exploratoria)",
+FOREST_TAGS = {"twostem_vs_rgbnir": "X1 (exploratoria)", "twostem_vs_nir": "X2 (exploratoria)", "H1": "H1", "H2": "H2", "secondary": "C1 (secundaria)", "exploratory": "C2 (exploratoria)",
                "mask_supervision": "Soporte de máscara (cajas)", "crosskd_nir": "E1 (exploratoria)",
                "crosskd_nir_vs_rgbnir": "E2 (exploratoria)"}
 
@@ -884,6 +884,59 @@ def plot_forest(rows, out, stem) -> list[Path]:
     return _save(fig, out, stem)
 
 
+# ---------------------------------------------------------------- F6: validation AP by epoch (two-stem arm only)
+EPOCH_CURVE_FILE = "epoch_curve_val_master_twostem_rgbnir_seg.csv"  # val AP every 5 epochs, evaluated on the saved checkpoints
+EPOCH_CURVE_ARM = "master_twostem_rgbnir_seg"
+
+
+def epoch_step(frame: pd.DataFrame) -> int:
+    """Spacing of the evaluated epochs; every fold must be sampled on the same regular grid."""
+    groups = [sub for _, sub in frame.groupby("fold")] if "fold" in frame else [frame]
+    steps = {int(d) for sub in groups for d in np.diff(sorted(sub["epoch"]))}
+    if len(steps) != 1:
+        raise ValueError(f"epochs are not on a regular grid (spacings {sorted(steps)})")
+    return steps.pop()
+
+
+def step_weight(w: float, step: int) -> float:
+    """EMA weight per sample that keeps the time constant of a per-epoch weight `w` when samples are `step` epochs apart."""
+    return w**step
+
+
+def smooth_epoch_curve(frame: pd.DataFrame, cols, w: float = SMOOTH_W) -> pd.DataFrame:
+    """`smoothed_history` for a curve sampled every `epoch_step` epochs: same time constant as the per-epoch curves."""
+    return smoothed_history(frame, cols, step_weight(w, epoch_step(frame)))
+
+
+def plot_ap_by_epoch(curve: pd.DataFrame, arm: str, out: Path, stem: str) -> list[Path]:
+    """F6: val latent AP50 and AP30 against epoch for one arm, mean ± sd across folds of the smoothed per-fold curves."""
+    import matplotlib.pyplot as plt
+
+    if curve.empty:
+        return []
+    cols = [("latent_ap50", "AP50 latente en validación"), ("latent_ap30", "AP30 latente en validación")]
+    step = epoch_step(curve)
+    curve = smooth_epoch_curve(curve, [c for c, _ in cols])
+    st = style_of(arm)
+    fig, axes = plt.subplots(1, 2, figsize=(9.8, 3.9))
+    for ax, (col, ylabel), title in zip(axes, cols, ("a) AP50 latente (IoU 0.5)", "b) AP30 latente (IoU 0.3)")):
+        c = curve_mean_sd(curve, arm, f"{col}_smooth")
+        sd = c["sd"].fillna(0)
+        ax.fill_between(c["epoch"], c["mean"] - sd, c["mean"] + sd, color=st["color"], alpha=0.15, linewidth=0)
+        ax.plot(c["epoch"], c["mean"], color=st["color"], linestyle=st["linestyle"], marker=st["marker"], markersize=6, linewidth=2)
+        ax.set_title(title, fontsize=10.5, color=INK, loc="left")
+        ax.set_xlabel("Época", color=INK)
+        ax.set_ylabel(ylabel, color=INK)
+        ax.set_ylim(bottom=0)
+        _style_axes(ax)
+    fig.suptitle(arm_label(arm), fontsize=10.5, color=INK, x=0.01, ha="left")
+    note = (f"Curvas suavizadas por lote con media móvil exponencial (w = 0.8^{step} por punto de {step} épocas, "
+            f"la misma constante de tiempo que w = 0.8 por época); media ± 1 sd entre los {curve['fold'].nunique()} lotes (validación).")
+    fig.text(0.5, -0.02, note, ha="center", fontsize=8, color=GRAY)
+    fig.tight_layout()
+    return _save(fig, out, stem)
+
+
 # ---------------------------------------------------------------- main
 def parse_args(argv=None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -926,6 +979,11 @@ def main(argv=None) -> int:
             written += plot_forest(forest_rows(analysis, scope), args.out, f"F5_comparaciones_test{suffix}")
     else:
         print(f"WARNING {args.analysis} not found: F5 skipped", file=sys.stderr)
+    curve_file = args.export_dir / EPOCH_CURVE_FILE
+    if curve_file.exists():
+        written += plot_ap_by_epoch(pd.read_csv(curve_file), EPOCH_CURVE_ARM, args.out, "F6_ap30_por_epoca_dos_troncos_apendice")
+    else:
+        print(f"WARNING {curve_file} not found: F6 skipped", file=sys.stderr)
     for p in written:
         print(p)
     return 0

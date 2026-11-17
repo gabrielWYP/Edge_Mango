@@ -30,6 +30,7 @@ Folds order: fold0 | fold1 | fold2 | fold3 | fold4. `val` = checkpoint-selection
 | crosskd_rgb_seg | 0.303 | 0.388 | 0.353 | 0.219 | 0.325 | 0.318 +/- 0.063 | 0.497 | 0.528 | 0.505 | 0.362 | 0.489 | 0.476 +/- 0.066 | 0.381 | -0.063 |
 | crosskd_rgbnir_seg | 0.336 | 0.490 | 0.400 | 0.229 | 0.316 | 0.354 +/- 0.097 | 0.500 | 0.621 | 0.548 | 0.359 | 0.478 | 0.501 +/- 0.097 | 0.368 | -0.014 |
 | crosskd_nir_seg | 0.215 | 0.474 | 0.351 | 0.232 | 0.305 | 0.316 +/- 0.104 | 0.383 | 0.659 | 0.507 | 0.351 | 0.460 | 0.472 +/- 0.121 | 0.365 | -0.049 |
+| master_twostem_rgbnir_seg | 0.310 | 0.466 | 0.390 | 0.356 | 0.362 | 0.377 +/- 0.058 | 0.499 | 0.599 | 0.534 | 0.459 | 0.564 | 0.531 +/- 0.055 | 0.424 | -0.047 |
 
 Other per-arm metrics (test, mean +/- sd): latent mask AP50, mask AP30, face AUROC, sano FP per image (conf 0.25).
 
@@ -42,8 +43,14 @@ Other per-arm metrics (test, mean +/- sd): latent mask AP50, mask AP30, face AUR
 | crosskd_rgb_seg | 0.308 +/- 0.067 | 0.467 +/- 0.072 | 0.613 +/- 0.042 | 4.598 +/- 0.828 |
 | crosskd_rgbnir_seg | 0.334 +/- 0.102 | 0.492 +/- 0.098 | 0.626 +/- 0.039 | 4.336 +/- 0.565 |
 | crosskd_nir_seg | 0.312 +/- 0.100 | 0.468 +/- 0.118 | 0.607 +/- 0.046 | 6.046 +/- 2.266 |
+| master_twostem_rgbnir_seg | 0.383 +/- 0.065 | 0.522 +/- 0.057 | 0.623 +/- 0.046 | 5.400 +/- 2.041 |
 
 Val-vs-test: val is the checkpoint-selection split, so val AP50 is optimistic; test-minus-val above is the per-arm gap (mixed sign across arms; the lots differ, val and test are different lots, so the gap is not a pure optimism estimate).
+
+Exploratory arm added 2026-11-16 (outside the 7-arm registered set, plan section 11 second and third 2026-11-16 rows): `master_twostem_rgbnir_seg`, separate RGB and NIR backbones fused at P3/P4/P5 (last row of the two tables above). Its val latent AP50 per fold is 0.466 | 0.427 | 0.336 | 0.465 | 0.427 (mean 0.424).
+
+- Fold 2 was restarted once under the pre-registered failed-run rule (train box loss 0.594 vs ~0.24 at epoch 12). The second attempt is the analysed run; the first attempt is archived (`master_twostem_rgbnir_seg_fold2_attempt1/` and its log `master_twostem_rgbnir_seg_fold2_seed42.attempt1.log`) and is not analysed.
+- `crosskd_twostem_seg`: no corrido (compuerta de validación no cumplida: 0,424 ≤ 0,427). The planned arm was not trained and has no results.
 
 ## 3. Comparisons (all on TEST; delta = treatment - baseline; per-fold order fold0..fold4)
 
@@ -383,6 +390,108 @@ Corrected t: Nadeau-Bengio, df=4, two-sided p. Bayes with ROPE 0.02. `k/5` = fol
 - k/5 folds with delta>0: 4/5; sign-flip exact p 0.1875 (floor 0.0625)
 - Descriptive only: lower is better; the Bayes probabilities refer to a +/-0.02 FP/image ROPE that has no meaning at this scale (deltas are of order 1 FP/image). No decision sentence licensed.
 
+The two comparisons below are exploratory (2026-11-16): they sit outside H1 and H2 and outside every Holm family, and they license no confirmatory claim. Primary exploratory: `twostem_vs_rgbnir`; secondary: `twostem_vs_nir`.
+
+### twostem_vs_rgbnir: master_twostem_rgbnir_seg - master_rgbnir_seg  [exploratory (2026-11-16)]
+
+**latent AP50 (box) -- PRIMARY**
+
+- per-fold deltas (seed 42): -0.005 | -0.059 | +0.034 | +0.017 | -0.044
+- mean delta -0.0113; corrected 95% CI [-0.0908, +0.0682]; corrected p (two-sided) 0.7138 (t=-0.394, df=4)
+- Bayes (ROPE 0.02): P(left)=0.388, P(rope)=0.444, P(right)=0.168
+- k/5 folds with delta>0: 2/5; sign-flip exact p 0.5625 (floor 0.0625)
+- Licensed sentence (section 4): Inconclusive on five lots (P(left)=0.388, P(rope)=0.444, P(right)=0.168; mean delta -0.011, corrected 95% CI [-0.091, +0.068]); more lots would be needed to change the verdict.
+
+**latent AP30 (box)**
+
+- per-fold deltas (seed 42): +0.019 | -0.071 | +0.022 | +0.012 | -0.005
+- mean delta -0.0046; corrected 95% CI [-0.0824, +0.0733]; corrected p (two-sided) 0.8789 (t=-0.162, df=4)
+- Bayes (ROPE 0.02): P(left)=0.306, P(rope)=0.479, P(right)=0.215
+- k/5 folds with delta>0: 3/5; sign-flip exact p 0.9375 (floor 0.0625)
+- Secondary metric: section-4 wording would give: Inconclusive on five lots (P(left)=0.306, P(rope)=0.479, P(right)=0.215; mean delta -0.005, corrected 95% CI [-0.082, +0.073]); more lots would be needed to change the verdict.
+
+**latent mask AP50**
+
+- per-fold deltas (seed 42): +0.001 | -0.054 | +0.029 | +0.014 | -0.035
+- mean delta -0.0089; corrected 95% CI [-0.0786, +0.0608]; corrected p (two-sided) 0.7418 (t=-0.353, df=4)
+- Bayes (ROPE 0.02): P(left)=0.340, P(rope)=0.503, P(right)=0.157
+- k/5 folds with delta>0: 3/5; sign-flip exact p 0.6250 (floor 0.0625)
+- Secondary metric: section-4 wording would give: Inconclusive on five lots (P(left)=0.340, P(rope)=0.503, P(right)=0.157; mean delta -0.009, corrected 95% CI [-0.079, +0.061]); more lots would be needed to change the verdict.
+
+**latent mask AP30**
+
+- per-fold deltas (seed 42): +0.007 | -0.078 | +0.039 | +0.000 | -0.013
+- mean delta -0.0090; corrected 95% CI [-0.0957, +0.0778]; corrected p (two-sided) 0.7881 (t=-0.287, df=4)
+- Bayes (ROPE 0.02): P(left)=0.371, P(rope)=0.426, P(right)=0.203
+- k/5 folds with delta>0: 3/5; sign-flip exact p 0.7500 (floor 0.0625)
+- Secondary metric: section-4 wording would give: Inconclusive on five lots (P(left)=0.371, P(rope)=0.426, P(right)=0.203; mean delta -0.009, corrected 95% CI [-0.096, +0.078]); more lots would be needed to change the verdict.
+
+**face AUROC**
+
+- per-fold deltas (seed 42): +0.072 | -0.008 | -0.000 | -0.034 | -0.049
+- mean delta -0.0040; corrected 95% CI [-0.0987, +0.0908]; corrected p (two-sided) 0.9133 (t=-0.116, df=4)
+- Bayes (ROPE 0.02): P(left)=0.331, P(rope)=0.408, P(right)=0.261
+- k/5 folds with delta>0: 1/5; sign-flip exact p 0.8125 (floor 0.0625)
+- Secondary metric: section-4 wording would give: Inconclusive on five lots (P(left)=0.331, P(rope)=0.408, P(right)=0.261; mean delta -0.004, corrected 95% CI [-0.099, +0.091]); more lots would be needed to change the verdict.
+
+**sano FP per image (lower is better; ROPE 0.02 NOT meaningful, descriptive only)**
+
+- per-fold deltas (seed 42): +2.520 | -3.960 | -1.760 | -0.300 | -2.500
+- mean delta -1.2000; corrected 95% CI [-6.1945, +3.7945]; corrected p (two-sided) 0.5412 (t=-0.667, df=4)
+- Bayes (ROPE 0.02): P(left)=0.726, P(rope)=0.006, P(right)=0.267
+- k/5 folds with delta>0: 1/5; sign-flip exact p 0.3750 (floor 0.0625)
+- Descriptive only: lower is better; the Bayes probabilities refer to a +/-0.02 FP/image ROPE that has no meaning at this scale. No decision sentence licensed.
+
+### twostem_vs_nir: master_twostem_rgbnir_seg - master_nir_seg  [exploratory (2026-11-16)]
+
+**latent AP50 (box) -- PRIMARY**
+
+- per-fold deltas (seed 42): -0.043 | -0.092 | -0.058 | -0.019 | -0.078
+- mean delta -0.0577; corrected 95% CI [-0.1159, +0.0006]; corrected p (two-sided) 0.0514 (t=-2.750, df=4)
+- Bayes (ROPE 0.02): P(left)=0.927, P(rope)=0.063, P(right)=0.010
+- k/5 folds with delta>0: 0/5; sign-flip exact p 0.0625 (floor 0.0625)
+- Licensed sentence (section 4): Inconclusive on five lots (P(left)=0.927, P(rope)=0.063, P(right)=0.010; mean delta -0.058, corrected 95% CI [-0.116, +0.001]); more lots would be needed to change the verdict.
+
+**latent AP30 (box)**
+
+- per-fold deltas (seed 42): +0.022 | -0.094 | -0.027 | -0.008 | -0.038
+- mean delta -0.0289; corrected 95% CI [-0.1163, +0.0585]; corrected p (two-sided) 0.4108 (t=-0.917, df=4)
+- Bayes (ROPE 0.02): P(left)=0.604, P(rope)=0.298, P(right)=0.098
+- k/5 folds with delta>0: 1/5; sign-flip exact p 0.1875 (floor 0.0625)
+- Secondary metric: section-4 wording would give: Inconclusive on five lots (P(left)=0.604, P(rope)=0.298, P(right)=0.098; mean delta -0.029, corrected 95% CI [-0.116, +0.059]); more lots would be needed to change the verdict.
+
+**latent mask AP50**
+
+- per-fold deltas (seed 42): -0.010 | -0.091 | -0.053 | -0.011 | -0.068
+- mean delta -0.0464; corrected 95% CI [-0.1187, +0.0260]; corrected p (two-sided) 0.1500 (t=-1.778, df=4)
+- Bayes (ROPE 0.02): P(left)=0.815, P(rope)=0.153, P(right)=0.032
+- k/5 folds with delta>0: 0/5; sign-flip exact p 0.0625 (floor 0.0625)
+- Secondary metric: section-4 wording would give: Inconclusive on five lots (P(left)=0.815, P(rope)=0.153, P(right)=0.032; mean delta -0.046, corrected 95% CI [-0.119, +0.026]); more lots would be needed to change the verdict.
+
+**latent mask AP30**
+
+- per-fold deltas (seed 42): +0.015 | -0.104 | -0.019 | -0.014 | -0.048
+- mean delta -0.0340; corrected 95% CI [-0.1249, +0.0569]; corrected p (two-sided) 0.3575 (t=-1.039, df=4)
+- Bayes (ROPE 0.02): P(left)=0.655, P(rope)=0.258, P(right)=0.087
+- k/5 folds with delta>0: 1/5; sign-flip exact p 0.1875 (floor 0.0625)
+- Secondary metric: section-4 wording would give: Inconclusive on five lots (P(left)=0.655, P(rope)=0.258, P(right)=0.087; mean delta -0.034, corrected 95% CI [-0.125, +0.057]); more lots would be needed to change the verdict.
+
+**face AUROC**
+
+- per-fold deltas (seed 42): +0.006 | -0.051 | +0.012 | -0.015 | -0.046
+- mean delta -0.0188; corrected 95% CI [-0.0777, +0.0401]; corrected p (two-sided) 0.4258 (t=-0.886, df=4)
+- Bayes (ROPE 0.02): P(left)=0.478, P(rope)=0.451, P(right)=0.071
+- k/5 folds with delta>0: 2/5; sign-flip exact p 0.3125 (floor 0.0625)
+- Secondary metric: section-4 wording would give: Inconclusive on five lots (P(left)=0.478, P(rope)=0.451, P(right)=0.071; mean delta -0.019, corrected 95% CI [-0.078, +0.040]); more lots would be needed to change the verdict.
+
+**sano FP per image (lower is better; ROPE 0.02 NOT meaningful, descriptive only)**
+
+- per-fold deltas (seed 42): +1.940 | -0.530 | +0.620 | +0.830 | +0.800
+- mean delta +0.7320; corrected 95% CI [-1.0469, +2.5109]; corrected p (two-sided) 0.3170 (t=1.143, df=4)
+- Bayes (ROPE 0.02): P(left)=0.153, P(rope)=0.012, P(right)=0.836
+- k/5 folds with delta>0: 4/5; sign-flip exact p 0.1250 (floor 0.0625)
+- Descriptive only: lower is better; the Bayes probabilities refer to a +/-0.02 FP/image ROPE that has no meaning at this scale. No decision sentence licensed.
+
 ## 4. Multiple comparisons
 
 Registered procedure (plan 8.3): fixed sequence. H1 is tested first; H1 crossed P(right) >= 0.95 on latent AP50 (P(right)=0.953, a narrow margin over 0.95), so H1 is accepted at the registered threshold and H2 is tested as confirmatory at the same threshold: H2 P(right)=0.689, inconclusive.
@@ -405,6 +514,8 @@ Holm over the exploratory comparisons (exploratory, mask_supervision, crosskd_ni
 | exploratory | 0.6712 | 0.0167 | no |
 | crosskd_nir | 0.7868 | 0.0250 | no |
 | mask_supervision | 0.9858 | 0.0500 | no |
+
+Exploratory comparisons of 2026-11-16 (twostem_vs_rgbnir, twostem_vs_nir) are NOT part of either Holm family above: Holm over the registered set and over the 2026-11-13/14 exploratory set is unchanged. Their corrected-t p on latent AP50 are 0.7138 and 0.0514, reported as measured with no multiplicity adjustment and no confirmatory reading.
 
 ## 5. Reporting checklist (skill section 8)
 
@@ -431,4 +542,6 @@ Holm over the exploratory comparisons (exploratory, mask_supervision, crosskd_ni
 
 ## 7. Provenance
 
-The export (`export/`, 70 evaluations: 7 arms x 5 folds x val+test, seed 42) was produced by `scripts/export_run_results.py`; its `differences.csv` latent AP50/AP30/mask deltas match the deltas used here (130 values, 0 mismatches). `export_run_results.py` writes deltas only (no corrected t or Bayes); inference comes from `scripts/aggregate_kfold.paired_inference` over `folds_meta.json`. Face AUROC and sano FP/image were read from `metrics_v4.json` (not in the exporter DIFFERENCES). Machine-readable numbers: `analysis.json`.
+The export (`export/`, 80 evaluations: 8 arms x 5 folds x val+test, seed 42; the 70 of the 7 registered arms are unchanged) was produced by `scripts/export_run_results.py`; its `differences.csv` latent AP50/AP30/mask deltas match the deltas used here (130 values, 0 mismatches). `export_run_results.py` writes deltas only (no corrected t or Bayes); inference comes from `scripts/aggregate_kfold.paired_inference` over `folds_meta.json`. Face AUROC and sano FP/image were read from `metrics_v4.json` (not in the exporter DIFFERENCES). Machine-readable numbers: `analysis.json`.
+
+Update 2026-11-16 (exploratory two-stem arm): the export was regenerated with `scripts/export_run_results.py` (same arguments: all folds, `--test-seeds 42`) and `scripts/add_exploratory_analysis.py` merged `master_twostem_rgbnir_seg` and the two comparisons into `analysis.json`. That script recomputes every entry already stored and refuses to continue if any differs, so H1 (+0.082 [+0.003, +0.160], P(right) 0.953) and H2 (+0.036, P(right) 0.689) and all other existing entries are unchanged. `export_run_results.py` DIFFERENCES already holds `twostem_vs_rgbnir` and `twostem_vs_nir` (PR #109).
