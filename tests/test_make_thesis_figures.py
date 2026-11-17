@@ -416,3 +416,50 @@ def test_crosskd_twostem_has_its_own_dashed_exploratory_style():
     assert style["linestyle"] == "--" and style["exploratory"] is True
     assert style["color"] not in {v["color"] for k, v in mtf.ARM_STYLE.items() if k != "crosskd_twostem_seg"}
     assert "crosskd_twostem_seg" not in mtf.MAIN_ARMS
+
+
+# ---------------------------------------------------------------- F6: validation AP by epoch (two-stem arm only)
+def _epoch_frame() -> pd.DataFrame:
+    rows = []
+    for fold, base in ((0, 0.2), (1, 0.4)):
+        for epoch in (5, 10, 15):
+            rows.append({"arm": "master_twostem_rgbnir_seg", "fold": fold, "seed": 42, "epoch": epoch,
+                         "latent_ap50": base + epoch / 100, "latent_ap30": base + 0.1})
+    return pd.DataFrame(rows)
+
+
+def test_epoch_step_is_the_common_spacing_of_the_epochs():
+    assert mtf.epoch_step(_epoch_frame()) == 5
+    with pytest.raises(ValueError):
+        mtf.epoch_step(pd.DataFrame({"epoch": [5, 10, 17]}))
+
+
+def test_step_weight_keeps_the_per_epoch_time_constant():
+    assert mtf.step_weight(0.8, 5) == pytest.approx(0.8**5)
+    assert mtf.step_weight(0.8, 1) == pytest.approx(0.8)
+
+
+def test_smooth_epoch_curve_uses_the_per_step_weight_and_smooths_each_fold_alone():
+    out = mtf.smooth_epoch_curve(_epoch_frame(), ["latent_ap50"])
+    w = 0.8**5
+    f0 = out[out["fold"] == 0].sort_values("epoch")["latent_ap50_smooth"].tolist()
+    assert f0 == pytest.approx(mtf.ema_smooth([0.25, 0.30, 0.35], w))
+    f1 = out[out["fold"] == 1].sort_values("epoch")["latent_ap50_smooth"].tolist()
+    assert f1[0] == pytest.approx(0.45)  # first point is not pulled towards 0 and not mixed with fold 0
+
+
+def test_epoch_curve_stats_gives_mean_and_sd_of_the_smoothed_folds():
+    out = mtf.smooth_epoch_curve(_epoch_frame(), ["latent_ap30"])
+    stats = mtf.curve_mean_sd(out, "master_twostem_rgbnir_seg", "latent_ap30_smooth")
+    assert stats["n"].tolist() == [2, 2, 2]
+    assert stats["mean"].iloc[0] == pytest.approx(0.4)
+    assert stats["sd"].iloc[0] == pytest.approx(math.sqrt(0.5 * 0.2**2 * 2) / math.sqrt(2) * math.sqrt(2) / math.sqrt(2) * math.sqrt(2) if False else np.std([0.3, 0.5], ddof=1))
+
+
+def test_plot_ap_by_epoch_writes_png_and_svg_and_skips_empty(tmp_path):
+    import matplotlib
+
+    matplotlib.use("Agg")
+    paths = mtf.plot_ap_by_epoch(_epoch_frame(), "master_twostem_rgbnir_seg", tmp_path, "F6_test")
+    assert sorted(p.suffix for p in paths) == [".png", ".svg"] and all(p.exists() for p in paths)
+    assert mtf.plot_ap_by_epoch(_epoch_frame().iloc[0:0], "master_twostem_rgbnir_seg", tmp_path, "F6_empty") == []
