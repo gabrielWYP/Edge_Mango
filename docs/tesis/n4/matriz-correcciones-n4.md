@@ -9,10 +9,10 @@ Extensión, renderizada con LibreOffice (el N3 da 36 páginas, igual que en Word
 
 | | N3 | T | A |
 |---|---|---|---|
-| Páginas hasta el final de las referencias (con portada) | 36 | 28 | 29 |
-| Páginas hasta el final de las referencias (sin portada) | 35 | 27 | 28 |
+| Páginas hasta el final de las referencias (con portada) | 36 | 29 | 29 |
+| Páginas hasta el final de las referencias (sin portada) | 35 | 28 | 28 |
 | Páginas de anexo (no cuentan) | — | 2 | 2 |
-| Palabras (incluidas tablas y referencias) | 13 818 | 11 018 | 11 372 |
+| Palabras (incluidas tablas y referencias) | 13 818 | 11 144 | 11 504 |
 
 ## 1. Correcciones de Tincopa (PDF del CA3, pp. 24–29)
 
@@ -64,11 +64,11 @@ Notas propias del Drive, aplicadas en ambas versiones:
 ## 4. Trabajos relacionados y referencias
 
 - Ninguna cita agrupada: “Feng y Yoon” y “Xiong y Chen” de la Discusión quedaron en oraciones separadas, y cada autor aparece con su aporte.
-- Se eliminaron 6 referencias: Cao 2026, Zhao 2022, G. Yang 2023, J. Wang 2025, Yan 2025 y Xiao 2024 (Florence-2, que ya no se usa).
-- A pedido de Gabriel, volvieron 6 referencias, cada una con su aporte en su propia oración:
+- Se eliminaron 5 referencias: Cao 2026, Zhao 2022, G. Yang 2023, J. Wang 2025 y Xiao 2024 (Florence-2, que ya no se usa).
+- A pedido de Gabriel, volvieron 7 referencias, cada una con su aporte en su propia oración:
   - en la Introducción: Hao 2025 y Zhang 2022;
-  - en Trabajos relacionados: Okere 2023, Castillo-Girones 2024, Gulzar & Ünal 2025 y Li 2023.
-- En la versión A, esos trabajos llevan métricas verificadas en el artículo: Okere, 88.3 %; Castillo-Girones, F1 > 81 %; Gulzar & Ünal, 97.17 %; Li, 98.33 %. En la Discusión se suma la comparación con Gulzar & Ünal.
+  - en Trabajos relacionados: Okere 2023, Castillo-Girones 2024, Gulzar & Ünal 2025, Li 2023 y Yan 2025 (cámara NIR y segmentación ligera).
+- En la versión A, esos trabajos llevan métricas verificadas en el artículo: Okere, 88.3 %; Castillo-Girones, F1 > 81 %; Gulzar & Ünal, 97.17 %; Li, 98.33 %; Yan, mIoU de 95.68 %. En la Discusión se suman las comparaciones con Gulzar & Ünal y con Yan.
 - Corrección verificada: Vélez Rivera et al. (2014) reportan un **97.9 %** de píxeles bien clasificados al tercer día. El 94.87 % del N3 no aparece en el artículo.
 - Desambiguación APA: “Z. Feng et al. (2023)” frente a “C. Feng et al. (2021)”. Al salir G. Yang, “Yang et al. (2022)” va sin inicial.
 
