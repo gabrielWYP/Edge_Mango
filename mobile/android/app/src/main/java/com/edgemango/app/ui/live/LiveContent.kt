@@ -1,6 +1,8 @@
 package com.edgemango.app.ui.live
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,6 +33,8 @@ data class LiveActions(
     val onRoiMode: (RoiMode) -> Unit,
     val onConfidence: (Float) -> Unit,
     val onToggleRecording: () -> Unit,
+    val onToggleSession: () -> Unit,
+    val onShareSession: () -> Unit,
 )
 
 /**
@@ -48,6 +52,7 @@ fun LiveContent(
         preview()
         DetectionOverlay(
             result = state.result,
+            twoStage = state.twoStage,
             displayMode = state.settings.displayMode,
             roiMode = state.settings.roiMode,
             modifier = Modifier.fillMaxSize(),
@@ -86,7 +91,29 @@ private fun Hud(state: LiveUiState, modifier: Modifier) {
             val damage = r.maxDamageScore
             line("max damage: %.2f".format(damage), if (damage > 0f) Color(0xFFFF5252) else Color.White)
         }
+        if (state.settings.roiMode == RoiMode.DETECTOR) {
+            val detector = (state.model as? ModelStatus.Ready)?.let { it.detectorName ?: "none (set one in Settings)" }
+            line("detector: ${detector ?: "-"}", if (state.detectorMissing) Color(0xFFFF5252) else Color.Cyan)
+            (state.model as? ModelStatus.Ready)?.detectorNote?.takeIf { it.isNotEmpty() }?.let { line(it, Color.Yellow) }
+            val ts = state.twoStage
+            if (ts != null) {
+                line("stage 1: %.1f ms".format(ts.detectorMs), Color.White)
+                line("total: %.1f ms".format(ts.timings.totalMs), Color.White)
+                if (ts.noMango) {
+                    line("mangos: 0 (no mango, damage model skipped)", Color.Yellow)
+                } else {
+                    line("mangos: ${ts.mangos.size}", Color.White)
+                    for (m in ts.mangos.take(8)) {
+                        line("  #${m.trackId} damage max %.2f".format(m.maxDamageScore), if (m.maxDamageScore > 0f) Color(0xFFFF5252) else Color.White)
+                    }
+                    if (ts.mangos.size > 8) line("  ... +${ts.mangos.size - 8}", Color.LightGray)
+                }
+            }
+        }
         if (state.recording) line("REC ${state.recordedRows} rows", Color(0xFFFF5252))
+        val ses = state.session
+        if (ses.active) line("SESSION ${ses.frames} frames, ${ses.saved} saved, ${ses.dropped} dropped", Color(0xFFFF5252))
+        if (ses.finishing) line("session: writing and zipping...", Color.Yellow)
     }
 }
 
@@ -102,7 +129,7 @@ private fun Controls(state: LiveUiState, actions: LiveActions, modifier: Modifie
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("ROI", color = Color.White, modifier = Modifier.padding(end = 8.dp))
-            ChoiceChips(RoiMode.entries, s.roiMode, { it.label }, actions.onRoiMode)
+            ChoiceChips(RoiMode.entries, s.roiMode, { it.label }, actions.onRoiMode, Modifier.horizontalScroll(rememberScrollState()))
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("conf %.2f".format(s.confidence), color = Color.White, modifier = Modifier.padding(end = 8.dp))
@@ -114,6 +141,19 @@ private fun Controls(state: LiveUiState, actions: LiveActions, modifier: Modifie
             )
             Text("record", color = Color.White, modifier = Modifier.padding(horizontal = 8.dp))
             Switch(checked = state.recording, onCheckedChange = { actions.onToggleRecording() })
+        }
+        val ses = state.session
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("session", color = Color.White, modifier = Modifier.padding(end = 8.dp))
+            Switch(checked = ses.active, onCheckedChange = { actions.onToggleSession() }, enabled = !ses.finishing)
+            if (!ses.active && !ses.finishing && ses.zip != null) {
+                Button(onClick = actions.onShareSession, modifier = Modifier.padding(start = 12.dp)) { Text("Share session") }
+            }
+            if (ses.active) Text("  ${ses.frames} frames, ${ses.saved} saved", color = Color.White, fontSize = 12.sp)
+        }
+        if (!ses.active && ses.path != null) {
+            val tail = if (ses.zip != null) " (${ses.frames} frames, ${ses.saved} saved, ${ses.dropped} dropped) + .zip" else ""
+            Text("session: ${ses.path}$tail", color = Color.LightGray, fontSize = 10.sp)
         }
         if (!state.recording && state.recordPath != null) {
             Text("saved: ${state.recordPath} (${state.recordedRows} rows)", color = Color.LightGray, fontSize = 10.sp)

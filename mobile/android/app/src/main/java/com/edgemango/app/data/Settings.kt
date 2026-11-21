@@ -18,6 +18,12 @@ enum class DisplayMode(val label: String) {
 
 data class AppSettings(
     val modelId: String = ModelCatalog.DEFAULT_ID,
+    /** Stage-1 mango detector; empty = disabled (the DETECTOR ROI mode then has nothing to run). */
+    val detectorModelId: String = "",
+    /** Stage-1 score a mango box needs to be kept. */
+    val mangoThreshold: Float = 0.5f,
+    /** At most this many mangos per frame. */
+    val maxMangos: Int = 10,
     val accelerator: AcceleratorChoice = AcceleratorChoice.CPU_4,
     val roiMode: RoiMode = RoiMode.COLOR_MASK,
     val displayMode: DisplayMode = DisplayMode.BOTH,
@@ -45,6 +51,9 @@ class SettingsRepository(context: Context) {
         val d = AppSettings()
         return AppSettings(
             modelId = prefs.getString("modelId", d.modelId) ?: d.modelId,
+            detectorModelId = prefs.getString("detectorModelId", d.detectorModelId) ?: d.detectorModelId,
+            mangoThreshold = prefs.getFloat("mangoThreshold", d.mangoThreshold),
+            maxMangos = prefs.getInt("maxMangos", d.maxMangos),
             accelerator = enumOr(prefs.getString("accelerator", null), d.accelerator),
             roiMode = enumOr(prefs.getString("roiMode", null), d.roiMode),
             displayMode = enumOr(prefs.getString("displayMode", null), d.displayMode),
@@ -58,6 +67,9 @@ class SettingsRepository(context: Context) {
     private fun save(s: AppSettings) {
         prefs.edit()
             .putString("modelId", s.modelId)
+            .putString("detectorModelId", s.detectorModelId)
+            .putFloat("mangoThreshold", s.mangoThreshold)
+            .putInt("maxMangos", s.maxMangos)
             .putString("accelerator", s.accelerator.name)
             .putString("roiMode", s.roiMode.name)
             .putString("displayMode", s.displayMode.name)

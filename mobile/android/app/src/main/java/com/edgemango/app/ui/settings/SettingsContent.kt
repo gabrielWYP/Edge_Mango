@@ -1,6 +1,7 @@
 package com.edgemango.app.ui.settings
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
@@ -8,6 +9,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -16,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.edgemango.app.core.RoiMode
 import com.edgemango.app.data.DisplayMode
+import com.edgemango.app.data.ModelRef
 import com.edgemango.app.inference.AcceleratorChoice
 import com.edgemango.app.ui.common.ChoiceChips
 import com.edgemango.app.ui.common.DropdownField
@@ -26,6 +29,9 @@ data class SettingsActions(
     val onRoiMode: (RoiMode) -> Unit,
     val onDisplayMode: (DisplayMode) -> Unit,
     val onAnalysisWidth: (Int) -> Unit,
+    val onDetectorModel: (String) -> Unit,
+    val onMangoThreshold: (Float) -> Unit,
+    val onMaxMangos: (Int) -> Unit,
     val onNmsIou: (Float) -> Unit,
     val onAgnosticNms: (Boolean) -> Unit,
     val onPickModel: () -> Unit,
@@ -36,6 +42,8 @@ val ANALYSIS_WIDTHS = listOf(640, 1280, 1920, 2560)
 
 /** NMS IoU ("Jaccard") thresholds offered in the UI. */
 val NMS_IOU_CHOICES = listOf(0.5f, 0.6f, 0.7f)
+
+val MAX_MANGOS_CHOICES = listOf(1, 3, 5, 10)
 
 /** Presentational settings screen for the live view. (The benchmark screen has its own model/accelerator pickers.) */
 @Composable
@@ -76,7 +84,25 @@ fun SettingsContent(state: SettingsUiState, actions: SettingsActions, modifier: 
         if (state.availableAccelerators.isNotEmpty()) Text("Runtime reports: ${state.availableAccelerators}", style = MaterialTheme.typography.bodySmall)
 
         Text("ROI mode", style = MaterialTheme.typography.labelMedium)
-        ChoiceChips(RoiMode.entries, s.roiMode, { it.label }, actions.onRoiMode)
+        ChoiceChips(RoiMode.entries, s.roiMode, { it.label }, actions.onRoiMode, Modifier.horizontalScroll(rememberScrollState()))
+
+        Text("Two-stage (ROI mode \"Detector\")", style = MaterialTheme.typography.titleSmall)
+        DropdownField(
+            label = "Stage-1 mango detector",
+            selected = state.models.firstOrNull { it.id == s.detectorModelId },
+            options = listOf<ModelRef?>(null) + state.models,
+            optionLabel = { it?.let { m -> "${m.name}  (${"%.1f".format(m.sizeMb)} MB, ${m.origin})" } ?: "(disabled)" },
+            onSelect = { actions.onDetectorModel(it?.id ?: "") },
+        )
+        Text(
+            "An Ultralytics YOLOv8n TFLite export (sidecar \"format\": \"ultralytics\"). Frames without a mango box above the " +
+                "threshold skip the damage model.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Text("Mango score threshold %.2f".format(s.mangoThreshold), style = MaterialTheme.typography.labelMedium)
+        Slider(value = s.mangoThreshold, onValueChange = actions.onMangoThreshold, valueRange = 0.05f..0.95f)
+        Text("Max mangos per frame", style = MaterialTheme.typography.labelMedium)
+        ChoiceChips(MAX_MANGOS_CHOICES, s.maxMangos, { it.toString() }, actions.onMaxMangos)
 
         Text("Overlay", style = MaterialTheme.typography.labelMedium)
         ChoiceChips(DisplayMode.entries, s.displayMode, { it.label }, actions.onDisplayMode)

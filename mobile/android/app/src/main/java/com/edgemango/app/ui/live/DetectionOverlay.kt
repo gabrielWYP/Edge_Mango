@@ -14,8 +14,12 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.edgemango.app.core.FrameResult
-import com.edgemango.app.data.DisplayMode
+import com.edgemango.app.core.IntBox
+import com.edgemango.app.core.MaskLayer
 import com.edgemango.app.core.RoiMode
+import com.edgemango.app.core.SourceBox
+import com.edgemango.app.core.TwoStageResult
+import com.edgemango.app.data.DisplayMode
 
 private const val MANGO_COLOR = 0xFF00E676.toInt()
 private const val DAMAGE_COLOR = 0xFFFF1744.toInt()
@@ -23,14 +27,16 @@ private const val ROI_COLOR = 0xFFFFEA00.toInt()
 private const val MASK_BOX_COLOR = 0xFF00B0FF.toInt()
 
 /**
- * Draws one frame's result over the preview. Stateless: everything comes from [result].
+ * Draws one frame's result over the preview. Stateless: everything comes from [result] (single-crop ROI modes) or
+ * [twoStage] (DETECTOR mode: every mango box with its track id, and the damage boxes/masks inside it).
  *
- * The preview uses FIT_CENTER, so the upright frame (`result.frameW x frameH`) maps onto the view with a uniform scale
- * and a centring offset; boxes, the ROI rectangle and the mask bitmap all go through that same transform.
+ * The preview uses FIT_CENTER, so the upright frame (`frameW x frameH`) maps onto the view with a uniform scale
+ * and a centring offset; boxes, the ROI rectangle and the mask bitmaps all go through that same transform.
  */
 @Composable
 fun DetectionOverlay(
     result: FrameResult?,
+    twoStage: TwoStageResult?,
     displayMode: DisplayMode,
     roiMode: RoiMode,
     modifier: Modifier = Modifier,
@@ -40,53 +46,89 @@ fun DetectionOverlay(
     val textSize = with(density) { 13.sp.toPx() }
     val paints = remember(stroke, textSize) { OverlayPaints(stroke, textSize) }
     val maskBitmap = remember(result) {
-        if (result?.maskLayer != null && displayMode.showMask) {
-            val m = result.maskLayer
-            Bitmap.createBitmap(m.argb, m.width, m.height, Bitmap.Config.ARGB_8888)
-        } else null
+        if (result?.maskLayer != null && displayMode.showMask) toBitmap(result.maskLayer) else null
+    }
+    val mangoBitmaps = remember(twoStage) {
+        twoStage?.mangos?.map { m -> if (m.maskLayer != null && displayMode.showMask) toBitmap(m.maskLayer) else null }
     }
 
     Canvas(modifier) {
-        val r = result ?: return@Canvas
-        val scale = minOf(size.width / r.frameW, size.height / r.frameH)
-        val offX = (size.width - r.frameW * scale) / 2f
-        val offY = (size.height - r.frameH * scale) / 2f
+        val frameW = result?.frameW ?: twoStage?.frameW ?: return@Canvas
+        val frameH = result?.frameH ?: twoStage?.frameH ?: return@Canvas
+        val scale = minOf(size.width / frameW, size.height / frameH)
+        val offX = (size.width - frameW * scale) / 2f
+        val offY = (size.height - frameH * scale) / 2f
+        val t = Transform(scale, offX, offY)
         drawIntoCanvas { canvas ->
             val c = canvas.nativeCanvas
-            val w = r.window
-            // ROI window and, for the colour mode, the raw mango box it came from.
-            c.drawRect(offX + w.x1 * scale, offY + w.y1 * scale, offX + w.x2 * scale, offY + w.y2 * scale, paints.roi)
-            r.mangoBox?.takeIf { roiMode == RoiMode.COLOR_MASK }?.let { b ->
-                c.drawRect(offX + b.x1 * scale, offY + b.y1 * scale, offX + b.x2 * scale, offY + b.y2 * scale, paints.maskBox)
-            }
+            if (result != null) drawSingle(c, result, maskBitmap, displayMode, roiMode, t, paints, textSize)
+            if (twoStage != null) drawTwoStage(c, twoStage, mangoBitmaps.orEmpty(), displayMode, t, paints, textSize)
+        }
+    }
+}
 
-            val layer = r.maskLayer
-            if (maskBitmap != null && layer != null) {
-                val a = layer.toFrame
-                val m = Matrix()
-                m.setValues(
-                    floatArrayOf(
-                        (a.sx * scale).toFloat(), 0f, (a.tx * scale + offX).toFloat(),
-                        0f, (a.sy * scale).toFloat(), (a.ty * scale + offY).toFloat(),
-                        0f, 0f, 1f,
-                    ),
-                )
-                c.save()
-                c.clipRect(offX + w.x1 * scale, offY + w.y1 * scale, offX + w.x2 * scale, offY + w.y2 * scale)
-                c.drawBitmap(maskBitmap, m, paints.mask)
-                c.restore()
-            }
+private class Transform(val scale: Float, val offX: Float, val offY: Float) {
+    fun x(v: Double) = offX + v.toFloat() * scale
+    fun y(v: Double) = offY + v.toFloat() * scale
+}
 
-            if (displayMode.showBoxes) {
-                for (d in r.detections.sortedBy { it.cls }) {
-                    val paint = if (d.cls == FrameResult.DAMAGE_CLASS) paints.damage else paints.mango
-                    val x1 = offX + d.box.x1.toFloat() * scale
-                    val y1 = offY + d.box.y1.toFloat() * scale
-                    c.drawRect(x1, y1, offX + d.box.x2.toFloat() * scale, offY + d.box.y2.toFloat() * scale, paint.box)
-                    val label = (if (d.cls == FrameResult.DAMAGE_CLASS) "damage " else "mango ") + "%.2f".format(d.score)
-                    c.drawText(label, x1 + 4f, maxOf(y1 - 6f, textSize), paint.text)
-                }
-            }
+private fun toBitmap(m: MaskLayer): Bitmap = Bitmap.createBitmap(m.argb, m.width, m.height, Bitmap.Config.ARGB_8888)
+
+private fun drawMask(c: android.graphics.Canvas, bitmap: Bitmap, layer: MaskLayer, window: IntBox, t: Transform, paint: Paint) {
+    val a = layer.toFrame
+    val m = Matrix()
+    m.setValues(
+        floatArrayOf(
+            (a.sx * t.scale).toFloat(), 0f, (a.tx * t.scale + t.offX).toFloat(),
+            0f, (a.sy * t.scale).toFloat(), (a.ty * t.scale + t.offY).toFloat(),
+            0f, 0f, 1f,
+        ),
+    )
+    c.save()
+    c.clipRect(t.x(window.x1.toDouble()), t.y(window.y1.toDouble()), t.x(window.x2.toDouble()), t.y(window.y2.toDouble()))
+    c.drawBitmap(bitmap, m, paint)
+    c.restore()
+}
+
+private fun drawBox(c: android.graphics.Canvas, b: SourceBox, label: String, paint: ClassPaints, t: Transform, textSize: Float) {
+    val x1 = t.x(b.x1)
+    val y1 = t.y(b.y1)
+    c.drawRect(x1, y1, t.x(b.x2), t.y(b.y2), paint.box)
+    c.drawText(label, x1 + 4f, maxOf(y1 - 6f, textSize), paint.text)
+}
+
+private fun drawSingle(
+    c: android.graphics.Canvas, r: FrameResult, maskBitmap: Bitmap?, displayMode: DisplayMode, roiMode: RoiMode,
+    t: Transform, paints: OverlayPaints, textSize: Float,
+) {
+    val w = r.window
+    // ROI window and, for the colour mode, the raw mango box it came from.
+    c.drawRect(t.x(w.x1.toDouble()), t.y(w.y1.toDouble()), t.x(w.x2.toDouble()), t.y(w.y2.toDouble()), paints.roi)
+    r.mangoBox?.takeIf { roiMode == RoiMode.COLOR_MASK }?.let { b ->
+        c.drawRect(t.x(b.x1.toDouble()), t.y(b.y1.toDouble()), t.x(b.x2.toDouble()), t.y(b.y2.toDouble()), paints.maskBox)
+    }
+    val layer = r.maskLayer
+    if (maskBitmap != null && layer != null) drawMask(c, maskBitmap, layer, w, t, paints.mask)
+    if (displayMode.showBoxes) {
+        for (d in r.detections.sortedBy { it.cls }) {
+            val isDamage = d.cls == FrameResult.DAMAGE_CLASS
+            val label = (if (isDamage) "damage " else "mango ") + "%.2f".format(d.score)
+            drawBox(c, d.box, label, if (isDamage) paints.damage else paints.mango, t, textSize)
+        }
+    }
+}
+
+private fun drawTwoStage(
+    c: android.graphics.Canvas, r: TwoStageResult, bitmaps: List<Bitmap?>, displayMode: DisplayMode,
+    t: Transform, paints: OverlayPaints, textSize: Float,
+) {
+    for ((i, m) in r.mangos.withIndex()) {
+        val layer = m.maskLayer
+        val bmp = bitmaps.getOrNull(i)
+        if (bmp != null && layer != null) drawMask(c, bmp, layer, m.window, t, paints.mask)
+        if (displayMode.showBoxes) {
+            drawBox(c, m.box, "#${m.trackId} %.2f".format(m.score), paints.mango, t, textSize)
+            for (d in m.damages) drawBox(c, d.box, "%.2f".format(d.score), paints.damage, t, textSize)
         }
     }
 }

@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -18,6 +19,7 @@ fun LiveScreen(hasCameraPermission: Boolean, onRequestPermission: () -> Unit, mo
     }
     val vm: LiveViewModel = viewModel()
     val state by vm.state.collectAsState()
+    val context = LocalContext.current
 
     DisposableEffect(vm) {
         vm.setActive(true)
@@ -31,6 +33,8 @@ fun LiveScreen(hasCameraPermission: Boolean, onRequestPermission: () -> Unit, mo
             onRoiMode = vm::setRoiMode,
             onConfidence = vm::setConfidence,
             onToggleRecording = vm::toggleRecording,
+            onToggleSession = vm::toggleSession,
+            onShareSession = { vm.shareIntent()?.let(context::startActivity) },
         ),
         preview = {
             CameraPreview(

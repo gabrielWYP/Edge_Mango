@@ -66,6 +66,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun setDetectorModel(id: String) = graph.settings.update { copy(detectorModelId = id) }
+    fun setMangoThreshold(v: Float) = graph.settings.update { copy(mangoThreshold = v) }
+    fun setMaxMangos(n: Int) = graph.settings.update { copy(maxMangos = n) }
     fun setModel(id: String) = graph.settings.update { copy(modelId = id) }
     fun setAccelerator(a: AcceleratorChoice) = graph.settings.update { copy(accelerator = a) }
     fun setRoiMode(m: RoiMode) = graph.settings.update { copy(roiMode = m) }
