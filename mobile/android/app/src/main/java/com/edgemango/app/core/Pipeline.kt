@@ -1,6 +1,9 @@
 package com.edgemango.app.core
 
-/** The model's raw outputs, resolved by role. `coefs` and `protos` are null for detect models. */
+/**
+ * The model's raw outputs, resolved by role. `coefs` and `protos` are null for detect models. For an Ultralytics export the
+ * whole output tensor is in `boxes` and `cls` is empty.
+ */
 class RawOutputs(
     val boxes: FloatArray,
     val cls: FloatArray,
@@ -118,7 +121,11 @@ class FramePipeline(
     /** Decode + masks of [raw], which the model produced for [prepared]'s input. */
     fun postprocess(raw: RawOutputs, prepared: Prepared, config: PipelineConfig): Pair<List<FrameDetection>, MaskLayer?> {
         val params = sidecar.decodeParams().copy(confThreshold = config.confThreshold)
-        val dets = Decoder.decode(raw.boxes, raw.cls, params)
+        val dets = if (sidecar.isUltralytics) {
+            UltralyticsDecoder.decode(raw.boxes, params, sidecar.outputLayout)
+        } else {
+            Decoder.decode(raw.boxes, raw.cls, params)
+        }
         val w = prepared.window
         val g = prepared.geometry
         val out = dets.map { FrameDetection(it.cls, it.score, it.toSourceBox(g, w.x1, w.y1, w.width, w.height)) }

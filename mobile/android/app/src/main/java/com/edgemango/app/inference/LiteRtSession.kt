@@ -53,6 +53,8 @@ class LiteRtSession private constructor(
         lastRunMs = (t2 - t1) / 1e6
         lastReadMs = (t3 - t2) / 1e6
 
+        // A stock Ultralytics export has one tensor `(1, 4+nc, N)`; it travels in `boxes` and is decoded by UltralyticsDecoder.
+        if (sidecar.isUltralytics) return RawOutputs(arrays[0], FloatArray(0), null, null)
         val r = roles ?: resolveRoles(arrays).also { roles = it }
         return RawOutputs(arrays[r.boxes], arrays[r.cls], r.coefs?.let { arrays[it] }, r.protos?.let { arrays[it] })
     }

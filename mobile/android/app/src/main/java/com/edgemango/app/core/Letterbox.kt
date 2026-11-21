@@ -6,6 +6,9 @@ import kotlin.math.floor
 data class Normalization(val mean: List<Double>, val std: List<Double>) {
     companion object {
         val IMAGENET = Normalization(listOf(0.485, 0.456, 0.406), listOf(0.229, 0.224, 0.225))
+
+        /** Plain `v / 255`, the Ultralytics input convention. */
+        val UNIT = Normalization(listOf(0.0, 0.0, 0.0), listOf(1.0, 1.0, 1.0))
     }
 }
 
