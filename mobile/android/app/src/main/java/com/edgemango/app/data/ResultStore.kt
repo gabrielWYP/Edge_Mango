@@ -38,14 +38,20 @@ class ResultStore(private val context: Context) {
         return LiveLog(File(dir, "live_$stamp.csv"))
     }
 
-    fun share(files: List<File>, title: String): Intent {
+    /** Creates `session_<yyyyMMdd_HHmmss>/` for a field-test session. */
+    fun startSession(): SessionRecorder {
+        val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+        return SessionRecorder(File(dir, "session_$stamp"))
+    }
+
+    fun share(files: List<File>, title: String, mime: String = "text/plain"): Intent {
         val uris = files.filter { it.exists() }.map { FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", it) }
         val intent = if (uris.size == 1) {
             Intent(Intent.ACTION_SEND).putExtra(Intent.EXTRA_STREAM, uris[0])
         } else {
             Intent(Intent.ACTION_SEND_MULTIPLE).putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
         }
-        intent.type = "text/plain"
+        intent.type = mime
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         return Intent.createChooser(intent, title)
     }

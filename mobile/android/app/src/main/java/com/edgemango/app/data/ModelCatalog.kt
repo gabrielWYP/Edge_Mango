@@ -16,6 +16,8 @@ data class ModelRef(
     val origin: String,
     /** Non-empty when the sidecar was missing or unreadable and defaults were used. */
     val warning: String = "",
+    /** The sidecar JSON exactly as read, or null when there was none. */
+    val sidecarText: String? = null,
 ) {
     val sizeBytes: Long get() = file.length()
     val sizeMb: Double get() = sizeBytes / (1024.0 * 1024.0)
@@ -81,8 +83,8 @@ class ModelCatalog(private val context: Context) {
             return ModelRef(id, name, file, ModelSidecar.default(guessTask), origin, "no sidecar JSON: assumed ${guessTask.name.lowercase()}, 640 px, default decode settings")
         }
         return runCatching { ModelSidecar.parse(sidecarText) }.fold(
-            onSuccess = { ModelRef(id, name, file, it, origin) },
-            onFailure = { ModelRef(id, name, file, ModelSidecar.default(guessTask), origin, "unreadable sidecar (${it.message}): defaults used") },
+            onSuccess = { ModelRef(id, name, file, it, origin, sidecarText = sidecarText) },
+            onFailure = { ModelRef(id, name, file, ModelSidecar.default(guessTask), origin, "unreadable sidecar (${it.message}): defaults used", sidecarText) },
         )
     }
 
