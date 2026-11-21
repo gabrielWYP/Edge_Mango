@@ -38,7 +38,8 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ## Screens
 
 - **Live**: camera preview with the overlay. Chips switch **Boxes / Mask / Both** and the **ROI mode** (Color mask, Full frame,
-  Center square); a slider sets the confidence threshold; the **record** switch appends one CSV row per frame to
+  Center square, Detector (2-stage), see below); a slider sets the confidence threshold; the **session** switch records a
+  field test (see "Field-test sessions"); the **record** switch appends one CSV row per frame to
   `files/results/live_<timestamp>.csv`. The yellow dashed rectangle is the crop fed to the model; the thin blue rectangle is the raw
   mango box found by the colour mask. The HUD shows live FPS, inference ms, ROI / preprocessing / post-processing ms, the accelerator
   that is really running, the model name and the highest damage score.
@@ -46,7 +47,9 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
   frame. Shows mean / std / p50 / p95 / min / max latency, FPS, peak RAM, model size, parameters and FLOPs, device and Android
   version. Each run is saved as `files/results/bench_<timestamp>.json` and appended to `files/results/benchmarks.csv`; "Share" opens the
   Android share sheet with both.
-- **Settings**: model, accelerator (CPU XNNPACK x1/x2/x4, GPU, NPU), default ROI/overlay, camera analysis width (640/1280/1920/2560, 4:3).
+- **Settings**: model, accelerator (CPU XNNPACK x1/x2/x4, GPU, NPU), default ROI/overlay, the stage-1 detector, mango threshold,
+  max mangos, NMS IoU (0.5 / 0.6 / 0.7, applied to both stages instead of the sidecar value), class-agnostic NMS for the damage
+  model, camera analysis width (640/1280/1920/2560, 4:3).
 
 Pull the logs without sharing: `adb shell run-as com.edgemango.app ls files/results` and
 `adb exec-out run-as com.edgemango.app cat files/results/benchmarks.csv > benchmarks.csv`.
@@ -83,6 +86,71 @@ CUDA_VISIBLE_DEVICES="" .venv-export/bin/python scripts/export_student.py --rand
 It runs end to end (so timings, memory and size are real for that architecture) but detects nothing: its class bias gives every
 score about 0.01. Replace it with a trained checkpoint's export as soon as one exists.
 
+## Two-stage detection (stage-1 mango detector)
+
+The damage model was only ever trained on mango crops, so its own "mango" class scores about 1.00 even on background: it cannot
+tell a frame with a mango from one without. The ROI mode **Detector (2-stage)** adds a separate stage-1 mango detector:
+
+1. Stage 1 runs on the full frame. Boxes with score >= *mango threshold* (default 0.5) are kept, best first, at most *max mangos*
+   (default 10). **No mango box means "no mango" and stage 2 does not run.**
+2. For each mango the crop is the box plus 10 % margin (`RoiRule.window`), letterboxed to the damage model's input; only class-1
+   (damage) detections whose box centre lies inside the mango box are kept, with their masks.
+3. A greedy IoU tracker (IoU >= 0.3, dropped after 15 unseen frames) gives each mango a stable `trackId` shown on the overlay.
+
+The stage-1 model is a stock Ultralytics YOLOv8n, one class `mango`, exported with `yolo export format=tflite imgsz=640`. Put the
+`.tflite` and a sidecar with the same base name next to the other models (`adb push` or "Pick model file(s)"), then choose it in
+Settings > "Stage-1 mango detector". Sidecar template (`format: ultralytics` selects the decoder; everything else is optional):
+
+```json
+{
+  "format": "ultralytics",
+  "task": "detect",
+  "input": {"shape": [1, 640, 640, 3], "layout": "NHWC", "dtype": "float32"},
+  "class_names": ["mango"],
+  "preprocessing": {
+    "normalization": {"mean": [0, 0, 0], "std": [1, 1, 1]},
+    "letterbox": {"target_size": 640, "pad_value": 114}
+  },
+  "decode": {"conf_threshold": 0.25, "nms": {"iou_threshold": 0.5}, "max_detections": 300}
+}
+```
+
+Assumed output contract of that export: input `(1, 640, 640, 3)` float32 RGB in [0,1] (letterboxed, pad 114); one output
+`(1, 4+nc, N)` (`N = 8400`) or `(1, N, 4+nc)` with `cx, cy, w, h, score...`, scores already sigmoid, boxes normalized to [0,1] or in
+input pixels (decided by magnitude: max <= 2 means normalized), no NMS inside. The layout is guessed from the data; add
+`"output_layout": "channels_first"` (or `"channels_last"`) to the sidecar if a model gets mis-read. Verify the first real export by
+looking at the overlay on the phone before trusting a session.
+
+## Field-test sessions
+
+A session records what the app saw and predicted, to evaluate it later with ground truth from Label Studio.
+
+1. Live > ROI "Detector (2-stage)" > switch **session** on. The app creates `files/results/session_<yyyyMMdd_HHmmss>/` with
+   `frames/f_000000.jpg ...` (the upright analysed frame, JPEG q=90, every processed frame), `predictions.jsonl` (one line per frame: index,
+   wall-clock ms, camera timestamp, frame size, ROI mode, thresholds, stage-1 mangos with track id and score, stage-2 damage per mango with
+   box and mask polygon in frame pixels, max damage per mango, timings, accelerator, model names) and `session.json` (device, models and
+   their sidecars, settings, app version, start/end, counters). JPEG writing runs on one background thread with a bounded queue; if
+   it cannot keep up a frame is dropped from disk (its prediction line stays, `frame: null`) and counted in the HUD and `session.json`.
+2. Switch it off (or leave the Live tab): the folder is zipped to `session_<stamp>.zip`; **Share session** opens the share sheet.
+3. Or pull it with adb (the zip, or the folder):
+
+```bash
+adb exec-out run-as com.edgemango.app cat files/results/session_20261121_101500.zip > session.zip
+```
+
+4. Evaluate on the PC (`scripts/field_eval.py`, repo `.venv`; needs `torch` only for `eval`):
+
+```bash
+python scripts/field_eval.py report    session.zip --out reports/field/market1            # rates, tracks, confidence, latency
+python scripts/field_eval.py export-ls session.zip --every 10 --out reports/field/market1/ls   # or --per-track 3
+#   import ls/tasks.json in Label Studio with ls/labeling_config.xml, serve ls/frames as local files, fix the pre-annotations
+python scripts/field_eval.py eval      session.zip --gt ls_export.json --out reports/field/market1
+```
+
+`eval` reports damage box AP50/AP30, mask AP50 (polygon ground truth), mango AP50, per-mango (track) damage AUROC, recall and specificity
+at the session's confidence, and false-positive damage boxes per healthy mango. The assumptions behind each number are in the docstring
+of `scripts/field_eval.py`.
+
 ## What each metric means and how it is measured
 
 | Metric | Definition |
@@ -103,10 +171,11 @@ is not squared), then letterboxed to 640 with pad 114. If no mango is found the 
 
 ```
 app/src/main/java/com/edgemango/app/
-  core/        pure Kotlin (JVM-testable): colour mask, ROI rule, letterbox, decode/NMS/masks, sidecar, stats, pipeline
+  core/        pure Kotlin (JVM-testable): colour mask, ROI rule, letterbox, decode/NMS/masks (edge_mango and Ultralytics),
+               sidecar, stats, single-crop and two-stage pipelines, tracker, mask polygons, session JSON format
   inference/   LiteRT CompiledModel session + accelerator fallback
   camera/      CameraX preview + RGBA analysis, frame rotation
-  data/        settings, model catalog, result log
+  data/        settings, model catalog, result log, field-test session recorder (+ zip)
   device/      device info, memory probe
   ui/          live | benchmark | settings; each screen = container (view model) + presentational *Content
 app/src/test/  JVM unit tests and fixtures generated from the Python reference
@@ -115,13 +184,15 @@ tools/make_fixtures.py   regenerates the fixtures (see below)
 
 ## Tests and fixtures
 
-`./gradlew testDebugUnitTest` runs 48 JVM tests. The Kotlin ports are checked against the Python reference:
+`./gradlew testDebugUnitTest` runs 91 JVM tests. The Kotlin ports are checked against the Python reference:
 
 - colour mask: bbox IoU with `rgb_mango_mask` on 3 dataset frames downscaled to 320 px (required >= 0.95);
 - ROI window, letterbox geometry and pixels (within one level of `cv2.resize`), normalization;
 - decode, NMS, max-detections cap, letterbox inverse and mask assembly against `decode_exported_segmentation` on random raw outputs
   (tolerance 1e-4 on scores/boxes, masks pixel for pixel);
-- sidecar parsing, output-role resolution, latency statistics, CSV, frame rotation, pipeline with a fake model.
+- sidecar parsing, output-role resolution, latency statistics, CSV, frame rotation, pipeline with a fake model;
+- not checked against Python (no reference export yet): the Ultralytics decoder (synthetic tensors), the two-stage pipeline and the
+  tracker (fake models), NMS IoU / agnostic NMS, mask polygons and the session JSON format.
 
 Regenerate the fixtures (CPU only) from the repository root:
 
@@ -132,6 +203,9 @@ CUDA_VISIBLE_DEVICES="" .venv/bin/python mobile/android/tools/make_fixtures.py \
 
 ## Known limitations
 
+- The Ultralytics stage-1 contract (tensor layout, normalized boxes) is an assumption until a real export has run on the phone.
+- Leaving the Live tab ends a running session (the model is released), and a mid-session settings change that reloads a model
+  pauses recording until it is ready again.
 - The colour ROI relies on the capture backdrop (cyan/white sheet, yellow fruit). On another background, switch to Full frame or Center
   square, which are not what the model was trained on (it saw ROI crops).
 - Live FPS includes camera delivery, RGBA conversion, the colour mask and the overlay, not just the network.
