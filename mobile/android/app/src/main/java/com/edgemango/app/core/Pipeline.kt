@@ -20,14 +20,23 @@ data class PipelineConfig(
     val roiMode: RoiMode = RoiMode.COLOR_MASK,
     val confThreshold: Float = 0.25f,
     val computeMasks: Boolean = true,
+    /** Also trace each damage detection's mask into a frame-pixel polygon (needs a segment model). */
+    val computePolygons: Boolean = false,
 )
 
 data class FrameTimings(val roiMs: Double, val preMs: Double, val inferMs: Double, val postMs: Double) {
     val totalMs: Double get() = roiMs + preMs + inferMs + postMs
 }
 
-/** A detection with its box in source-frame pixels. */
-data class FrameDetection(val cls: Int, val score: Float, val box: SourceBox)
+/**
+ * A detection with its box in source-frame pixels. [polygon] is the simplified outline of the largest blob of its mask,
+ * flat `x0, y0, x1, y1, ...` in frame pixels (null unless [PipelineConfig.computePolygons] and a damage detection).
+ */
+class FrameDetection(val cls: Int, val score: Float, val box: SourceBox, val polygon: DoubleArray? = null) {
+    fun copy(polygon: DoubleArray? = this.polygon) = FrameDetection(cls, score, box, polygon)
+
+    override fun toString() = "FrameDetection(cls=$cls, score=$score, box=$box)"
+}
 
 /** Maps prototype-grid pixels to frame pixels: `frameX = sx * u + tx`, `frameY = sy * v + ty`. */
 data class Affine(val sx: Double, val sy: Double, val tx: Double, val ty: Double)
@@ -86,7 +95,8 @@ class FramePipeline(
         val t0 = clockMs()
         var mangoBox: IntBox? = null
         val window: IntBox = when (config.roiMode) {
-            RoiMode.FULL_FRAME -> RoiRule.full(frame.width, frame.height)
+            // DETECTOR is driven by TwoStagePipeline, which supplies each window through prepareWindow.
+            RoiMode.FULL_FRAME, RoiMode.DETECTOR -> RoiRule.full(frame.width, frame.height)
             RoiMode.CENTER_SQUARE -> RoiRule.centerSquare(frame.width, frame.height)
             RoiMode.COLOR_MASK -> {
                 val f = MangoColorSegmenter.downscaleFactor(frame.width)
@@ -98,19 +108,32 @@ class FramePipeline(
             }
         }
         val t1 = clockMs()
+        return prepareWindow(frame, window, mangoBox, t1 - t0)
+    }
+
+    /** Crop [window] of [frame], letterbox it and fill [input]; the ROI step already happened, taking [roiMs]. */
+    fun prepareWindow(frame: RgbImage, window: IntBox, mangoBox: IntBox? = null, roiMs: Double = 0.0): Prepared {
+        val t1 = clockMs()
         val g = LetterboxGeometry.of(window.width, window.height, size)
         Letterbox.toCanvas(frame, window, g, sidecar.padValue, canvas)
         Letterbox.normalizeInto(canvas, input, sidecar.normalization)
         val t2 = clockMs()
-        return Prepared(window, g, mangoBox, t1 - t0, t2 - t1)
+        return Prepared(window, g, mangoBox, roiMs, t2 - t1)
     }
 
-    fun process(frame: RgbImage, config: PipelineConfig): FrameResult {
-        val prepared = prepare(frame, config)
+    fun process(frame: RgbImage, config: PipelineConfig): FrameResult = processPrepared(frame, prepare(frame, config), config)
+
+    /** Inference + post-processing of an already [prepared] frame; [accept] drops detections before masks are built. */
+    fun processPrepared(
+        frame: RgbImage,
+        prepared: Prepared,
+        config: PipelineConfig,
+        accept: ((FrameDetection) -> Boolean)? = null,
+    ): FrameResult {
         val t0 = clockMs()
         val raw = inferencer.infer(input)
         val t1 = clockMs()
-        val (detections, layer) = postprocess(raw, prepared, config)
+        val (detections, layer) = postprocess(raw, prepared, config, accept)
         val t2 = clockMs()
         return FrameResult(
             frame.width, frame.height, prepared.window, prepared.mangoBox, detections, layer,
@@ -119,38 +142,60 @@ class FramePipeline(
     }
 
     /** Decode + masks of [raw], which the model produced for [prepared]'s input. */
-    fun postprocess(raw: RawOutputs, prepared: Prepared, config: PipelineConfig): Pair<List<FrameDetection>, MaskLayer?> {
+    fun postprocess(
+        raw: RawOutputs,
+        prepared: Prepared,
+        config: PipelineConfig,
+        accept: ((FrameDetection) -> Boolean)? = null,
+    ): Pair<List<FrameDetection>, MaskLayer?> {
         val params = sidecar.decodeParams().copy(confThreshold = config.confThreshold)
-        val dets = if (sidecar.isUltralytics) {
+        var dets = if (sidecar.isUltralytics) {
             UltralyticsDecoder.decode(raw.boxes, params, sidecar.outputLayout)
         } else {
             Decoder.decode(raw.boxes, raw.cls, params)
         }
         val w = prepared.window
         val g = prepared.geometry
-        val out = dets.map { FrameDetection(it.cls, it.score, it.toSourceBox(g, w.x1, w.y1, w.width, w.height)) }
-        val layer = if (config.computeMasks && raw.coefs != null && raw.protos != null && sidecar.task == ModelTask.SEGMENT) {
-            buildLayer(dets, raw.coefs, raw.protos, prepared)
-        } else null
+        var out = dets.map { FrameDetection(it.cls, it.score, it.toSourceBox(g, w.x1, w.y1, w.width, w.height)) }
+        if (accept != null) {
+            val keep = out.indices.filter { accept(out[it]) }
+            dets = keep.map { dets[it] }
+            out = keep.map { out[it] }
+        }
+        val wantMasks = config.computeMasks || config.computePolygons
+        if (!wantMasks || raw.coefs == null || raw.protos == null || sidecar.task != ModelTask.SEGMENT) return out to null
+
+        val nm = sidecar.numPrototypes
+        val cells = raw.protos.size / nm
+        val side = Math.round(Math.sqrt(cells.toDouble())).toInt()
+        require(side * side == cells) { "prototypes are not square: ${raw.protos.size} values for $nm channels" }
+        val masks = dets.map { MaskAssembler.assemble(it, raw.coefs, raw.protos, nm, side, side, size) }
+        val affine = MaskLayer.affine(g, w, side, side, size)
+        if (config.computePolygons) {
+            out = out.mapIndexed { i, d ->
+                if (d.cls != FrameResult.DAMAGE_CLASS) d
+                else d.copy(polygon = MaskPolygon.largestContour(masks[i], side, side)?.let { toFrame(it, affine) })
+            }
+        }
+        val layer = if (config.computeMasks) buildLayer(dets, masks, side, affine) else null
         return out to layer
     }
 
-    private fun buildLayer(dets: List<Detection>, coefs: FloatArray, protos: FloatArray, prepared: Prepared): MaskLayer {
-        val nm = sidecar.numPrototypes
-        val cells = protos.size / nm
-        val side = Math.round(Math.sqrt(cells.toDouble())).toInt()
-        require(side * side == cells) { "prototypes are not square: ${protos.size} values for $nm channels" }
+    private fun toFrame(gridXy: DoubleArray, a: Affine): DoubleArray =
+        DoubleArray(gridXy.size) { i -> if (i % 2 == 0) a.sx * gridXy[i] + a.tx else a.sy * gridXy[i] + a.ty }
+
+    private fun buildLayer(dets: List<Detection>, masks: List<BooleanArray>, side: Int, affine: Affine): MaskLayer {
         val argb = IntArray(side * side)
         // Mango first, damage on top.
         for (cls in 0 until sidecar.numClasses) {
             val color = MASK_COLORS[cls % MASK_COLORS.size]
-            for (d in dets) {
+            for ((i, d) in dets.withIndex()) {
                 if (d.cls != cls) continue
-                val mask = MaskAssembler.assemble(d, coefs, protos, nm, side, side, size)
-                for (i in mask.indices) if (mask[i]) argb[i] = color
+                val mask = masks[i]
+                for (j in mask.indices) if (mask[j]) argb[j] = color
             }
         }
-        return MaskLayer(side, side, argb, MaskLayer.affine(prepared.geometry, prepared.window, side, side, size))
+        return MaskLayer(side, side, argb, affine)
     }
 
     companion object {
