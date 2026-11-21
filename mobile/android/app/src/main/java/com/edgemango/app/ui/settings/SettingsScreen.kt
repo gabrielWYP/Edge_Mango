@@ -28,6 +28,8 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             onRoiMode = vm::setRoiMode,
             onDisplayMode = vm::setDisplayMode,
             onAnalysisWidth = vm::setAnalysisWidth,
+            onNmsIou = vm::setNmsIou,
+            onAgnosticNms = vm::setAgnosticNms,
             onPickModel = { picker.launch(arrayOf("*/*")) },
             onQueryAccelerators = vm::queryAccelerators,
         ),

@@ -22,6 +22,10 @@ data class AppSettings(
     val roiMode: RoiMode = RoiMode.COLOR_MASK,
     val displayMode: DisplayMode = DisplayMode.BOTH,
     val confidence: Float = 0.25f,
+    /** NMS IoU threshold ("Jaccard") applied to every model instead of the sidecar's value. */
+    val nmsIou: Float = 0.5f,
+    /** Stage-2 NMS also suppresses overlapping boxes of different classes. */
+    val agnosticNms: Boolean = false,
     /** Camera analysis width in pixels (4:3 frames). Training frames were 3264x2448 crops, so more is closer to training. */
     val analysisWidth: Int = 1280,
 )
@@ -45,6 +49,8 @@ class SettingsRepository(context: Context) {
             roiMode = enumOr(prefs.getString("roiMode", null), d.roiMode),
             displayMode = enumOr(prefs.getString("displayMode", null), d.displayMode),
             confidence = prefs.getFloat("confidence", d.confidence),
+            nmsIou = prefs.getFloat("nmsIou", d.nmsIou),
+            agnosticNms = prefs.getBoolean("agnosticNms", d.agnosticNms),
             analysisWidth = prefs.getInt("analysisWidth", d.analysisWidth),
         )
     }
@@ -56,6 +62,8 @@ class SettingsRepository(context: Context) {
             .putString("roiMode", s.roiMode.name)
             .putString("displayMode", s.displayMode.name)
             .putFloat("confidence", s.confidence)
+            .putFloat("nmsIou", s.nmsIou)
+            .putBoolean("agnosticNms", s.agnosticNms)
             .putInt("analysisWidth", s.analysisWidth)
             .apply()
     }

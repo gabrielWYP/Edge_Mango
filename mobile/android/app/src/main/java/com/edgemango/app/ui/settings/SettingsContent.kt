@@ -2,13 +2,16 @@ package com.edgemango.app.ui.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.edgemango.app.core.RoiMode
@@ -23,11 +26,16 @@ data class SettingsActions(
     val onRoiMode: (RoiMode) -> Unit,
     val onDisplayMode: (DisplayMode) -> Unit,
     val onAnalysisWidth: (Int) -> Unit,
+    val onNmsIou: (Float) -> Unit,
+    val onAgnosticNms: (Boolean) -> Unit,
     val onPickModel: () -> Unit,
     val onQueryAccelerators: () -> Unit,
 )
 
 val ANALYSIS_WIDTHS = listOf(640, 1280, 1920, 2560)
+
+/** NMS IoU ("Jaccard") thresholds offered in the UI. */
+val NMS_IOU_CHOICES = listOf(0.5f, 0.6f, 0.7f)
 
 /** Presentational settings screen for the live view. (The benchmark screen has its own model/accelerator pickers.) */
 @Composable
@@ -72,6 +80,17 @@ fun SettingsContent(state: SettingsUiState, actions: SettingsActions, modifier: 
 
         Text("Overlay", style = MaterialTheme.typography.labelMedium)
         ChoiceChips(DisplayMode.entries, s.displayMode, { it.label }, actions.onDisplayMode)
+
+        Text("NMS IoU (applies to both stages)", style = MaterialTheme.typography.labelMedium)
+        ChoiceChips(NMS_IOU_CHOICES, s.nmsIou, { "%.1f".format(it) }, actions.onNmsIou)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Class-agnostic NMS (damage model)", modifier = Modifier.weight(1f))
+            Switch(checked = s.agnosticNms, onCheckedChange = actions.onAgnosticNms)
+        }
+        Text(
+            "Higher IoU keeps more overlapping boxes. Agnostic NMS drops a box that overlaps a higher-scoring box of another class.",
+            style = MaterialTheme.typography.bodySmall,
+        )
 
         DropdownField(
             label = "Camera analysis width (4:3)",

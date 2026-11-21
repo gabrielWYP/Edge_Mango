@@ -9,6 +9,10 @@ data class TwoStageConfig(
     val damageThreshold: Float = 0.25f,
     val computeMasks: Boolean = true,
     val computePolygons: Boolean = false,
+    /** NMS IoU threshold for both stages; null keeps each sidecar's value. */
+    val nmsIou: Float? = null,
+    /** Stage 2 only: also suppress overlapping boxes of different classes. */
+    val agnosticNms: Boolean = false,
     /** Crop margin around each mango box, as a fraction of its width/height ([RoiRule.MARGIN]). */
     val margin: Double = RoiRule.MARGIN,
 )
@@ -56,7 +60,7 @@ class TwoStagePipeline(
     fun process(frame: RgbImage, config: TwoStageConfig): TwoStageResult {
         val stage1 = detector.process(
             frame,
-            PipelineConfig(RoiMode.FULL_FRAME, config.mangoThreshold, computeMasks = false),
+            PipelineConfig(RoiMode.FULL_FRAME, config.mangoThreshold, computeMasks = false, nmsIou = config.nmsIou),
         )
         val boxes = stage1.detections
             .filter { it.cls == FrameResult.MANGO_CLASS && it.score >= config.mangoThreshold }
@@ -71,6 +75,7 @@ class TwoStagePipeline(
         var post = stage1.timings.postMs
         val damageConfig = PipelineConfig(
             RoiMode.FULL_FRAME, config.damageThreshold, config.computeMasks, config.computePolygons,
+            nmsIou = config.nmsIou, agnosticNms = config.agnosticNms,
         )
         val mangos = boxes.mapIndexed { i, m ->
             val b = m.box

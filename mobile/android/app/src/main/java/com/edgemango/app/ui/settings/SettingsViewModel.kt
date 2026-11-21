@@ -69,6 +69,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun setModel(id: String) = graph.settings.update { copy(modelId = id) }
     fun setAccelerator(a: AcceleratorChoice) = graph.settings.update { copy(accelerator = a) }
     fun setRoiMode(m: RoiMode) = graph.settings.update { copy(roiMode = m) }
+    fun setNmsIou(v: Float) = graph.settings.update { copy(nmsIou = v) }
+    fun setAgnosticNms(on: Boolean) = graph.settings.update { copy(agnosticNms = on) }
     fun setDisplayMode(m: DisplayMode) = graph.settings.update { copy(displayMode = m) }
     fun setAnalysisWidth(w: Int) = graph.settings.update { copy(analysisWidth = w) }
 }

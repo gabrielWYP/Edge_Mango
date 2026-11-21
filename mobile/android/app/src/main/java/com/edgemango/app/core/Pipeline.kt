@@ -22,6 +22,10 @@ data class PipelineConfig(
     val computeMasks: Boolean = true,
     /** Also trace each damage detection's mask into a frame-pixel polygon (needs a segment model). */
     val computePolygons: Boolean = false,
+    /** NMS IoU threshold that replaces the sidecar's value; null keeps the sidecar's. */
+    val nmsIou: Float? = null,
+    /** Suppress overlapping boxes across classes too. */
+    val agnosticNms: Boolean = false,
 )
 
 data class FrameTimings(val roiMs: Double, val preMs: Double, val inferMs: Double, val postMs: Double) {
@@ -148,7 +152,11 @@ class FramePipeline(
         config: PipelineConfig,
         accept: ((FrameDetection) -> Boolean)? = null,
     ): Pair<List<FrameDetection>, MaskLayer?> {
-        val params = sidecar.decodeParams().copy(confThreshold = config.confThreshold)
+        val params = sidecar.decodeParams().copy(
+            confThreshold = config.confThreshold,
+            nmsIouThreshold = config.nmsIou ?: sidecar.decode.nmsIouThreshold,
+            agnosticNms = config.agnosticNms,
+        )
         var dets = if (sidecar.isUltralytics) {
             UltralyticsDecoder.decode(raw.boxes, params, sidecar.outputLayout)
         } else {

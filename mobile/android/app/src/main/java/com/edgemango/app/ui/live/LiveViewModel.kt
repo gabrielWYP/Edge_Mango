@@ -85,6 +85,8 @@ class LiveViewModel(application: Application) : AndroidViewModel(application) {
     fun setDisplayMode(mode: DisplayMode) = graph.settings.update { copy(displayMode = mode) }
     fun setRoiMode(mode: RoiMode) = graph.settings.update { copy(roiMode = mode) }
     fun setConfidence(value: Float) = graph.settings.update { copy(confidence = value) }
+    fun setNmsIou(value: Float) = graph.settings.update { copy(nmsIou = value) }
+    fun setAgnosticNms(on: Boolean) = graph.settings.update { copy(agnosticNms = on) }
 
     fun toggleRecording() {
         if (recorder == null) {
@@ -149,7 +151,10 @@ class LiveViewModel(application: Application) : AndroidViewModel(application) {
             image.close()
         }
         val s = _state.value.settings
-        val config = PipelineConfig(s.roiMode, s.confidence, computeMasks = s.displayMode.showMask)
+        val config = PipelineConfig(
+            s.roiMode, s.confidence, computeMasks = s.displayMode.showMask,
+            nmsIou = s.nmsIou, agnosticNms = s.agnosticNms,
+        )
         val result = synchronized(lock) {
             val p = pipeline ?: return
             val r = try {
