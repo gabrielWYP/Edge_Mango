@@ -3,6 +3,10 @@ package com.edgemango.app.data
 import android.graphics.Bitmap
 import android.util.Log
 import com.edgemango.app.core.FrameRecord
+import com.edgemango.app.core.MemRecord
+import com.edgemango.app.core.MemoryStats
+import com.edgemango.app.core.SessionMemory
+import com.edgemango.app.device.MemoryProbe
 import com.edgemango.app.core.RgbImage
 import com.edgemango.app.core.SessionInfo
 import com.edgemango.app.core.SessionJson
@@ -42,12 +46,16 @@ class SessionRecorder(
     private val saved = AtomicInteger()
     private val failed = AtomicInteger()
     private var count = 0
+    private val memStats = MemoryStats()
+    @Volatile private var lastRssKb = 0L
     @Volatile private var closing = false
 
     val startedAtMs = System.currentTimeMillis()
 
     /** Frames processed so far (prediction lines written). */
     val frames: Int @Synchronized get() = count
+    /** Latest `VmRSS` in kB (0 before the first frame), for the HUD. */
+    val rssKb: Long get() = lastRssKb
     val framesSaved: Int get() = saved.get()
     val droppedWrites: Int get() = dropped.get()
     val failedWrites: Int get() = failed.get()
@@ -89,7 +97,13 @@ class SessionRecorder(
             val n = dropped.incrementAndGet()
             if (n == 1 || n % 25 == 0) Log.w(TAG, "write queue full: $n frame(s) dropped so far (frame $index)")
         }
-        predictions.write(SessionJson.frameLine(makeRecord(index, relative)))
+        val mem = MemoryProbe.rssHwmKb()?.let { (rss, hwm) ->
+            val pss = if (memStats.wantsPss(index)) runCatching { MemoryProbe.pssKb() }.getOrNull() else null
+            lastRssKb = rss
+            memStats.add(rss, hwm, pss)
+            MemRecord(rss, hwm, pss)
+        }
+        predictions.write(SessionJson.frameLine(makeRecord(index, relative).copy(mem = mem)))
         predictions.newLine()
         if (index % 20 == 19) predictions.flush()
     }
@@ -98,9 +112,13 @@ class SessionRecorder(
      * Drains the write queue, closes `predictions.jsonl`, writes `session.json` from [info] (its counters are filled in
      * here) and zips the folder next to it. Slow (waits for the queue, zips): call it off the main thread.
      */
-    fun finish(info: (frames: Int, saved: Int, dropped: Int, failed: Int, endedAtMs: Long) -> SessionInfo): File {
+    fun finish(
+        ramBeforeLoadKb: Long,
+        info: (frames: Int, saved: Int, dropped: Int, failed: Int, endedAtMs: Long, memory: SessionMemory?) -> SessionInfo,
+    ): File {
         close()
-        val session = info(frames, framesSaved, droppedWrites, failedWrites, System.currentTimeMillis())
+        val memory = synchronized(this) { memStats.summary(ramBeforeLoadKb) }
+        val session = info(frames, framesSaved, droppedWrites, failedWrites, System.currentTimeMillis(), memory)
         File(dir, "session.json").writeText(SessionJson.sessionJson(session))
         return SessionZip.zip(dir, File(dir.parentFile, dir.name + ".zip"))
     }

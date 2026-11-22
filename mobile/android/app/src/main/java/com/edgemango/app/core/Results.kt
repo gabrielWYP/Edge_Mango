@@ -72,4 +72,11 @@ object ProcStatus {
         }
         return null
     }
+
+    /** `(VmRSS, VmHWM)` of a `/proc/self/status` text in kB; null when either line is missing. */
+    fun rssHwm(status: String): Pair<Long, Long>? {
+        val rss = kb(status, "VmRSS") ?: return null
+        val hwm = kb(status, "VmHWM") ?: return null
+        return rss to hwm
+    }
 }

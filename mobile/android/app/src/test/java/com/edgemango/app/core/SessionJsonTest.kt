@@ -109,4 +109,28 @@ class SessionJsonTest {
         assertNotNull((o["detectorModel"] as JsonObject)["sidecar"])
         assertEquals(120, o["frameCount"]!!.jsonPrimitive.content.toInt())
     }
+
+    @Test
+    fun memoryStatsSummarisesSamples() {
+        val m = MemoryStats()
+        assertNull(m.summary(1000L))
+        assertTrue(m.wantsPss(9) && m.wantsPss(19) && !m.wantsPss(10))
+        m.add(500L, 600L)
+        m.add(900L, 900L, 700L)
+        m.add(700L, 900L)
+        m.add(800L, 950L, 650L)
+        val s = m.summary(400L)!!
+        assertEquals(SessionMemory(400L, 500L, 900L, 750L, 600L, 950L, 700L, 4), s)
+    }
+
+    @Test
+    fun frameMemRoundTripsAndOldLinesParse() {
+        val rec = MemRecord(300000L, 312345L, null)
+        val line = Json.encodeToString(MemRecord.serializer(), rec)
+        assertEquals(rec, Json.decodeFromString(MemRecord.serializer(), line))
+        assertFalse(line.contains("pssKb\":null"))
+        val old = SessionJson.frameLine(SessionJson.fromTwoStage(0, 1L, 2L, null, ctx, twoStage()))
+        assertFalse(old.contains("\"mem\""))
+        assertNull(SessionJson.parseFrame(old).mem)
+    }
 }
