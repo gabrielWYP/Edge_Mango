@@ -8,6 +8,9 @@ enum class RoiMode(val label: String) {
     COLOR_MASK("Color mask"),
     FULL_FRAME("Full frame"),
     CENTER_SQUARE("Center square"),
+
+    /** Two stages: a mango detector on the full frame, then the damage model on each mango's crop ([TwoStagePipeline]). */
+    DETECTOR("Detector (2-stage)"),
 }
 
 /** The crop rules of `src/training/roi_crop.py`, applied to a mango box. */

@@ -18,13 +18,30 @@ enum class DisplayMode(val label: String) {
 
 data class AppSettings(
     val modelId: String = ModelCatalog.DEFAULT_ID,
+    /** Stage-1 mango detector; empty = disabled (the DETECTOR ROI mode then has nothing to run). */
+    val detectorModelId: String = "",
+    /** Stage-1 score needed to start a new mango track. */
+    val mangoThreshold: Float = 0.35f,
+    /** Stage-1 score a box matching a live track needs to be kept (hysteresis). */
+    val keepThreshold: Float = 0.15f,
+    /** Frames a track missed by stage 1 is still reported (held) and still gets a stage-2 pass. */
+    val holdFrames: Int = 5,
+    /** At most this many mangos per frame. */
+    val maxMangos: Int = 10,
     val accelerator: AcceleratorChoice = AcceleratorChoice.CPU_4,
     val roiMode: RoiMode = RoiMode.COLOR_MASK,
     val displayMode: DisplayMode = DisplayMode.BOTH,
     val confidence: Float = 0.25f,
+    /** NMS IoU threshold ("Jaccard") applied to every model instead of the sidecar's value. */
+    val nmsIou: Float = 0.5f,
+    /** Stage-2 NMS also suppresses overlapping boxes of different classes. */
+    val agnosticNms: Boolean = false,
     /** Camera analysis width in pixels (4:3 frames). Training frames were 3264x2448 crops, so more is closer to training. */
     val analysisWidth: Int = 1280,
 )
+
+/** Bump when a default changes meaning: [SettingsRepository] resets the affected stored values once. */
+private const val SETTINGS_VERSION = 2
 
 class SettingsRepository(context: Context) {
     private val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
@@ -41,10 +58,22 @@ class SettingsRepository(context: Context) {
         val d = AppSettings()
         return AppSettings(
             modelId = prefs.getString("modelId", d.modelId) ?: d.modelId,
+            detectorModelId = prefs.getString("detectorModelId", d.detectorModelId) ?: d.detectorModelId,
+            // A mangoThreshold saved before settingsVersion 2 is the old 0.5 default: take the new default instead.
+            mangoThreshold = if (prefs.getInt("settingsVersion", 1) < SETTINGS_VERSION) {
+                d.mangoThreshold
+            } else {
+                prefs.getFloat("mangoThreshold", d.mangoThreshold)
+            },
+            keepThreshold = prefs.getFloat("keepThreshold", d.keepThreshold),
+            holdFrames = prefs.getInt("holdFrames", d.holdFrames),
+            maxMangos = prefs.getInt("maxMangos", d.maxMangos),
             accelerator = enumOr(prefs.getString("accelerator", null), d.accelerator),
             roiMode = enumOr(prefs.getString("roiMode", null), d.roiMode),
             displayMode = enumOr(prefs.getString("displayMode", null), d.displayMode),
             confidence = prefs.getFloat("confidence", d.confidence),
+            nmsIou = prefs.getFloat("nmsIou", d.nmsIou),
+            agnosticNms = prefs.getBoolean("agnosticNms", d.agnosticNms),
             analysisWidth = prefs.getInt("analysisWidth", d.analysisWidth),
         )
     }
@@ -52,10 +81,18 @@ class SettingsRepository(context: Context) {
     private fun save(s: AppSettings) {
         prefs.edit()
             .putString("modelId", s.modelId)
+            .putString("detectorModelId", s.detectorModelId)
+            .putInt("settingsVersion", SETTINGS_VERSION)
+            .putFloat("mangoThreshold", s.mangoThreshold)
+            .putFloat("keepThreshold", s.keepThreshold)
+            .putInt("holdFrames", s.holdFrames)
+            .putInt("maxMangos", s.maxMangos)
             .putString("accelerator", s.accelerator.name)
             .putString("roiMode", s.roiMode.name)
             .putString("displayMode", s.displayMode.name)
             .putFloat("confidence", s.confidence)
+            .putFloat("nmsIou", s.nmsIou)
+            .putBoolean("agnosticNms", s.agnosticNms)
             .putInt("analysisWidth", s.analysisWidth)
             .apply()
     }

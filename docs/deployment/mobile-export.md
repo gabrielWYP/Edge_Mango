@@ -160,6 +160,9 @@ Outputs `exports/student_fp16.tflite` / `.json` and `exports/student_int8.tflite
 
 **ROI caveat.** The crop window comes from the ground-truth mango box in evaluation, so the AP of every precision is an oracle-ROI figure. On the phone the app must supply a window (mango detector or framing guide); that stage is outside these files.
 
+On the phone the window comes from a stage-1 mango detector (an Ultralytics YOLOv8n TFLite export with a `"format": "ultralytics"`
+sidecar) in the app's "Detector (2-stage)" ROI mode; see `mobile/android/README.md`, "Two-stage detection".
+
 ## 9. Accuracy parity on a fold (real checkpoint)
 
 Compare PyTorch (`metrics_v4.json` from `evaluate_checkpoint.py`) with the TFLite FP32, FP16 and INT8 files on the fold-0 validation split. `scripts/eval_tflite.py` builds its inputs like `evaluate_checkpoint.py` (ROI crop, letterbox, normalize), decodes with `src/export/reference.py` at the evaluation threshold 0.001 and writes the same `predictions.jsonl` (boxes, and mask polygons for a segment model in the source frame), so `scripts/v4_metrics.py` scores all of them identically.

@@ -23,7 +23,24 @@ data class IntBox(val x1: Int, val y1: Int, val x2: Int, val y2: Int) {
 }
 
 /** A detection box in source-frame pixels (float, clipped to the frame). */
-data class SourceBox(val x1: Double, val y1: Double, val x2: Double, val y2: Double)
+data class SourceBox(val x1: Double, val y1: Double, val x2: Double, val y2: Double) {
+    val width: Double get() = maxOf(0.0, x2 - x1)
+    val height: Double get() = maxOf(0.0, y2 - y1)
+    val area: Double get() = width * height
+    val centerX: Double get() = (x1 + x2) / 2
+    val centerY: Double get() = (y1 + y2) / 2
+
+    fun contains(x: Double, y: Double): Boolean = x >= x1 && x <= x2 && y >= y1 && y <= y2
+
+    fun iou(other: SourceBox): Double {
+        val iw = minOf(x2, other.x2) - maxOf(x1, other.x1)
+        val ih = minOf(y2, other.y2) - maxOf(y1, other.y1)
+        if (iw <= 0 || ih <= 0) return 0.0
+        val inter = iw * ih
+        val union = area + other.area - inter
+        return if (union <= 0.0) 0.0 else inter / union
+    }
+}
 
 /**
  * The letterbox of a crop (or a whole frame) onto a square `size` canvas, exactly like

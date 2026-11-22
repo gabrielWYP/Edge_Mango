@@ -17,6 +17,8 @@ data class DecodeParams(
      * keeps a degenerate (e.g. random-init) model from stalling the frame loop. 0 disables it.
      */
     val maxCandidates: Int = 3000,
+    /** Suppress overlapping boxes of different classes too (one NMS over all classes). */
+    val agnosticNms: Boolean = false,
 )
 
 /** One detection in letterboxed-input pixels (`cx, cy, w, h`) and the anchor it came from. */
@@ -89,18 +91,22 @@ object Decoder {
 
     private fun sigmoid(x: Float): Float = (1.0 / (1.0 + exp(-x.toDouble()))).toFloat()
 
-    /** Per-class greedy NMS over a score-sorted list; the result is score-sorted and capped. */
-    private fun nms(sorted: List<Detection>, params: DecodeParams): List<Detection> {
+    /**
+     * Greedy NMS over a score-sorted list (suppress when IoU > threshold), per class unless [DecodeParams.agnosticNms];
+     * the result is score-sorted and capped. Shared by every decoder.
+     */
+    fun nms(sorted: List<Detection>, params: DecodeParams): List<Detection> {
         val kept = ArrayList<Detection>()
-        for (cls in 0 until params.numClasses) {
-            val items = sorted.filter { it.cls == cls }
+        val groups: List<List<Detection>> =
+            if (params.agnosticNms) listOf(sorted) else (0 until params.numClasses).map { c -> sorted.filter { it.cls == c } }
+        for (items in groups) {
             if (items.isEmpty()) continue
             val suppressed = BooleanArray(items.size)
-            var keptInClass = 0
+            var keptInGroup = 0
             for (i in items.indices) {
                 if (suppressed[i]) continue
                 kept.add(items[i])
-                if (++keptInClass >= params.maxDetections) break
+                if (++keptInGroup >= params.maxDetections) break
                 for (j in i + 1 until items.size) {
                     if (!suppressed[j] && iou(items[i], items[j]) > params.nmsIouThreshold) suppressed[j] = true
                 }

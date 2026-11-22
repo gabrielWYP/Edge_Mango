@@ -13,6 +13,12 @@ import kotlinx.serialization.json.longOrNull
 
 enum class ModelTask { DETECT, SEGMENT }
 
+/** Which export contract a model follows: this project's raw-head exporter or a stock Ultralytics TFLite export. */
+enum class ModelFormat { EDGE_MANGO, ULTRALYTICS }
+
+/** Memory layout of the single Ultralytics output tensor: `(1, 4+nc, N)` or `(1, N, 4+nc)`. */
+enum class OutputLayout { AUTO, CHANNELS_FIRST, CHANNELS_LAST }
+
 data class DecodeSettings(
     val confThreshold: Float = 0.25f,
     val nmsIouThreshold: Float = 0.5f,
@@ -38,8 +44,14 @@ data class ModelSidecar(
     val precision: String? = null,
     val fileSizeBytes: Long? = null,
     val modelName: String? = null,
+    val format: ModelFormat = ModelFormat.EDGE_MANGO,
+    val outputLayout: OutputLayout = OutputLayout.AUTO,
+    /** Ultralytics only: class ids that count as a detection, all relabelled to class 0 (e.g. COCO 46, 47, 49). Empty: all classes. */
+    val keepClasses: List<Int> = emptyList(),
 ) {
     val numClasses: Int get() = classNames.size
+
+    val isUltralytics: Boolean get() = format == ModelFormat.ULTRALYTICS
 
     fun decodeParams() = DecodeParams(
         confThreshold = decode.confThreshold,
@@ -64,6 +76,17 @@ data class ModelSidecar(
                 null -> throw IllegalArgumentException("sidecar has no \"task\"")
                 else -> throw IllegalArgumentException("unknown sidecar task \"${root.string("task")}\"")
             }
+            val format = when (root.string("format")?.lowercase()) {
+                null, "edge_mango" -> ModelFormat.EDGE_MANGO
+                "ultralytics" -> ModelFormat.ULTRALYTICS
+                else -> throw IllegalArgumentException("unknown sidecar format \"${root.string("format")}\"")
+            }
+            val layout = when (root.string("output_layout")?.lowercase()) {
+                null, "auto" -> OutputLayout.AUTO
+                "channels_first" -> OutputLayout.CHANNELS_FIRST
+                "channels_last" -> OutputLayout.CHANNELS_LAST
+                else -> throw IllegalArgumentException("unknown output_layout \"${root.string("output_layout")}\"")
+            }
             val inputSize = inputSizeOf(root) ?: throw IllegalArgumentException("sidecar has no input size")
             val pre = root.obj("preprocessing")
             val norm = pre?.obj("normalization")
@@ -75,11 +98,14 @@ data class ModelSidecar(
             val modelObj = root.obj("model")
             val outputs = (root["outputs"] as? JsonArray)?.mapNotNull { (it as? JsonObject)?.string("logical_name") } ?: emptyList()
             val classNames = (root["class_names"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
+            val defaultNames = if (format == ModelFormat.ULTRALYTICS) listOf("mango") else listOf("mango", "damage")
+            // Ultralytics models take [0,1] pixels with no mean/std; this project's exporter takes ImageNet statistics.
+            val defaultNorm = if (format == ModelFormat.ULTRALYTICS) Normalization.UNIT else Normalization.IMAGENET
             return ModelSidecar(
                 task = task,
                 inputSize = inputSize,
-                classNames = classNames?.takeIf { it.isNotEmpty() } ?: listOf("mango", "damage"),
-                normalization = if (mean != null && std != null && mean.size == 3 && std.size == 3) Normalization(mean, std) else Normalization.IMAGENET,
+                classNames = classNames?.takeIf { it.isNotEmpty() } ?: defaultNames,
+                normalization = if (mean != null && std != null && mean.size == 3 && std.size == 3) Normalization(mean, std) else defaultNorm,
                 padValue = pre?.obj("letterbox")?.int("pad_value") ?: 114,
                 decode = DecodeSettings(
                     confThreshold = dec?.double("conf_threshold")?.toFloat() ?: 0.25f,
@@ -94,6 +120,9 @@ data class ModelSidecar(
                 precision = modelObj?.string("precision") ?: root.string("precision"),
                 fileSizeBytes = modelObj?.long("file_size_bytes") ?: root.long("file_size_bytes"),
                 modelName = modelObj?.string("file") ?: modelObj?.string("name"),
+                format = format,
+                outputLayout = layout,
+                keepClasses = (root["keep_classes"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.intOrNull } ?: emptyList(),
             )
         }
 
