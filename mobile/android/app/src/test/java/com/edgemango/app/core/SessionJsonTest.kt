@@ -17,13 +17,14 @@ class SessionJsonTest {
     private val ctx = FrameContext(
         roiMode = "DETECTOR", confThreshold = 0.25f, mangoThreshold = 0.5f, nmsIou = 0.5f, agnosticNms = false, maxMangos = 10,
         accelerator = "CPU x4", detectorModel = "mango_det.tflite", damageModel = "student_seg.tflite",
+        keepThreshold = 0.15f, holdFrames = 5,
     )
     private val timings = FrameTimings(0.0, 4.0, 31.5, 6.25)
 
     private fun twoStage(): TwoStageResult {
         val damage = FrameDetection(1, 0.8123456f, SourceBox(150.04, 200.0, 180.0, 230.0), doubleArrayOf(150.0, 200.0, 180.0, 200.0, 165.0, 230.0))
         val m1 = MangoDetection(3, SourceBox(100.0, 150.0, 300.0, 350.0), 0.93f, IntBox(80, 130, 320, 370), listOf(damage), null, timings)
-        val m2 = MangoDetection(4, SourceBox(400.0, 150.0, 500.0, 250.0), 0.61f, IntBox(390, 140, 510, 260), emptyList(), null, timings)
+        val m2 = MangoDetection(4, SourceBox(400.0, 150.0, 500.0, 250.0), 0.61f, IntBox(390, 140, 510, 260), emptyList(), null, timings, held = true)
         return TwoStageResult(640, 480, listOf(m1, m2), 12.0, FrameTimings(0.0, 10.0, 70.0, 12.0))
     }
 
@@ -42,6 +43,10 @@ class SessionJsonTest {
         assertEquals("false", o["noMango"]!!.jsonPrimitive.content)
         assertEquals("0.5", o["mangoThreshold"]!!.jsonPrimitive.content)
         assertEquals("0.5", o["nmsIou"]!!.jsonPrimitive.content)
+        assertEquals("0.15", o["keepThreshold"]!!.jsonPrimitive.content)
+        assertEquals("5", o["holdFrames"]!!.jsonPrimitive.content)
+        assertEquals("false", o["mangos"]!!.jsonArray[0].jsonObject["held"]!!.jsonPrimitive.content)
+        assertEquals("true", o["mangos"]!!.jsonArray[1].jsonObject["held"]!!.jsonPrimitive.content)
         assertNull("single-crop field absent in DETECTOR mode", o["detections"])
 
         val mangos = o["mangos"]!!.jsonArray

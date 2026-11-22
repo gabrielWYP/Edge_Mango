@@ -20,6 +20,11 @@ Assumptions (read before quoting a number):
 * Only the DETECTOR ROI mode records tracked mangos. For the single-crop modes `report` and `eval` treat the crop's damage
   detections as belonging to one pseudo mango (track 0, the whole frame); mango AP and the per-mango metrics are then
   meaningless.
+* Held mangos: a mango record with `"held": true` is the tracker's memory of an earlier frame (stage 1 missed it in this
+  frame; the damage model still ran on its last box). `report` counts held and detected mango-frames separately. `eval`
+  computes mango AP50 from the detected (non-held) mangos only, because a held box is not a stage-1 detection of that
+  frame, but damage AP and the per-mango metrics still use held mangos and their damage detections. Sessions recorded
+  before the hold feature have no `held` field and count as all detected.
 * Ground truth classes are `mango` and `damage` (label text, case-insensitive), as rectangles or polygons; a polygon also
   gives a box (its bounding box). The latest non-cancelled annotation of a task is used.
 * AP is `src.training.metrics._compute_ap_at_iou` (all-point interpolation) via `src.evaluation.v4_metrics`; mask AP50
@@ -160,6 +165,8 @@ def build_report(session: Session) -> dict:
     n = len(frames)
     mangos = [frame_mangos(f) for f in frames]
     per_frame = [len(m) for m in mangos]
+    n_held = sum(1 for ms in mangos for m in ms if m.get("held"))
+    n_detected = sum(len(ms) for ms in mangos) - n_held
     tracks: dict[int, list[tuple[int, list[dict]]]] = defaultdict(list)
     scores: list[float] = []
     for f, ms in zip(frames, mangos):
@@ -197,6 +204,8 @@ def build_report(session: Session) -> dict:
         "accelerator": frames[0].get("accelerator") if frames else None,
         "conf_threshold": conf,
         "mango_threshold": frames[0].get("mangoThreshold") if frames else None,
+        "keep_threshold": frames[0].get("keepThreshold") if frames else None,
+        "hold_frames": frames[0].get("holdFrames") if frames else None,
         "nms_iou": frames[0].get("nmsIou") if frames else None,
         "n_frames": n,
         "n_frames_saved": sum(1 for f in frames if f.get("frame")),
@@ -207,6 +216,8 @@ def build_report(session: Session) -> dict:
         "mangos_per_frame": {"mean": float(np.mean(per_frame)) if per_frame else None,
                              "median": float(np.median(per_frame)) if per_frame else None,
                              "max": max(per_frame, default=None)},
+        "n_mango_frames_detected": n_detected,
+        "n_mango_frames_held": n_held,
         "n_tracks": len(tracks),
         "tracks": track_rows,
         "damage_confidence_histogram": {"bin_edges": [float(e) for e in edges], "counts": [int(c) for c in counts],
@@ -225,7 +236,8 @@ def report_markdown(r: dict) -> str:
         "",
         f"- Device: {r['device']}; accelerator: {r['accelerator']}",
         f"- ROI mode: {r['roi_mode']}; detector: {r['detector_model']}; damage model: {r['damage_model']}",
-        f"- Damage conf {_fmt(r['conf_threshold'])}, mango threshold {_fmt(r['mango_threshold'])}, NMS IoU {_fmt(r['nms_iou'])}",
+        f"- Damage conf {_fmt(r['conf_threshold'])}, mango threshold {_fmt(r['mango_threshold'])} "
+        f"(keep {_fmt(r['keep_threshold'])}, hold {_fmt(r['hold_frames'], 0)} frames), NMS IoU {_fmt(r['nms_iou'])}",
         f"- Frames: {r['n_frames']} processed, {r['n_frames_saved']} saved, {_fmt(r['dropped_writes'])} dropped writes; "
         f"{_fmt(r['duration_s'], 1)} s, {_fmt(r['fps_wall'], 1)} FPS (wall)",
         "",
@@ -234,6 +246,7 @@ def report_markdown(r: dict) -> str:
         f"- Frames with at least one mango: {_fmt(r['pct_frames_with_mango'], 1)} %",
         f"- Mangos per frame: mean {_fmt(r['mangos_per_frame']['mean'])}, median {_fmt(r['mangos_per_frame']['median'])}, "
         f"max {_fmt(r['mangos_per_frame']['max'])}",
+        f"- Mango-frames: {r['n_mango_frames_detected']} detected, {r['n_mango_frames_held']} held (from tracker memory)",
         f"- Distinct tracks: {r['n_tracks']}",
         "",
         "| track | frames | % frames with damage | max damage mean | median | p90 |",
@@ -531,8 +544,9 @@ def evaluate(session: Session, gt: dict[int, GtFrame]) -> dict:
                 pred_polygons=pred_polys, gt_polygons=gt_polys,
             )
         )
-        mango_pb.append(tens([norm(m["box"], w, h) for m in preds]))
-        mango_ps.append(torch.tensor([m["score"] for m in preds], dtype=torch.float32))
+        detected = [m for m in preds if not m.get("held")]  # a held box is not a stage-1 detection of this frame
+        mango_pb.append(tens([norm(m["box"], w, h) for m in detected]))
+        mango_ps.append(torch.tensor([m["score"] for m in detected], dtype=torch.float32))
         mango_gb.append(tens([norm(b, w, h) for b in g.mangos]))
 
     result: dict = {

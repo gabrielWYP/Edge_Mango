@@ -1,8 +1,12 @@
 package com.edgemango.app.core
 
 data class TwoStageConfig(
-    /** Stage-1 score a mango box needs to be kept (the mango-vs-background gate). */
-    val mangoThreshold: Float = 0.5f,
+    /** Stage-1 score needed to start a new mango track (the mango-vs-background gate). */
+    val mangoThreshold: Float = 0.35f,
+    /** A stage-1 box matching a live track is kept down to this score (hysteresis). */
+    val keepThreshold: Float = 0.15f,
+    /** A track not seen in this frame is still reported, with its last box, for this many frames (<= tracker maxAge). */
+    val holdFrames: Int = 5,
     /** At most this many mangos per frame, best score first. */
     val maxMangos: Int = 10,
     /** Stage-2 damage confidence threshold. */
@@ -29,6 +33,8 @@ class MangoDetection(
     /** Damage masks of this mango on the prototype grid, or null (detect model, masks off, or no damage). */
     val maskLayer: MaskLayer?,
     val timings: FrameTimings,
+    /** True when the box comes from tracker memory (last box and score), not from this frame's stage 1. */
+    val held: Boolean = false,
 ) {
     val maxDamageScore: Float get() = damages.maxOfOrNull { it.score } ?: 0f
 }
@@ -49,8 +55,9 @@ class TwoStageResult(
 
 /**
  * Stage 1 finds mangos on the full frame; stage 2 (the damage model) runs on each mango's crop. When stage 1 finds no
- * mango above the threshold, stage 2 does not run, which is what makes the damage model's "mango" class unnecessary.
- * Mangos carry stable track ids from a [MangoTracker]. Not thread-safe (both pipelines reuse their buffers).
+ * mango and no track is held, stage 2 does not run, which is what makes the damage model's "mango" class unnecessary.
+ * Mangos carry stable track ids from a [MangoTracker], which also supplies hysteresis (a tracked mango survives down to
+ * `keepThreshold`) and hold (a mango missed for up to `holdFrames` frames is reported from memory, `held = true`). Not thread-safe (both pipelines reuse their buffers).
  */
 class TwoStagePipeline(
     val detector: FramePipeline,
@@ -58,16 +65,19 @@ class TwoStagePipeline(
     val tracker: MangoTracker = MangoTracker(),
 ) {
     fun process(frame: RgbImage, config: TwoStageConfig): TwoStageResult {
+        val stage1Floor = minOf(config.mangoThreshold, config.keepThreshold)
         val stage1 = detector.process(
             frame,
-            PipelineConfig(RoiMode.FULL_FRAME, config.mangoThreshold, computeMasks = false, nmsIou = config.nmsIou),
+            PipelineConfig(RoiMode.FULL_FRAME, stage1Floor, computeMasks = false, nmsIou = config.nmsIou),
         )
-        val boxes = stage1.detections
-            .filter { it.cls == FrameResult.MANGO_CLASS && it.score >= config.mangoThreshold }
+        val candidates = stage1.detections
+            .filter { it.cls == FrameResult.MANGO_CLASS && it.score >= stage1Floor }
             .sortedByDescending { it.score }
             .take(config.maxMangos.coerceAtLeast(0))
-        // Always update, also with no boxes, so tracks age out.
-        val ids = tracker.update(boxes.map { it.box })
+        // Always update, also with no candidates, so tracks age out. Hysteresis and hold live in the tracker.
+        val tracked = tracker.update(
+            candidates.map { it.box to it.score }, config.mangoThreshold, config.keepThreshold, config.holdFrames,
+        ).sortedByDescending { it.score }.take(config.maxMangos.coerceAtLeast(0))
 
         var roi = stage1.timings.roiMs
         var pre = stage1.timings.preMs
@@ -77,7 +87,7 @@ class TwoStagePipeline(
             RoiMode.FULL_FRAME, config.damageThreshold, config.computeMasks, config.computePolygons,
             nmsIou = config.nmsIou, agnosticNms = config.agnosticNms,
         )
-        val mangos = boxes.mapIndexed { i, m ->
+        val mangos = tracked.map { m ->
             val b = m.box
             val window = RoiRule.window(b.x1, b.y1, b.x2, b.y2, frame.width, frame.height, config.margin)
                 ?: RoiRule.full(frame.width, frame.height)
@@ -89,7 +99,7 @@ class TwoStagePipeline(
             pre += r.timings.preMs
             infer += r.timings.inferMs
             post += r.timings.postMs
-            MangoDetection(ids[i], b, m.score, window, r.detections, r.maskLayer, r.timings)
+            MangoDetection(m.id, b, m.score, window, r.detections, r.maskLayer, r.timings, m.held)
         }
         return TwoStageResult(
             frame.width, frame.height, mangos, stage1.timings.totalMs, FrameTimings(roi, pre, infer, post),

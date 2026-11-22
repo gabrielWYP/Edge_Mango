@@ -17,9 +17,12 @@ DMG_A = [150.0, 150.0, 200.0, 200.0]
 SQUARE_A = [150.0, 150.0, 200.0, 150.0, 200.0, 200.0, 150.0, 200.0]  # flat x, y polygon of DMG_A
 
 
-def mango(track, box, score=0.9, damages=()):
+def mango(track, box, score=0.9, damages=(), held=None):
     ds = [{"box": b, "score": s, **({"polygon": p} if p else {})} for b, s, p in damages]
-    return {"trackId": track, "box": box, "score": score, "damages": ds, "maxDamage": max((d["score"] for d in ds), default=0.0)}
+    m = {"trackId": track, "box": box, "score": score, "damages": ds, "maxDamage": max((d["score"] for d in ds), default=0.0)}
+    if held is not None:  # sessions recorded before the hold feature have no "held" key
+        m["held"] = held
+    return m
 
 
 def record(index, mangos, *, saved=True, no_mango=None, t=100.0):
@@ -119,6 +122,21 @@ def test_report_numbers(basic):
     assert r["latency_ms"]["totalMs"]["max"] == 120.0
     assert r["fps_wall"] == pytest.approx(10.0)  # 100 ms between frames
     assert r["dropped_writes"] == 1
+
+
+def test_report_counts_held_and_detected_mango_frames(tmp_path):
+    recs = [
+        record(0, [mango(1, A, 0.9, held=False), mango(2, B, 0.8)]),  # no "held" key counts as detected
+        record(1, [mango(1, A, 0.9, held=False), mango(2, B, 0.8, held=True)]),
+        record(2, [mango(1, A, 0.4, held=True)]),
+    ]
+    for r_ in recs:
+        r_["keepThreshold"], r_["holdFrames"] = 0.15, 5
+    r = fe.build_report(fe.load_session(write_session(tmp_path, recs)))
+    assert (r["n_mango_frames_detected"], r["n_mango_frames_held"]) == (3, 2)
+    assert (r["keep_threshold"], r["hold_frames"]) == (0.15, 5)
+    md = fe.report_markdown(r)
+    assert "3 detected, 2 held" in md and "keep 0.15, hold 5 frames" in md
 
 
 def test_report_cli_writes_json_and_markdown(basic, tmp_path):
@@ -250,6 +268,24 @@ def test_false_positive_on_a_healthy_mango(tmp_path):
     assert pm["recall"] == 1.0 and pm["specificity"] == 0.0
     f = pm["fp_damage_boxes_per_healthy_mango"]
     assert f["per_track"] == 2.0 and f["per_mango_frame"] == 1.0 and f["n_fp_boxes"] == 2
+
+
+def test_mango_ap_ignores_held_mangos_but_damage_uses_their_crops(tmp_path):
+    # Frame 0: mango A detected. Frame 1: mango A held (its crop still finds the damage); a detected FP mango scores 0.99.
+    far = [500.0, 0.0, 560.0, 50.0]
+    recs = [
+        record(0, [mango(1, A, 0.9, [(DMG_A, 0.9, None)], held=False)]),
+        record(1, [mango(1, A, 0.9, [(DMG_A, 0.8, None)], held=True), mango(3, far, 0.99, held=False)]),
+    ]
+    d = write_session(tmp_path, recs)
+    s = fe.load_session(d)
+    gt, _ = fe.load_ground_truth(
+        write_gt(tmp_path / "gt.json", {i: [gt_rect(A, "mango"), gt_rect(DMG_A, "damage")] for i in (0, 1)}), s)
+    r = fe.evaluate(s, gt)
+    assert r["damage_box_ap50"]["ap"] == pytest.approx(1.0)  # the held crop's damage counts
+    # Mango ranking uses detected boxes only: FP .99, TP .9 -> precision 0.5 at recall 0.5 (the held GT mango is unmatched) -> AP 0.25.
+    assert r["mango_ap50"]["n_gt"] == 2
+    assert r["mango_ap50"]["ap"] == pytest.approx(0.25)
 
 
 def test_missed_damage_and_missed_mango(tmp_path):

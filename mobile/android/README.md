@@ -91,8 +91,12 @@ score about 0.01. Replace it with a trained checkpoint's export as soon as one e
 The damage model was only ever trained on mango crops, so its own "mango" class scores about 1.00 even on background: it cannot
 tell a frame with a mango from one without. The ROI mode **Detector (2-stage)** adds a separate stage-1 mango detector:
 
-1. Stage 1 runs on the full frame. Boxes with score >= *mango threshold* (default 0.5) are kept, best first, at most *max mangos*
-   (default 10). **No mango box means "no mango" and stage 2 does not run.**
+1. Stage 1 runs on the full frame. A box with score >= *mango threshold* (default 0.35) starts a mango; a box that matches a live
+   track (IoU >= 0.3) is kept down to *keep threshold* (default 0.15, hysteresis), best first, at most *max mangos* (default 10).
+   A mango stage 1 misses is **held**: its last box and score are reused for up to *hold frames* (default 5, at most the tracker's 15)
+   and stage 2 still runs on it, so the damage output does not flicker when a stock detector's score oscillates; held mangos are drawn
+   dashed with "(held)" and logged with `"held": true`. **No mango box and no held track means "no mango" and stage 2 does not run.**
+   All three values are in Settings; a mango threshold saved before settings version 2 (the old 0.5) is reset to 0.35 once.
 2. For each mango the crop is the box plus 10 % margin (`RoiRule.window`), letterboxed to the damage model's input; only class-1
    (damage) detections whose box centre lies inside the mango box are kept, with their masks.
 3. A greedy IoU tracker (IoU >= 0.3, dropped after 15 unseen frames) gives each mango a stable `trackId` shown on the overlay.

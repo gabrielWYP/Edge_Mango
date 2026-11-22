@@ -101,9 +101,49 @@ class TwoStagePipelineTest {
 
     @Test
     fun mangoThresholdIsConfigurable() {
-        val p = pipeline(FakeDetector(listOf(mangoA, mangoB)), FakeDamage(emptyList()))
-        assertEquals(2, p.process(frame, TwoStageConfig(mangoThreshold = 0.5f)).mangos.size)
-        assertEquals(1, p.process(frame, TwoStageConfig(mangoThreshold = 0.8f)).mangos.size)
+        // Fresh pipelines: a live track would keep a mango below the start threshold alive (hysteresis).
+        val low = pipeline(FakeDetector(listOf(mangoA, mangoB)), FakeDamage(emptyList()))
+        assertEquals(2, low.process(frame, TwoStageConfig(mangoThreshold = 0.5f)).mangos.size)
+        val high = pipeline(FakeDetector(listOf(mangoA, mangoB)), FakeDamage(emptyList()))
+        assertEquals(1, high.process(frame, TwoStageConfig(mangoThreshold = 0.8f)).mangos.size)
+    }
+
+    @Test
+    fun aMissedMangoIsHeldAndStageTwoStillRunsOnIt() {
+        val det = FakeDetector(listOf(mangoA))
+        val dmg = FakeDamage(listOf(floatArrayOf(320f, 320f, 100f, 100f)))
+        val p = pipeline(det, dmg)
+        val cfg = TwoStageConfig(damageThreshold = 0.5f, computeMasks = false, holdFrames = 3)
+        val first = p.process(frame, cfg).mangos.single()
+        assertEquals(false, first.held)
+        assertEquals(1, dmg.calls)
+
+        det.boxes = emptyList() // stage 1 loses the mango
+        val r = p.process(frame, cfg)
+        val held = r.mangos.single()
+        assertTrue(held.held)
+        assertEquals(first.trackId, held.trackId)
+        assertEquals(first.score, held.score, 0f)
+        assertEquals(2, dmg.calls) // stage 2 ran on the held crop
+        assertEquals(1, held.damages.size)
+        assertEquals(false, r.noMango)
+    }
+
+    @Test
+    fun aWeakBoxMatchingATrackIsKeptButANewWeakBoxIsNot() {
+        val det = FakeDetector(listOf(mangoA))
+        val p = pipeline(det, FakeDamage(emptyList()))
+        val cfg = TwoStageConfig() // start 0.35, keep 0.15
+        val id = p.process(frame, cfg).mangos.single().trackId
+        // Same place, score 0.20: below the start threshold, above keep -> same track, not held.
+        det.boxes = listOf(floatArrayOf(0.30f, 0.50f, 0.20f, 0.20f, 0.20f))
+        val kept = p.process(frame, cfg).mangos.single()
+        assertEquals(id, kept.trackId)
+        assertEquals(false, kept.held)
+        assertEquals(0.20f, kept.score, 1e-6f)
+        // A new weak box elsewhere never starts a track.
+        det.boxes = listOf(floatArrayOf(0.30f, 0.50f, 0.20f, 0.20f, 0.20f), floatArrayOf(0.70f, 0.50f, 0.20f, 0.20f, 0.20f))
+        assertEquals(listOf(id), p.process(frame, cfg).mangos.map { it.trackId })
     }
 
     @Test

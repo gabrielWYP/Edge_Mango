@@ -127,7 +127,8 @@ private fun drawTwoStage(
         val bmp = bitmaps.getOrNull(i)
         if (bmp != null && layer != null) drawMask(c, bmp, layer, m.window, t, paints.mask)
         if (displayMode.showBoxes) {
-            drawBox(c, m.box, "#${m.trackId} %.2f".format(m.score), paints.mango, t, textSize)
+            val label = "#${m.trackId} %.2f".format(m.score) + if (m.held) " (held)" else ""
+            drawBox(c, m.box, label, if (m.held) paints.heldMango else paints.mango, t, textSize)
             for (d in m.damages) drawBox(c, d.box, "%.2f".format(d.score), paints.damage, t, textSize)
         }
     }
@@ -141,6 +142,12 @@ private class ClassPaints(color: Int, stroke: Float, textSize: Float) {
 private class OverlayPaints(stroke: Float, textSize: Float) {
     val mango = ClassPaints(MANGO_COLOR, stroke, textSize)
     val damage = ClassPaints(DAMAGE_COLOR, stroke, textSize)
+    /** Dimmer, dashed variant for mangos held from tracker memory. */
+    val heldMango = ClassPaints(MANGO_COLOR, stroke, textSize).also {
+        it.box.alpha = 140
+        it.box.pathEffect = DashPathEffect(floatArrayOf(stroke * 3, stroke * 2), 0f)
+        it.text.alpha = 160
+    }
     val roi = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE; strokeWidth = stroke; color = ROI_COLOR
         pathEffect = DashPathEffect(floatArrayOf(stroke * 4, stroke * 3), 0f)

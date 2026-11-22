@@ -200,8 +200,9 @@ class LiveViewModel(application: Application) : AndroidViewModel(application) {
                         failedWrites = failed,
                         settings = SessionSettings(
                             settings.roiMode.name, settings.displayMode.name, settings.confidence.toDouble(),
-                            settings.mangoThreshold.toDouble(), settings.maxMangos, settings.nmsIou.toDouble(),
+                            settings.mangoThreshold.toString().toDouble(), settings.maxMangos, settings.nmsIou.toDouble(),
                             settings.agnosticNms, settings.analysisWidth, settings.accelerator.name,
+                            keepThreshold = settings.keepThreshold.toString().toDouble(), holdFrames = settings.holdFrames,
                         ),
                         damageModel = modelInfo(damage, damageAccel) ?: ModelInfo(modelName),
                         detectorModel = modelInfo(detector, detAccel),
@@ -315,6 +316,8 @@ class LiveViewModel(application: Application) : AndroidViewModel(application) {
         roiMode = s.roiMode.name,
         confThreshold = s.confidence,
         mangoThreshold = s.mangoThreshold,
+        keepThreshold = s.keepThreshold,
+        holdFrames = s.holdFrames,
         nmsIou = s.nmsIou,
         agnosticNms = s.agnosticNms,
         maxMangos = s.maxMangos,
@@ -351,6 +354,8 @@ class LiveViewModel(application: Application) : AndroidViewModel(application) {
     private fun analyzeTwoStage(frame: RgbImage, s: AppSettings, cameraNs: Long) {
         val config = TwoStageConfig(
             mangoThreshold = s.mangoThreshold,
+            keepThreshold = s.keepThreshold,
+            holdFrames = s.holdFrames,
             maxMangos = s.maxMangos,
             damageThreshold = s.confidence,
             computeMasks = s.displayMode.showMask,

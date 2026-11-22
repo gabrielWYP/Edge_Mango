@@ -31,6 +31,8 @@ data class MangoRecord(
     val score: Double,
     val damages: List<DamageRecord>,
     val maxDamage: Double,
+    /** True when the box is the tracker's memory of an earlier frame (stage 1 missed it here), not a detection of this frame. */
+    val held: Boolean = false,
 )
 
 @Serializable
@@ -70,6 +72,10 @@ data class FrameRecord(
     /** Single-crop modes: every detection of the one crop (null in DETECTOR mode). */
     val detections: List<DetectionRecord>? = null,
     val timings: TimingsRecord,
+    /** Stage-1 score a box matching a live track needs (hysteresis); `mangoThreshold` starts a track. */
+    val keepThreshold: Double = 0.0,
+    /** Frames a missed track is still reported (`held`). */
+    val holdFrames: Int = 0,
 )
 
 /** Settings that shaped a frame record; copied into every line so a line is self-describing. */
@@ -83,6 +89,8 @@ data class FrameContext(
     val accelerator: String,
     val detectorModel: String?,
     val damageModel: String,
+    val keepThreshold: Float = 0f,
+    val holdFrames: Int = 0,
 )
 
 @Serializable
@@ -99,6 +107,8 @@ data class SessionSettings(
     val agnosticNms: Boolean,
     val analysisWidth: Int,
     val acceleratorChoice: String,
+    val keepThreshold: Double = 0.0,
+    val holdFrames: Int = 0,
 )
 
 @Serializable
@@ -145,20 +155,22 @@ object SessionJson {
 
     fun fromTwoStage(index: Int, wallMs: Long, cameraNs: Long, frameFile: String?, ctx: FrameContext, r: TwoStageResult) = FrameRecord(
         index, wallMs, cameraNs, r.frameW, r.frameH, ctx.roiMode,
-        ctx.confThreshold.toDouble(), ctx.mangoThreshold.toDouble(), ctx.nmsIou.toDouble(), ctx.agnosticNms, ctx.maxMangos,
+        ctx.confThreshold.toDouble(), r4(ctx.mangoThreshold.toDouble()), ctx.nmsIou.toDouble(), ctx.agnosticNms, ctx.maxMangos,
         frameFile, ctx.accelerator, ctx.detectorModel, ctx.damageModel,
         noMango = r.noMango,
         mangos = r.mangos.map { m ->
-            MangoRecord(m.trackId, boxOf(m.box), r4(m.score.toDouble()), m.damages.map(::damage), r4(m.maxDamageScore.toDouble()))
+            MangoRecord(m.trackId, boxOf(m.box), r4(m.score.toDouble()), m.damages.map(::damage), r4(m.maxDamageScore.toDouble()), m.held)
         },
         timings = timings(r.timings, r.detectorMs),
+        keepThreshold = r4(ctx.keepThreshold.toDouble()), holdFrames = ctx.holdFrames,
     )
 
     fun fromSingleCrop(index: Int, wallMs: Long, cameraNs: Long, frameFile: String?, ctx: FrameContext, r: FrameResult) = FrameRecord(
         index, wallMs, cameraNs, r.frameW, r.frameH, ctx.roiMode,
-        ctx.confThreshold.toDouble(), ctx.mangoThreshold.toDouble(), ctx.nmsIou.toDouble(), ctx.agnosticNms, ctx.maxMangos,
+        ctx.confThreshold.toDouble(), r4(ctx.mangoThreshold.toDouble()), ctx.nmsIou.toDouble(), ctx.agnosticNms, ctx.maxMangos,
         frameFile, ctx.accelerator, ctx.detectorModel, ctx.damageModel,
         detections = r.detections.map { DetectionRecord(it.cls, boxOf(it.box), r4(it.score.toDouble())) },
         timings = timings(r.timings),
+        keepThreshold = r4(ctx.keepThreshold.toDouble()), holdFrames = ctx.holdFrames,
     )
 }

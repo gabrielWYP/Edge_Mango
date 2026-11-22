@@ -31,6 +31,8 @@ data class SettingsActions(
     val onAnalysisWidth: (Int) -> Unit,
     val onDetectorModel: (String) -> Unit,
     val onMangoThreshold: (Float) -> Unit,
+    val onKeepThreshold: (Float) -> Unit,
+    val onHoldFrames: (Int) -> Unit,
     val onMaxMangos: (Int) -> Unit,
     val onNmsIou: (Float) -> Unit,
     val onAgnosticNms: (Boolean) -> Unit,
@@ -44,6 +46,7 @@ val ANALYSIS_WIDTHS = listOf(640, 1280, 1920, 2560)
 val NMS_IOU_CHOICES = listOf(0.5f, 0.6f, 0.7f)
 
 val MAX_MANGOS_CHOICES = listOf(1, 3, 5, 10)
+val HOLD_FRAMES_CHOICES = listOf(0, 3, 5, 10, 15)
 
 /** Presentational settings screen for the live view. (The benchmark screen has its own model/accelerator pickers.) */
 @Composable
@@ -99,8 +102,12 @@ fun SettingsContent(state: SettingsUiState, actions: SettingsActions, modifier: 
                 "threshold skip the damage model.",
             style = MaterialTheme.typography.bodySmall,
         )
-        Text("Mango score threshold %.2f".format(s.mangoThreshold), style = MaterialTheme.typography.labelMedium)
+        Text("Mango start threshold %.2f (new track)".format(s.mangoThreshold), style = MaterialTheme.typography.labelMedium)
         Slider(value = s.mangoThreshold, onValueChange = actions.onMangoThreshold, valueRange = 0.05f..0.95f)
+        Text("Mango keep threshold %.2f (tracked mango)".format(s.keepThreshold), style = MaterialTheme.typography.labelMedium)
+        Slider(value = s.keepThreshold, onValueChange = actions.onKeepThreshold, valueRange = 0.05f..0.95f)
+        Text("Hold frames (reuse last mango box)", style = MaterialTheme.typography.labelMedium)
+        ChoiceChips(HOLD_FRAMES_CHOICES, s.holdFrames, { it.toString() }, actions.onHoldFrames)
         Text("Max mangos per frame", style = MaterialTheme.typography.labelMedium)
         ChoiceChips(MAX_MANGOS_CHOICES, s.maxMangos, { it.toString() }, actions.onMaxMangos)
 
