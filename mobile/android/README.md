@@ -121,6 +121,28 @@ input pixels (decided by magnitude: max <= 2 means normalized), no NMS inside. T
 `"output_layout": "channels_first"` (or `"channels_last"`) to the sidecar if a model gets mis-read. Verify the first real export by
 looking at the overlay on the phone before trusting a session.
 
+**COCO gate (recommended stage 1).** The single-class detectors trained on our data failed on real photos (6/22 web mango photos),
+while a stock COCO YOLO11n counting its fruit classes as mango found 17/17 mango photos, 40/40 capture-box frames (median IoU
+0.95) and 0/40 false positives on frame strips without fruit. Use the stock 80-class model and add `keep_classes` to the sidecar:
+the listed COCO ids (46 banana, 47 apple, 49 orange) are the only columns scored, and detections are relabelled as class 0
+(mango); the overlay always draws stage-1 boxes as "mango", whatever `class_names[0]` says.
+
+```json
+{
+  "format": "ultralytics",
+  "task": "detect",
+  "input": {"shape": [1, 640, 640, 3], "layout": "NHWC", "dtype": "float32"},
+  "output_layout": "channels_first",
+  "keep_classes": [46, 47, 49],
+  "class_names": ["<the 80 COCO names in order>"],
+  "preprocessing": {
+    "normalization": {"mean": [0, 0, 0], "std": [1, 1, 1]},
+    "letterbox": {"target_size": 640, "pad_value": 114}
+  },
+  "decode": {"conf_threshold": 0.25, "nms": {"iou_threshold": 0.5}, "max_detections": 300}
+}
+```
+
 ## Field-test sessions
 
 A session records what the app saw and predicted, to evaluate it later with ground truth from Label Studio.

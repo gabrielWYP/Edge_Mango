@@ -158,7 +158,7 @@ class FramePipeline(
             agnosticNms = config.agnosticNms,
         )
         var dets = if (sidecar.isUltralytics) {
-            UltralyticsDecoder.decode(raw.boxes, params, sidecar.outputLayout)
+            UltralyticsDecoder.decode(raw.boxes, params, sidecar.outputLayout, sidecar.keepClasses)
         } else {
             Decoder.decode(raw.boxes, raw.cls, params)
         }

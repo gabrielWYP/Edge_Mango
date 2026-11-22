@@ -46,6 +46,8 @@ data class ModelSidecar(
     val modelName: String? = null,
     val format: ModelFormat = ModelFormat.EDGE_MANGO,
     val outputLayout: OutputLayout = OutputLayout.AUTO,
+    /** Ultralytics only: class ids that count as a detection, all relabelled to class 0 (e.g. COCO 46, 47, 49). Empty: all classes. */
+    val keepClasses: List<Int> = emptyList(),
 ) {
     val numClasses: Int get() = classNames.size
 
@@ -120,6 +122,7 @@ data class ModelSidecar(
                 modelName = modelObj?.string("file") ?: modelObj?.string("name"),
                 format = format,
                 outputLayout = layout,
+                keepClasses = (root["keep_classes"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.intOrNull } ?: emptyList(),
             )
         }
 

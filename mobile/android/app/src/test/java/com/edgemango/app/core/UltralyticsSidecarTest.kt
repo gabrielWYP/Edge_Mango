@@ -55,4 +55,11 @@ class UltralyticsSidecarTest {
         )
         assertTrue(runCatching { ModelSidecar.parse("""{"format":"onnx","task":"detect","input_size":640}""") }.isFailure)
     }
+
+    @Test
+    fun parsesKeepClassesAndDefaultsToEmpty() {
+        val s = ModelSidecar.parse("""{"format":"ultralytics","task":"detect","input_size":640,"keep_classes":[46,47,49]}""")
+        assertEquals(listOf(46, 47, 49), s.keepClasses)
+        assertEquals(emptyList<Int>(), ModelSidecar.parse(template).keepClasses)
+    }
 }

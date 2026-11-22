@@ -108,4 +108,33 @@ class UltralyticsDecoderTest {
     fun rejectsATensorThatDoesNotMatchTheClassCount() {
         assertTrue(runCatching { UltralyticsDecoder.decode(FloatArray(8403), params) }.isFailure)
     }
+
+    @Test
+    fun keepClassesPicksTheBestKeptClassAndRelabelsItAsMango() {
+        val p = params.copy(numClasses = 5)
+        val raw = channelsFirst(
+            5,
+            10 to floatArrayOf(0.5f, 0.25f, 0.2f, 0.4f, 0.95f, 0.01f, 0.01f, 0.6f, 0.01f),
+            20 to floatArrayOf(0.2f, 0.7f, 0.2f, 0.2f, 0.01f, 0.9f, 0.01f, 0.01f, 0.01f),
+        )
+        val d = UltralyticsDecoder.decode(raw, p, OutputLayout.CHANNELS_FIRST, listOf(3, 4)).single()
+        assertEquals(0, d.cls)
+        assertEquals(0.6f, d.score, 1e-6f)
+        assertEquals(10, d.anchor)
+    }
+
+    @Test
+    fun keepClassesBelowThresholdGiveNothing() {
+        val p = params.copy(numClasses = 3)
+        val raw = channelsFirst(3, 10 to floatArrayOf(0.5f, 0.25f, 0.2f, 0.4f, 0.9f, 0.1f, 0.01f))
+        assertTrue(UltralyticsDecoder.decode(raw, p, OutputLayout.CHANNELS_FIRST, listOf(1, 2)).isEmpty())
+    }
+
+    @Test
+    fun keepClassesOutOfRangeThrows() {
+        val p = params.copy(numClasses = 3)
+        val raw = channelsFirst(3, 10 to floatArrayOf(0.5f, 0.25f, 0.2f, 0.4f, 0.9f, 0.1f, 0.01f))
+        assertTrue(runCatching { UltralyticsDecoder.decode(raw, p, OutputLayout.CHANNELS_FIRST, listOf(3)) }.exceptionOrNull() is IllegalArgumentException)
+        assertTrue(runCatching { UltralyticsDecoder.decode(raw, p, OutputLayout.CHANNELS_FIRST, listOf(-1)) }.exceptionOrNull() is IllegalArgumentException)
+    }
 }

@@ -17,8 +17,22 @@ object UltralyticsDecoder {
     /** Box values up to this magnitude are read as normalized coordinates. */
     const val NORMALIZED_MAX = 2f
 
-    fun decode(raw: FloatArray, params: DecodeParams, layout: OutputLayout = OutputLayout.AUTO): List<Detection> {
+    /**
+     * @param keepClasses when not empty, only these class columns count: an anchor's score is the maximum over them and
+     * the detection is relabelled as class 0. Lets a stock multi-class model (e.g. COCO banana/apple/orange as "mango")
+     * act as a single-class gate. Ids must lie in `0 until nc`. Empty keeps the best class over all classes.
+     */
+    fun decode(
+        raw: FloatArray,
+        params: DecodeParams,
+        layout: OutputLayout = OutputLayout.AUTO,
+        keepClasses: List<Int> = emptyList(),
+    ): List<Detection> {
         val nc = params.numClasses
+        val kept = keepClasses.distinct().sorted()
+        if (kept.isNotEmpty()) {
+            require(kept.all { it in 0 until nc }) { "keep_classes $keepClasses has ids outside 0 until $nc" }
+        }
         val k = 4 + nc
         require(raw.size >= k && raw.size % k == 0) { "output has ${raw.size} values, not a multiple of ${k} (4 + $nc classes)" }
         val n = raw.size / k
@@ -39,10 +53,16 @@ object UltralyticsDecoder {
         val cand = ArrayList<Detection>(256)
         for (a in 0 until n) {
             var best = 0
-            var bestScore = at(a, 4)
-            for (c in 1 until nc) {
-                val s = at(a, 4 + c)
-                if (s > bestScore) { bestScore = s; best = c }
+            var bestScore: Float
+            if (kept.isEmpty()) {
+                bestScore = at(a, 4)
+                for (c in 1 until nc) {
+                    val s = at(a, 4 + c)
+                    if (s > bestScore) { bestScore = s; best = c }
+                }
+            } else {
+                bestScore = Float.NEGATIVE_INFINITY
+                for (c in kept) bestScore = maxOf(bestScore, at(a, 4 + c))
             }
             if (bestScore < params.confThreshold) continue
             cand.add(Detection(best, bestScore, at(a, 0) * factor, at(a, 1) * factor, at(a, 2) * factor, at(a, 3) * factor, a))
