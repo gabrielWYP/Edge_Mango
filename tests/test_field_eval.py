@@ -323,3 +323,92 @@ def test_eval_cli(basic, tmp_path):
     empty = tmp_path / "empty.json"
     empty.write_text("[]")
     assert fe.main(["eval", str(basic), "--gt", str(empty), "--out", str(out)]) == 1
+
+
+# ---- re-NMS, --conf and memory ---------------------------------------------------------------------------------------
+
+
+def overlap_session(tmp_path, nms_iou=0.7, scores=(0.9, 0.6)):
+    dmg_b = [155.0, 155.0, 205.0, 205.0]  # IoU with DMG_A ~ 0.68 -> kept at 0.7, suppressed at 0.5
+    rec = record(0, [mango(1, A, 0.95, [(DMG_A, scores[0], None), (dmg_b, scores[1], None)])])
+    rec["nmsIou"] = nms_iou
+    return write_session(tmp_path, [rec])
+
+
+def n_damages(session):
+    return [len(m["damages"]) for f in session.frames for m in fe.frame_mangos(f)]
+
+
+def test_renms_removes_overlap_that_the_recorded_threshold_keeps(tmp_path):
+    s = fe.load_session(overlap_session(tmp_path))
+    assert n_damages(fe.apply_nms(s, 0.7)) == [2]
+    tight = fe.apply_nms(s, 0.5)
+    assert n_damages(tight) == [1]
+    assert tight.frames[0]["mangos"][0]["maxDamage"] == 0.9
+    assert n_damages(s) == [2]  # the input session is untouched
+
+
+def test_renms_larger_than_recorded_is_an_error(tmp_path):
+    s = fe.load_session(overlap_session(tmp_path, nms_iou=0.7))
+    with pytest.raises(ValueError, match="larger than the NMS IoU recorded"):
+        fe.apply_nms(s, 0.8)
+    out = tmp_path / "out"
+    assert fe.main(["report", str(s.root), "--out", str(out), "--nms-iou", "0.8"]) == 2
+
+
+def test_nms_list_gives_one_entry_per_threshold(tmp_path):
+    d = overlap_session(tmp_path)
+    out = tmp_path / "out"
+    assert fe.main(["report", str(d), "--out", str(out), "--nms-iou", "0.7,0.5"]) == 0
+    data = json.loads((out / "report.json").read_text())["nms_iou"]
+    assert list(data) == ["0.7", "0.5"]
+    assert data["0.7"]["damage_confidence_histogram"]["n_detections"] == 2
+    assert data["0.5"]["damage_confidence_histogram"]["n_detections"] == 1
+    md = (out / "report.md").read_text()
+    assert "| 0.7 | 2 |" in md and "| 0.5 | 1 |" in md
+
+
+def test_nms_list_export_ls_writes_one_tasks_file_per_threshold(tmp_path):
+    d = overlap_session(tmp_path)
+    out = tmp_path / "ls"
+    assert fe.main(["export-ls", str(d), "--out", str(out), "--every", "1", "--nms-iou", "0.7,0.5"]) == 0
+    n = {t: len(json.loads((out / f"tasks_nms{t}.json").read_text())[0]["predictions"][0]["result"]) for t in ("0.7", "0.5")}
+    assert n == {"0.7": 3, "0.5": 2}  # mango + damages
+
+
+def test_parse_thresholds():
+    assert fe.parse_thresholds("0.7, 0.6,0.5") == [0.7, 0.6, 0.5]
+    for bad in ("", "abc", "0", "1.5"):
+        with pytest.raises(Exception):
+            fe.parse_thresholds(bad)
+
+
+def test_conf_filter_uses_the_operational_threshold(tmp_path):
+    rec = record(0, [mango(1, A, 0.95, [(DMG_A, 0.9, None), ([400.0, 150.0, 450.0, 200.0], 0.1, None)])])
+    rec["confThreshold"] = 0.05
+    s = fe.load_session(write_session(tmp_path, [rec]))
+    assert fe.build_report(s)["damage_confidence_histogram"]["n_detections"] == 2
+    r = fe.build_report(fe.apply_conf(s, 0.25))
+    assert r["conf_threshold"] == 0.25 and r["damage_confidence_histogram"]["n_detections"] == 1
+    out = tmp_path / "out"
+    assert fe.main(["report", str(s.root), "--out", str(out), "--conf", "0.25"]) == 0
+    assert json.loads((out / "report.json").read_text())["damage_confidence_histogram"]["n_detections"] == 1
+
+
+def test_report_memory_stats_present_and_absent(tmp_path):
+    recs = [record(i, [mango(1, A)]) for i in range(4)]
+    for i, r in enumerate(recs):
+        r["mem"] = {"rssKb": 1000 * (i + 1), "hwmKb": 5000 + i, **({"pssKb": 900 + i} if i in (1, 3) else {})}
+    d = write_session(tmp_path, recs, name="session_with_mem")
+    info = json.loads((d / "session.json").read_text())
+    info["memory"] = {"ramBeforeLoadKb": 800}
+    (d / "session.json").write_text(json.dumps(info))
+    mem = fe.build_report(fe.load_session(d))["memory"]
+    assert mem == {"rss_max_kb": 4000, "rss_median_kb": 2500.0, "hwm_end_kb": 5003, "pss_max_kb": 903,
+                   "ram_before_load_kb": 800, "n_samples": 4}
+    assert "## Memory (MB)" in fe.report_markdown(fe.build_report(fe.load_session(d)))
+
+    old = write_session(tmp_path, [record(0, [mango(1, A)])], name="session_old")
+    r = fe.build_report(fe.load_session(old))
+    assert r["memory"] is None
+    assert "Memory" not in fe.report_markdown(r)

@@ -14,6 +14,16 @@ frame, see `mobile/android/.../core/SessionLog.kt`) and `session.json`. Three su
 
 Assumptions (read before quoting a number):
 
+* A "mango" is a stage-1 track: one face of one fruit seen from above, identified by `trackId`. A `trackId` is only
+  meaningful inside one session (the tracker restarts at every session), so two sessions never share mangos and a
+  physical mango seen from two faces is two tracks.
+* `--nms-iou` (report, export-ls, eval; a float or a comma list such as `0.7,0.6,0.5`) re-runs greedy per-class NMS on the
+  damage detections of every frame before anything is computed: score-sorted, a box is suppressed when its IoU with a kept
+  box is > the threshold (the rule of the app's `Decoder.nms`). It can only remove boxes, so a value larger than the NMS IoU
+  recorded in the session is an error. With a list there is one block per threshold. Default: the recorded value (no change).
+* `--conf` (report only, default 0.25) is the operational damage threshold: detections below it are ignored even when the
+  session was recorded at a lower one (e.g. 0.05). `eval` keeps using the session's own confidence.
+
 * Boxes and polygons are in upright frame pixels; Label Studio percentages are converted with the frame size of the
   prediction line. Frames are matched to Label Studio tasks by the `f_<6 digits>.jpg` name in `data.image` (a
   `<hash>-` prefix added by an upload is fine). Frames that were not annotated are ignored by `eval`.
@@ -64,6 +74,7 @@ MATCH_IOU = 0.5
 LS_FROM_BOXES = "boxes"
 LS_FROM_POLYGONS = "polygons"
 LS_TO = "image"
+NMS_HELP = "re-run per-class NMS on damage detections at this IoU (float or comma list); default: the recorded value"
 
 LABEL_CONFIG = """<View>
   <Image name="image" value="$image" zoom="true" zoomControl="true"/>
@@ -89,13 +100,22 @@ class Session:
     info: dict
     frames: list[dict]
     by_index: dict[int, dict] = field(default_factory=dict)
+    conf_override: float | None = None
 
     @property
     def name(self) -> str:
         return self.root.name
 
     @property
+    def nms_iou(self) -> float | None:
+        """The NMS IoU the app used (most common value of the frame records), or None for an empty session."""
+        values = Counter(f["nmsIou"] for f in self.frames if f.get("nmsIou") is not None)
+        return float(values.most_common(1)[0][0]) if values else None
+
+    @property
     def conf(self) -> float:
+        if self.conf_override is not None:
+            return self.conf_override
         values = Counter(f["confThreshold"] for f in self.frames)
         return float(values.most_common(1)[0][0]) if values else 0.0
 
@@ -141,6 +161,74 @@ def frame_mangos(frame: dict) -> list[dict]:
     ]
 
 
+def parse_thresholds(text: str) -> list[float]:
+    """`"0.7"` or `"0.7,0.6,0.5"` -> floats in (0, 1]; raises `argparse.ArgumentTypeError` otherwise."""
+    try:
+        values = [float(t) for t in text.split(",") if t.strip()]
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"not a float or comma list of floats: {text!r}") from None
+    if not values or any(not 0.0 < v <= 1.0 for v in values):
+        raise argparse.ArgumentTypeError(f"NMS IoU thresholds must be in (0, 1]: {text!r}")
+    return values
+
+
+def threshold_key(t: float) -> str:
+    return f"{t:g}"
+
+
+def nms_boxes(items: list[dict], iou: float) -> list[dict]:
+    """Greedy NMS over `{"box", "score"}` dicts: score-sorted, suppress when IoU > `iou`. Returns the kept items by score."""
+    kept: list[dict] = []
+    for d in sorted(items, key=lambda d: -d["score"]):
+        if all(box_iou(k["box"], d["box"]) <= iou for k in kept):
+            kept.append(d)
+    return kept
+
+
+def apply_nms(session: Session, iou: float) -> Session:
+    """A copy of `session` whose damage detections went through NMS at `iou` (damage class only, per class)."""
+    recorded = session.nms_iou
+    if recorded is not None and iou > recorded + 1e-9:
+        raise ValueError(
+            f"--nms-iou {iou:g} is larger than the NMS IoU recorded in {session.name} ({recorded:g}): "
+            "NMS can only remove boxes, so a looser threshold cannot be reproduced"
+        )
+    frames = []
+    for f in session.frames:
+        g = dict(f)
+        if f.get("mangos"):
+            g["mangos"] = []
+            for m in f["mangos"]:
+                damages = nms_boxes(m["damages"], iou)
+                g["mangos"].append({**m, "damages": damages, "maxDamage": max((d["score"] for d in damages), default=0.0)})
+        if f.get("detections"):
+            damage = nms_boxes([d for d in f["detections"] if d["cls"] == 1], iou)
+            g["detections"] = [d for d in f["detections"] if d["cls"] != 1] + damage
+        frames.append(g)
+    out = Session(session.root, session.info, frames, conf_override=session.conf_override)
+    out.by_index = {f["index"]: f for f in frames}
+    return out
+
+
+def apply_conf(session: Session, conf: float) -> Session:
+    """A copy of `session` keeping only damage detections with score >= `conf`; `session.conf` becomes `conf`."""
+    frames = []
+    for f in session.frames:
+        g = dict(f)
+        if f.get("mangos"):
+            g["mangos"] = []
+            for m in f["mangos"]:
+                damages = [d for d in m["damages"] if d["score"] >= conf]
+                g["mangos"].append({**m, "damages": damages, "maxDamage": max((d["score"] for d in damages), default=0.0)})
+        if f.get("detections"):
+            g["detections"] = [d for d in f["detections"] if d["cls"] != 1 or d["score"] >= conf]
+        g["confThreshold"] = conf
+        frames.append(g)
+    out = Session(session.root, session.info, frames, conf_override=conf)
+    out.by_index = {f["index"]: f for f in frames}
+    return out
+
+
 def _stats(values) -> dict:
     arr = np.asarray(list(values), float)
     if arr.size == 0:
@@ -158,6 +246,25 @@ def _stats(values) -> dict:
 # --------------------------------------------------------------------------
 # report
 # --------------------------------------------------------------------------
+
+
+def memory_stats(session: Session) -> dict | None:
+    """RAM summary in kB from the per-frame `mem` (falling back to `session.json`'s `memory`); None for old sessions."""
+    info = session.info.get("memory") or {}
+    mems = [f["mem"] for f in session.frames if f.get("mem")]
+    if not mems and not info:
+        return None
+    rss = [m["rssKb"] for m in mems]
+    pss = [m["pssKb"] for m in mems if m.get("pssKb") is not None]
+    pss_max = max(pss) if pss else info.get("pssMaxKb")
+    return {
+        "rss_max_kb": max(rss) if rss else info.get("rssMaxKb"),
+        "rss_median_kb": float(np.median(rss)) if rss else info.get("rssMedianKb"),
+        "hwm_end_kb": mems[-1]["hwmKb"] if mems else info.get("hwmAtEndKb"),
+        "pss_max_kb": pss_max,
+        "ram_before_load_kb": info.get("ramBeforeLoadKb"),
+        "n_samples": len(mems) if mems else info.get("samples"),
+    }
 
 
 def build_report(session: Session) -> dict:
@@ -223,6 +330,7 @@ def build_report(session: Session) -> dict:
         "damage_confidence_histogram": {"bin_edges": [float(e) for e in edges], "counts": [int(c) for c in counts],
                                         "n_detections": len(scores)},
         "latency_ms": timings,
+        "memory": memory_stats(session),
     }
 
 
@@ -258,6 +366,15 @@ def report_markdown(r: dict) -> str:
             f"| {t['track_id']} | {t['frames_seen']} | {t['pct_frames_with_damage']:.1f} | "
             f"{_fmt(md['mean'])} | {_fmt(md['median'])} | {_fmt(md['p90'])} |"
         )
+    mem = r.get("memory")
+    if mem:
+        mb = lambda kb: "-" if kb is None else f"{kb / 1024:.0f}"  # noqa: E731
+        lines += [
+            "", "## Memory (MB)", "",
+            f"- RSS max {mb(mem['rss_max_kb'])}, median {mb(mem['rss_median_kb'])}; VmHWM at end {mb(mem['hwm_end_kb'])} "
+            f"(process lifetime); PSS max {mb(mem['pss_max_kb'])}; RSS before model load {mb(mem['ram_before_load_kb'])} "
+            f"({_fmt(mem['n_samples'], 0)} samples)",
+        ]
     h = r["damage_confidence_histogram"]
     lines += ["", f"## Damage confidence histogram ({h['n_detections']} detections)", "", "| bin | count |", "|---|---:|"]
     for lo, hi, c in zip(h["bin_edges"][:-1], h["bin_edges"][1:], h["counts"]):
@@ -269,14 +386,54 @@ def report_markdown(r: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _prepare(session: Session, nms_iou: float | None) -> Session:
+    """Applies `--nms-iou` for one threshold; None keeps the recorded detections."""
+    return session if nms_iou is None else apply_nms(session, nms_iou)
+
+
+def _thresholds(args) -> list[float | None]:
+    return list(args.nms_iou) if args.nms_iou else [None]
+
+
+def multi_report_markdown(reports: dict[str, dict]) -> str:
+    """One row per NMS IoU threshold, then the full report of each."""
+    first = next(iter(reports.values()))
+    lines = [
+        f"# Field session {first['session']}: NMS IoU sweep", "",
+        "| NMS IoU | damage detections | frames with mango (%) | tracks | mean max damage |", "|---:|---:|---:|---:|---:|",
+    ]
+    for key, r in reports.items():
+        peaks = [t["max_damage"]["mean"] for t in r["tracks"] if t["max_damage"]["mean"] is not None]
+        lines.append(
+            f"| {key} | {r['damage_confidence_histogram']['n_detections']} | {_fmt(r['pct_frames_with_mango'], 1)} | "
+            f"{r['n_tracks']} | {_fmt(float(np.mean(peaks)) if peaks else None, 3)} |"
+        )
+    for key, r in reports.items():
+        lines += ["", f"## NMS IoU {key}", "", report_markdown(r).replace("# Field session", "### Field session", 1)]
+    return "\n".join(lines) + "\n"
+
+
 def cmd_report(args) -> int:
     session = load_session(args.session)
-    report = build_report(session)
+    thresholds = _thresholds(args)
+    try:
+        reports = {}
+        for t in thresholds:
+            reports["recorded" if t is None else threshold_key(t)] = build_report(apply_conf(_prepare(session, t), args.conf))
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    (out / "report.json").write_text(json.dumps(report, indent=2))
-    (out / "report.md").write_text(report_markdown(report))
-    print(report_markdown(report))
+    if len(thresholds) == 1:
+        report = next(iter(reports.values()))
+        text = report_markdown(report)
+        (out / "report.json").write_text(json.dumps(report, indent=2))
+    else:
+        text = multi_report_markdown(reports)
+        (out / "report.json").write_text(json.dumps({"nms_iou": reports}, indent=2))
+    (out / "report.md").write_text(text)
+    print(text)
     return 0
 
 
@@ -348,6 +505,12 @@ def build_ls_tasks(session: Session, indices: list[int], url_prefix: str) -> lis
 
 def cmd_export_ls(args) -> int:
     session = load_session(args.session)
+    thresholds = _thresholds(args)
+    try:
+        variants = {t: _prepare(session, t) for t in thresholds}
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
     indices = sample_frames(session, args.every, args.per_track)
     if not indices:
         print("no frame to export (no saved frames, or nothing matched the sampling)", file=sys.stderr)
@@ -357,10 +520,12 @@ def cmd_export_ls(args) -> int:
     for idx in indices:
         rel = session.by_index[idx]["frame"]
         shutil.copy2(session.root / rel, out / "frames" / Path(rel).name)
-    tasks = build_ls_tasks(session, indices, args.image_url_prefix)
-    (out / "tasks.json").write_text(json.dumps(tasks, indent=2))
     (out / "labeling_config.xml").write_text(LABEL_CONFIG)
-    print(f"{len(tasks)} tasks -> {out / 'tasks.json'}; frames copied to {out / 'frames'}")
+    for t, variant in variants.items():
+        tasks = build_ls_tasks(variant, indices, args.image_url_prefix)
+        name = "tasks.json" if len(variants) == 1 else f"tasks_nms{threshold_key(t)}.json"
+        (out / name).write_text(json.dumps(tasks, indent=2))
+        print(f"{len(tasks)} tasks -> {out / name}; frames copied to {out / 'frames'}")
     print(f"image URLs start with {args.image_url_prefix!r}: serve {out / 'frames'} accordingly (Label Studio local files).")
     return 0
 
@@ -595,19 +760,52 @@ def eval_markdown(r: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
+def multi_eval_markdown(results: dict[str, dict]) -> str:
+    """One row per NMS IoU threshold with the headline metrics."""
+    first = next(iter(results.values()))
+    lines = [
+        f"# Field evaluation {first['session']}: NMS IoU sweep", "",
+        f"{first['n_annotated_frames']} annotated frames, ROI mode {first['roi_mode']}.", "",
+        "| NMS IoU | box AP50 | box AP30 | mask AP50 | mango AP50 | AUROC | recall | specificity | FP / healthy track |",
+        "|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for key, r in results.items():
+        pm = r["per_mango"]
+        cells = [
+            r["damage_box_ap50"]["ap"], r["damage_box_ap30"]["ap"], r["damage_mask_ap50"]["ap"], r["mango_ap50"]["ap"],
+            pm["auroc"], pm["recall"], pm["specificity"], pm["fp_damage_boxes_per_healthy_mango"]["per_track"],
+        ]
+        lines.append(f"| {key} | " + " | ".join(_fmt(c, 3) for c in cells) + " |")
+    return "\n".join(lines) + "\n"
+
+
 def cmd_eval(args) -> int:
     session = load_session(args.session)
     gt, skipped = load_ground_truth(args.gt, session)
     if not gt:
         print(f"no annotated frame matched the session (skipped: {skipped})", file=sys.stderr)
         return 1
-    result = evaluate(session, gt)
-    result["skipped_tasks"] = skipped
+    thresholds = _thresholds(args)
+    try:
+        results = {}
+        for t in thresholds:
+            r = evaluate(_prepare(session, t), gt)
+            r["skipped_tasks"] = skipped
+            results["recorded" if t is None else threshold_key(t)] = r
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    (out / "eval.json").write_text(json.dumps(result, indent=2))
-    (out / "eval.md").write_text(eval_markdown(result))
-    print(eval_markdown(result))
+    if len(thresholds) == 1:
+        result = next(iter(results.values()))
+        text = eval_markdown(result)
+        (out / "eval.json").write_text(json.dumps(result, indent=2))
+    else:
+        text = multi_eval_markdown(results)
+        (out / "eval.json").write_text(json.dumps({"nms_iou": results}, indent=2))
+    (out / "eval.md").write_text(text)
+    print(text)
     return 0
 
 
@@ -621,6 +819,8 @@ def build_parser() -> argparse.ArgumentParser:
     r = sub.add_parser("report", help="summary without ground truth")
     r.add_argument("session", help="session folder or .zip")
     r.add_argument("--out", required=True, help="folder for report.json and report.md")
+    r.add_argument("--conf", type=float, default=0.25, help="operational damage confidence (default 0.25), even if recorded lower")
+    r.add_argument("--nms-iou", type=parse_thresholds, metavar="IOU[,IOU...]", help=NMS_HELP)
     r.set_defaults(func=cmd_report)
 
     e = sub.add_parser("export-ls", help="Label Studio import file with predictions as pre-annotations")
@@ -629,6 +829,7 @@ def build_parser() -> argparse.ArgumentParser:
     g = e.add_mutually_exclusive_group()
     g.add_argument("--every", type=int, help="every Nth saved frame (default 10)")
     g.add_argument("--per-track", type=int, help="K evenly spaced frames per mango track")
+    e.add_argument("--nms-iou", type=parse_thresholds, metavar="IOU[,IOU...]", help=NMS_HELP)
     e.add_argument("--image-url-prefix", default="/data/local-files/?d=frames/",
                    help="prefix of data.image in each task (default for Label Studio local files)")
     e.set_defaults(func=cmd_export_ls)
@@ -637,6 +838,7 @@ def build_parser() -> argparse.ArgumentParser:
     v.add_argument("session")
     v.add_argument("--gt", required=True, help="Label Studio JSON export of the annotated frames")
     v.add_argument("--out", required=True, help="folder for eval.json and eval.md")
+    v.add_argument("--nms-iou", type=parse_thresholds, metavar="IOU[,IOU...]", help=NMS_HELP)
     v.set_defaults(func=cmd_eval)
     return p
 
