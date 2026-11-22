@@ -112,7 +112,7 @@ private fun Hud(state: LiveUiState, modifier: Modifier) {
         }
         if (state.recording) line("REC ${state.recordedRows} rows", Color(0xFFFF5252))
         val ses = state.session
-        if (ses.active) line("SESSION ${ses.frames} frames, ${ses.saved} saved, ${ses.dropped} dropped", Color(0xFFFF5252))
+        if (ses.active) line("SESSION ${ses.frames} frames, ${ses.saved} saved, ${ses.dropped} dropped, RSS ${ses.rssMb} MB", Color(0xFFFF5252))
         if (ses.finishing) line("session: writing and zipping...", Color.Yellow)
     }
 }
@@ -149,7 +149,7 @@ private fun Controls(state: LiveUiState, actions: LiveActions, modifier: Modifie
             if (!ses.active && !ses.finishing && ses.zip != null) {
                 Button(onClick = actions.onShareSession, modifier = Modifier.padding(start = 12.dp)) { Text("Share session") }
             }
-            if (ses.active) Text("  ${ses.frames} frames, ${ses.saved} saved", color = Color.White, fontSize = 12.sp)
+            if (ses.active) Text("  ${ses.frames} frames, ${ses.saved} saved, ${ses.rssMb} MB", color = Color.White, fontSize = 12.sp)
         }
         if (!ses.active && ses.path != null) {
             val tail = if (ses.zip != null) " (${ses.frames} frames, ${ses.saved} saved, ${ses.dropped} dropped) + .zip" else ""

@@ -50,4 +50,11 @@ class ResultsTest {
         assertEquals(300000L, ProcStatus.kb(text, "VmRSS"))
         assertNull(ProcStatus.kb(text, "VmSwap"))
     }
+
+    @Test
+    fun rssHwmReadsBothLinesOrNull() {
+        val text = "VmHWM:\t  312345 kB\nVmRSS:\t  300000 kB\n"
+        assertEquals(300000L to 312345L, ProcStatus.rssHwm(text))
+        assertNull(ProcStatus.rssHwm("VmRSS:\t 1 kB\n"))
+    }
 }

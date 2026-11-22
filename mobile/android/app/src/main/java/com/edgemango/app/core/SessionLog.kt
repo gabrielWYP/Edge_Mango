@@ -76,7 +76,63 @@ data class FrameRecord(
     val keepThreshold: Double = 0.0,
     /** Frames a missed track is still reported (`held`). */
     val holdFrames: Int = 0,
+    /** Process memory when this frame was logged; null in sessions recorded before this field existed. */
+    val mem: MemRecord? = null,
 )
+
+/** Process memory counters of one frame (kB). [pssKb] is only sampled every [MemoryStats.PSS_EVERY] frames. */
+@Serializable
+data class MemRecord(val rssKb: Long, val hwmKb: Long, val pssKb: Long? = null)
+
+/**
+ * Memory summary of a session (kB).
+ *
+ * `VmHWM` ([hwmAtStartKb], [hwmAtEndKb]) is the process-lifetime peak: it includes earlier configurations unless the app
+ * was restarted before this session. [rssMaxKb] is this session's own peak of the resident set, sampled once per frame.
+ * [ramBeforeLoadKb] is `VmRSS` right before the Live screen loaded its models (the app baseline).
+ */
+@Serializable
+data class SessionMemory(
+    val ramBeforeLoadKb: Long,
+    val rssStartKb: Long,
+    val rssMaxKb: Long,
+    val rssMedianKb: Long,
+    val hwmAtStartKb: Long,
+    val hwmAtEndKb: Long,
+    val pssMaxKb: Long? = null,
+    val samples: Int,
+)
+
+/** Accumulates per-frame memory samples into a [SessionMemory]. Not thread-safe: the caller synchronises. */
+class MemoryStats {
+    private val rss = ArrayList<Long>()
+    private var hwmStart = 0L
+    private var hwmEnd = 0L
+    private var pssMax: Long? = null
+
+    /** True when the frame with this index should also read PSS (it is slow: it walks the page tables). */
+    fun wantsPss(index: Int): Boolean = index % PSS_EVERY == PSS_EVERY - 1
+
+    fun add(rssKb: Long, hwmKb: Long, pssKb: Long? = null) {
+        if (rss.isEmpty()) hwmStart = hwmKb
+        rss.add(rssKb)
+        hwmEnd = hwmKb
+        if (pssKb != null) pssMax = maxOf(pssMax ?: pssKb, pssKb)
+    }
+
+    /** Null when no sample was taken. */
+    fun summary(ramBeforeLoadKb: Long): SessionMemory? {
+        if (rss.isEmpty()) return null
+        val sorted = rss.sorted()
+        val n = sorted.size
+        val median = if (n % 2 == 1) sorted[n / 2] else (sorted[n / 2 - 1] + sorted[n / 2]) / 2
+        return SessionMemory(ramBeforeLoadKb, rss.first(), sorted.last(), median, hwmStart, hwmEnd, pssMax, n)
+    }
+
+    companion object {
+        const val PSS_EVERY = 10
+    }
+}
 
 /** Settings that shaped a frame record; copied into every line so a line is self-describing. */
 data class FrameContext(
@@ -127,6 +183,8 @@ data class SessionInfo(
     val settings: SessionSettings,
     val damageModel: ModelInfo,
     val detectorModel: ModelInfo? = null,
+    /** Null when no frame was processed or the counters were unreadable. */
+    val memory: SessionMemory? = null,
 )
 
 object SessionJson {

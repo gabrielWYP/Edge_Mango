@@ -28,6 +28,7 @@ import com.edgemango.app.data.DisplayMode
 import com.edgemango.app.data.LiveLog
 import com.edgemango.app.data.ModelRef
 import com.edgemango.app.data.SessionRecorder
+import com.edgemango.app.device.MemoryProbe
 import com.edgemango.app.device.DeviceInfo
 import com.edgemango.app.inference.AcceleratorChoice
 import com.edgemango.app.inference.LiteRtSession
@@ -67,6 +68,8 @@ data class SessionUi(
     val frames: Int = 0,
     val saved: Int = 0,
     val dropped: Int = 0,
+    /** Current resident set size of the app process in MB (0 before the first frame). */
+    val rssMb: Int = 0,
     val finishing: Boolean = false,
     /** The folder of the running or last session. */
     val path: String? = null,
@@ -108,6 +111,8 @@ class LiveViewModel(application: Application) : AndroidViewModel(application) {
     @Volatile private var detectorRef: ModelRef? = null
     @Volatile private var recorder: LiveLog? = null
     @Volatile private var sessionRec: SessionRecorder? = null
+    /** `VmRSS` in kB just before the models were loaded (app baseline); 0 when unreadable. */
+    @Volatile private var ramBeforeLoadKb = 0L
     private var lastFrameAt = 0L
     private var lastSnapshotAt = 0L
     private var fpsEma = 0.0
@@ -182,10 +187,11 @@ class LiveViewModel(application: Application) : AndroidViewModel(application) {
         val detector = detectorRef
         val damageAccel = session?.label
         val detAccel = detSession?.label
+        val ramBeforeLoad = ramBeforeLoadKb
         _state.update { it.copy(session = it.session.copy(active = false, finishing = true)) }
         viewModelScope.launch(Dispatchers.IO) {
             val zip = runCatching {
-                rec.finish { frames, saved, dropped, failed, endedAt ->
+                rec.finish(ramBeforeLoad) { frames, saved, dropped, failed, endedAt, memory ->
                     SessionInfo(
                         session = rec.dir.name,
                         appVersion = appVersion(),
@@ -206,6 +212,7 @@ class LiveViewModel(application: Application) : AndroidViewModel(application) {
                         ),
                         damageModel = modelInfo(damage, damageAccel) ?: ModelInfo(modelName),
                         detectorModel = modelInfo(detector, detAccel),
+                        memory = memory,
                     )
                 }
             }.getOrNull()
@@ -252,6 +259,7 @@ class LiveViewModel(application: Application) : AndroidViewModel(application) {
         _state.update { it.copy(model = ModelStatus.Loading, result = null, twoStage = null) }
         withContext(Dispatchers.Default) {
             releaseSessions()
+            ramBeforeLoadKb = MemoryProbe.rssHwmKb()?.first ?: 0L
             val ref = graph.catalog.find(modelId) ?: graph.catalog.list().firstOrNull()
             if (ref == null) {
                 _state.update { it.copy(model = ModelStatus.Failed("no model found")) }
@@ -409,7 +417,7 @@ class LiveViewModel(application: Application) : AndroidViewModel(application) {
         } catch (_: IllegalStateException) {
             return // the session was stopped while this frame was in flight
         }
-        _state.update { it.copy(session = it.session.copy(frames = rec.frames, saved = rec.framesSaved, dropped = rec.droppedWrites)) }
+        _state.update { it.copy(session = it.session.copy(frames = rec.frames, saved = rec.framesSaved, dropped = rec.droppedWrites, rssMb = (rec.rssKb / 1024).toInt())) }
     }
 
     private fun logCsv(

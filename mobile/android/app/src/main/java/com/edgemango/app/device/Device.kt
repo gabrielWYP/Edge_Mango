@@ -36,6 +36,12 @@ object MemoryProbe {
      */
     fun resetPeak(): Boolean = runCatching { File("/proc/self/clear_refs").writeText("5"); true }.getOrDefault(false)
 
+    /** `(VmRSS, VmHWM)` in kB, or null when `/proc/self/status` is unreadable. */
+    fun rssHwmKb(): Pair<Long, Long>? = runCatching { ProcStatus.rssHwm(File("/proc/self/status").readText()) }.getOrNull()
+
+    /** Proportional set size in kB (`Debug.getPss()`); slower than the `/proc` read, so sample it sparingly. */
+    fun pssKb(): Long = Debug.getPss()
+
     fun snapshot(): MemorySnapshot {
         val status = runCatching { File("/proc/self/status").readText() }.getOrDefault("")
         val rt = Runtime.getRuntime()

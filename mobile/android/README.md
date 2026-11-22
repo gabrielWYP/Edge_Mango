@@ -158,6 +158,13 @@ A session records what the app saw and predicted, to evaluate it later with grou
    their sidecars, settings, app version, start/end, counters). JPEG writing runs on one background thread with a bounded queue; if
    it cannot keep up a frame is dropped from disk (its prediction line stays, `frame: null`) and counted in the HUD and `session.json`.
 2. Switch it off (or leave the Live tab): the folder is zipped to `session_<stamp>.zip`; **Share session** opens the share sheet.
+
+   **Memory.** Every `predictions.jsonl` line carries `mem: {rssKb, hwmKb}` (`VmRSS` / `VmHWM` of `/proc/self/status`, whole app
+   process) and every 10th frame also `pssKb` (`Debug.getPss()`); the HUD shows the current RSS in MB next to the frame counter.
+   `session.json` has `memory: {ramBeforeLoadKb, rssStartKb, rssMaxKb, rssMedianKb, hwmAtStartKb, hwmAtEndKb, pssMaxKb, samples}`.
+   `rssMaxKb` is this session's own peak; `VmHWM` is the process-lifetime peak and also includes earlier configurations, so
+   **close the app (swipe it away) between configurations** to get a clean `hwmAtEndKb`. `ramBeforeLoadKb` is the RSS right before
+   the Live screen loaded its models (the app baseline).
 3. Or pull it with adb (the zip, or the folder):
 
 ```bash
